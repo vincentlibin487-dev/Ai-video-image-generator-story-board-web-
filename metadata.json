@@ -1,0 +1,6 @@
+{
+  "name": "CineDirector AI - Storyboard & Shot Generator",
+  "description": "Professional AI Cinematic Director and Storyboard Generator with multi-language script breakdown, character face continuity, and production-grade video generation prompts.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
