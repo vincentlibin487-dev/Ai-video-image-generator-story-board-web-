@@ -22,20 +22,20 @@ export function getLangConfig(code?: string): LangOption {
   return LANGUAGE_OPTIONS.find((l) => l.code === code) || LANGUAGE_OPTIONS[0];
 }
 
-export type VoicePace = 'verySlow' | 'slow' | 'normal';
+export type VoicePace = 'story' | 'narrator' | 'calm';
 
 export const VOICE_PACE_SETTINGS: Record<
   VoicePace,
-  { edgeRate: string; edgePitch: string; webRate: number; pauseMs: number }
+  { edgeRate: string; edgePitch: string; audioPlaybackRate: number; webRate: number; pauseMs: number }
 > = {
-  verySlow: { edgeRate: '-30%', edgePitch: '-2Hz', webRate: 0.72, pauseMs: 700 },
-  slow: { edgeRate: '-20%', edgePitch: '-2Hz', webRate: 0.80, pauseMs: 520 },
-  normal: { edgeRate: '-8%', edgePitch: '-1Hz', webRate: 0.92, pauseMs: 320 },
+  story: { edgeRate: '+2%', edgePitch: '+1Hz', audioPlaybackRate: 1.0, webRate: 0.98, pauseMs: 180 },
+  narrator: { edgeRate: '+0%', edgePitch: '+0Hz', audioPlaybackRate: 1.0, webRate: 0.96, pauseMs: 220 },
+  calm: { edgeRate: '-8%', edgePitch: '+0Hz', audioPlaybackRate: 1.0, webRate: 0.88, pauseMs: 300 },
 };
 
 /**
- * Cleans emojis/symbols and inserts clear, natural pauses between sentences
- * so TTS narrates calmly and accurately without rushing.
+ * Cleans emojis/symbols cleanly while preserving natural punctuation
+ * so storytelling voiceover flows with human warmth and expression.
  */
 export function cleanTextForSpeech(rawText: string, lang: AppLang = 'ml'): string {
   const andConnector =
@@ -44,21 +44,19 @@ export function cleanTextForSpeech(rawText: string, lang: AppLang = 'ml'): strin
   const cleaned = rawText
     // Strip emojis, pictographs, variation selectors, zero-width joiners
     .replace(/[\p{Extended_Pictographic}\uFE0F\u200D]/gu, ' ')
-    // Replace ampersands and bullets/dashes with natural connectors/pauses
+    // Replace ampersands and bullets/dashes with natural connectors
     .replace(/\s*&\s*/g, andConnector)
     .replace(/\s*[•●▪▫■□★☆✦✧→➔➡🎬🎙️⏹️]+\s*/g, ', ')
     .replace(/\s*[—–/]+\s*/g, ', ')
-    // Remove parentheses/brackets smoothly, turning them into commas
+    // Smooth parentheses/brackets
     .replace(/[()[\]{}]/g, ', ')
     // Remove stray quotation marks and hash symbols
     .replace(/["'“”‘’#*]/g, ' ')
-    // Normalize whitespace around punctuation
+    // Normalize whitespace around commas and periods without forcing awkward pauses
     .replace(/\s*,\s*/g, ', ')
     .replace(/(,\s*){2,}/g, ', ')
-    // Put deliberate breathing pauses after every sentence ending (. । ! ?)
-    .replace(/([.।!?])\s+/g, '$1...\n\n')
-    // Preserve paragraph breaks as distinct pauses
-    .replace(/\n{3,}/g, '\n\n')
+    .replace(/([.।!?])\s+/g, '$1 ')
+    .replace(/\n{2,}/g, '\n')
     .replace(/[ \t]{2,}/g, ' ')
     .trim();
 
@@ -78,16 +76,14 @@ export function buildCardNarrationText({
   summary: string;
   lang: AppLang;
 }): string {
-  const ui = UI_TRANSLATIONS[lang] || UI_TRANSLATIONS.ml;
-  const charPrefix = ui.charactersLabel.replace(/[:：]\s*$/, '');
   const parts = [
     title ? `${title}.` : '',
     genre ? `${genre}.` : '',
-    characters ? `${charPrefix}, ${characters}.` : '',
+    characters ? `${characters}.` : '',
     summary || '',
   ].filter(Boolean);
 
-  return cleanTextForSpeech(parts.join('\n\n'), lang);
+  return cleanTextForSpeech(parts.join('\n'), lang);
 }
 
 export interface UiStrings {
@@ -132,6 +128,9 @@ export interface UiStrings {
   filterAd: string;
   charactersLabel: string;
   storyOverviewLabel: string;
+  bgmLabel: string;
+  continuityLabel: string;
+  shotBgmLabel: string;
   voiceLoadingStop: string;
   voiceStop: string;
   voicePlay: string;
@@ -205,13 +204,16 @@ export const UI_TRANSLATIONS: Record<AppLang, UiStrings> = {
     filterAd: '📢 കൊമേഴ്സ്യൽ പരസ്യം (Ads)',
     charactersLabel: 'പ്രധാന കഥാപാത്രങ്ങൾ:',
     storyOverviewLabel: 'കഥാ ചുരുക്കം (Story Overview):',
+    bgmLabel: '🎵 ബാക്ക്ഗ്രൗണ്ട് മ്യൂസിക് (BGM):',
+    continuityLabel: '🎬 വിഷ്വൽ കണ്ടിന്യൂയിറ്റി (Continuity):',
+    shotBgmLabel: '🎵 ബാക്ക്ഗ്രൗണ്ട് മ്യൂസിക് & സൗണ്ട് (BGM - എഡിറ്റ് ചെയ്യാം)',
     voiceLoadingStop: 'ലോഡ് ചെയ്യുന്നു... (Stop)',
     voiceStop: 'നിർത്തുക (Stop)',
     voicePlay: 'വോയിസ് കേൾക്കുക',
-    voicePaceLabel: 'വോയിസ് വേഗത:',
-    paceVerySlow: 'വളരെ പതുക്കെ',
-    paceSlow: 'പതുക്കെ & വ്യക്തം',
-    paceNormal: 'സാധാരണ',
+    voicePaceLabel: 'വോയിസ് ശൈലി:',
+    paceVerySlow: 'കഥ പറച്ചിൽ (സംഭാഷണം)',
+    paceSlow: 'സിനിമാറ്റിക് നറേറ്റർ',
+    paceNormal: 'ശാന്തം & വ്യക്തം',
     selectThisStory: (clips) => `ഈ കഥ തിരഞ്ഞെടുക്കുക (${clips} ക്ലിപ്പുകൾ) ➔`,
     backToAngles: '← കഥാ രൂപങ്ങളിലേക്ക് തിരികെ പോകുക',
     preparingPrompts: (d, clips) => `${d} നീളമുള്ള സിനിമയ്ക്ക് ആവശ്യമായ ${clips} സീൻ പ്രോംപ്റ്റുകൾ തയ്യാറാക്കുന്നു...`,
@@ -276,13 +278,16 @@ export const UI_TRANSLATIONS: Record<AppLang, UiStrings> = {
     filterAd: '📢 Commercial Ads',
     charactersLabel: 'Main Characters:',
     storyOverviewLabel: 'Story Overview:',
+    bgmLabel: '🎵 Background Music (BGM):',
+    continuityLabel: '🎬 Visual Continuity:',
+    shotBgmLabel: '🎵 Background Music & Sound Cue (Editable)',
     voiceLoadingStop: 'Loading... (Stop)',
     voiceStop: 'Stop Voiceover',
     voicePlay: 'Listen Voiceover',
-    voicePaceLabel: 'Voice Pace:',
-    paceVerySlow: 'Extra Slow',
-    paceSlow: 'Slow & Clear',
-    paceNormal: 'Normal',
+    voicePaceLabel: 'Voice Style:',
+    paceVerySlow: 'Story Conversation',
+    paceSlow: 'Expressive Narrator',
+    paceNormal: 'Calm & Clear',
     selectThisStory: (clips) => `Select This Story (${clips} Clips) ➔`,
     backToAngles: '← Back to Story Angles',
     preparingPrompts: (d, clips) => `Preparing ${clips} sequential scene prompts for your ${d} film...`,
@@ -347,13 +352,16 @@ export const UI_TRANSLATIONS: Record<AppLang, UiStrings> = {
     filterAd: '📢 विज्ञापन (Ads)',
     charactersLabel: 'मुख्य पात्र:',
     storyOverviewLabel: 'कहानी का सारांश (Story Overview):',
+    bgmLabel: '🎵 बैकग्राउंड म्यूज़िक (BGM):',
+    continuityLabel: '🎬 विज़ुअल कंटिन्यूटी (Continuity):',
+    shotBgmLabel: '🎵 बैकग्राउंड म्यूज़िक और साउंड (BGM - संपादन योग्य)',
     voiceLoadingStop: 'लोड हो रहा है... (रोकें)',
     voiceStop: 'रोकें (Stop)',
     voicePlay: 'आवाज़ सुनें',
-    voicePaceLabel: 'आवाज़ की गति:',
-    paceVerySlow: 'बहुत धीमी',
-    paceSlow: 'धीमी और स्पष्ट',
-    paceNormal: 'सामान्य',
+    voicePaceLabel: 'आवाज़ शैली:',
+    paceVerySlow: 'कहानी बातचीत (फील)',
+    paceSlow: 'सिनेमैटिक नैरेटर',
+    paceNormal: 'शांत और स्पष्ट',
     selectThisStory: (clips) => `यह कहानी चुनें (${clips} क्लिप्स) ➔`,
     backToAngles: '← कहानियों पर वापस जाएं',
     preparingPrompts: (d, clips) => `${d} की फिल्म के लिए ${clips} सीन प्रॉम्प्ट्स तैयार किए जा रहे हैं...`,
@@ -418,13 +426,16 @@ export const UI_TRANSLATIONS: Record<AppLang, UiStrings> = {
     filterAd: '📢 விளம்பரம் (Ads)',
     charactersLabel: 'முக்கிய கதாபாத்திரங்கள்:',
     storyOverviewLabel: 'கதைச் சுருக்கம் (Story Overview):',
+    bgmLabel: '🎵 பின்னணி இசை (BGM):',
+    continuityLabel: '🎬 காட்சித் தொடர்ச்சி (Continuity):',
+    shotBgmLabel: '🎵 பின்னணி இசை & ஒலி (BGM - திருத்தலாம்)',
     voiceLoadingStop: 'ஏற்றுகிறது... (நிறுத்து)',
     voiceStop: 'நிறுத்து (Stop)',
     voicePlay: 'குரலில் கேட்க',
-    voicePaceLabel: 'குரல் வேகம்:',
-    paceVerySlow: 'மிக மெதுவாக',
-    paceSlow: 'மெதுவாக & தெளிவாக',
-    paceNormal: 'சாதாரணம்',
+    voicePaceLabel: 'குரல் பாணி:',
+    paceVerySlow: 'கதை உரையாடல்',
+    paceSlow: 'சினிமாட்டிக் குரல்',
+    paceNormal: 'அமைதி & தெளிவு',
     selectThisStory: (clips) => `இந்தக் கதையைத் தேர்ந்தெடு (${clips} கிளிப்புகள்) ➔`,
     backToAngles: '← கதைகளுக்குத் திரும்பு',
     preparingPrompts: (d, clips) => `${d} படத்திற்கான ${clips} காட்சி ப்ராம்ப்ட்கள் தயாராகின்றன...`,
@@ -489,13 +500,16 @@ export const UI_TRANSLATIONS: Record<AppLang, UiStrings> = {
     filterAd: '📢 ಜಾಹೀರಾತು (Ads)',
     charactersLabel: 'ಮುಖ್ಯ ಪಾತ್ರಗಳು:',
     storyOverviewLabel: 'ಕಥಾ ಸಾರಾಂಶ (Story Overview):',
+    bgmLabel: '🎵 ಹಿನ್ನೆಲೆ ಸಂಗೀತ (BGM):',
+    continuityLabel: '🎬 ದೃಶ್ಯ ನಿರಂತರತೆ (Continuity):',
+    shotBgmLabel: '🎵 ಹಿನ್ನೆಲೆ ಸಂಗೀತ & ಧ್ವನಿ (BGM - ಸಂಪಾದಿಸಬಹುದು)',
     voiceLoadingStop: 'ಲೋಡ್ ಆಗುತ್ತಿದೆ... (ನಿಲ್ಲಿಸಿ)',
     voiceStop: 'ನಿಲ್ಲಿಸಿ (Stop)',
     voicePlay: 'ಧ್ವನಿ ಕೇಳಿ',
-    voicePaceLabel: 'ಧ್ವನಿ ವೇಗ:',
-    paceVerySlow: 'ತುಂಬಾ ನಿಧಾನ',
-    paceSlow: 'ನಿಧಾನ & ಸ್ಪಷ್ಟ',
-    paceNormal: 'ಸಾಮಾನ್ಯ',
+    voicePaceLabel: 'ಧ್ವನಿ ಶೈಲಿ:',
+    paceVerySlow: 'ಕಥಾ ಸಂಭಾಷಣೆ',
+    paceSlow: 'ಸಿನಿಮಾಟಿಕ್ ನಿರೂಪಕ',
+    paceNormal: 'ಶಾಂತ & ಸ್ಪಷ್ಟ',
     selectThisStory: (clips) => `ಈ ಕಥೆ ಆಯ್ಕೆಮಾಡಿ (${clips} ಕ್ಲಿಪ್‌ಗಳು) ➔`,
     backToAngles: '← ಕಥೆಗಳಿಗೆ ಹಿಂತಿರುಗಿ',
     preparingPrompts: (d, clips) => `${d} ಚಿತ್ರಕ್ಕಾಗಿ ${clips} ದೃಶ್ಯ ಪ್ರಾಂಪ್ಟ್‌ಗಳನ್ನು ಸಿದ್ಧಪಡಿಸಲಾಗುತ್ತಿದೆ...`,
@@ -560,13 +574,16 @@ export const UI_TRANSLATIONS: Record<AppLang, UiStrings> = {
     filterAd: '📢 వాణిజ్య ప్రకటన (Ads)',
     charactersLabel: 'ప్రధాన పాత్రలు:',
     storyOverviewLabel: 'కథా సారాంశం (Story Overview):',
+    bgmLabel: '🎵 బ్యాక్‌గ్రౌండ్ మ్యూజిక్ (BGM):',
+    continuityLabel: '🎬 విజువల్ కంటిన్యుటీ (Continuity):',
+    shotBgmLabel: '🎵 బ్యాక్‌గ్రౌండ్ మ్యూజిక్ & సౌండ్ (BGM - సవరించవచ్చు)',
     voiceLoadingStop: 'లోడ్ అవుతోంది... (ఆపు)',
     voiceStop: 'ఆపు (Stop)',
     voicePlay: 'వాయిస్ వినండి',
-    voicePaceLabel: 'వాయిస్ వేగం:',
-    paceVerySlow: 'చాలా నెమ్మదిగా',
-    paceSlow: 'నెమ్మదిగా & స్పష్టంగా',
-    paceNormal: 'సాధారణం',
+    voicePaceLabel: 'వాయిస్ శైలి:',
+    paceVerySlow: 'కథా సంభాషణ (ఫీల్)',
+    paceSlow: 'సినిమాటిక్ నరేటర్',
+    paceNormal: 'శాంతం & స్పష్టం',
     selectThisStory: (clips) => `ఈ కథను ఎంచుకోండి (${clips} క్లిప్‌లు) ➔`,
     backToAngles: '← కథలకు తిరిగి వెళ్ళండి',
     preparingPrompts: (d, clips) => `${d} సినిమా కోసం ${clips} సీన్ ప్రాంప్ట్‌లు సిద్ధమవుతున్నాయి...`,

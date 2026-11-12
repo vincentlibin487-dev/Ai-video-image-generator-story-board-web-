@@ -16,6 +16,7 @@ import {
   PlayCircle,
   Globe,
   Volume2,
+  Music,
 } from 'lucide-react';
 import {
   StoryAngle,
@@ -62,15 +63,13 @@ async function postApiJson<T>(endpoint: string, payload: unknown, signal?: Abort
   return res.json() as Promise<T>;
 }
 
-const ALL_DEFAULT_SAMPLES = Object.values(UI_TRANSLATIONS).map((item) => item.samplePremise.trim());
-
 export default function App() {
   const [lang, setLang] = useState<AppLang>('ml');
   const t = UI_TRANSLATIONS[lang];
 
   // Navigation Step: 'input' (Page 1) | 'options' (Page 2) | 'prompts' (Page 3)
   const [activeStep, setActiveStep] = useState<'input' | 'options' | 'prompts'>('input');
-  const [premise, setPremise] = useState<string>(UI_TRANSLATIONS.ml.samplePremise);
+  const [premise, setPremise] = useState<string>('');
   const [shotDurationSec, setShotDurationSec] = useState<number>(8);
 
   // Total Video Duration Controls (Supports Seconds, Minutes & Hours)
@@ -89,7 +88,7 @@ export default function App() {
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [speakingAngleId, setSpeakingAngleId] = useState<string | null>(null);
   const [loadingTtsId, setLoadingTtsId] = useState<string | null>(null);
-  const [voicePace, setVoicePace] = useState<VoicePace>('slow');
+  const [voicePace, setVoicePace] = useState<VoicePace>('story');
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const ttsAbortRef = useRef<AbortController | null>(null);
@@ -153,22 +152,15 @@ export default function App() {
     setLang(newLang);
     setError(null);
 
-    const nextUi = UI_TRANSLATIONS[newLang];
     const trimmedCurrent = premise.trim();
-    const isDefaultSample = !trimmedCurrent || ALL_DEFAULT_SAMPLES.includes(trimmedCurrent);
-    const nextPremise = isDefaultSample ? nextUi.samplePremise : trimmedCurrent;
 
-    if (isDefaultSample) {
-      setPremise(nextPremise);
-    }
-
-    // If stories were already generated, automatically regenerate all stories (and prompts if active) in the new language
-    if (storyAngles.length > 0 && nextPremise) {
+    // If stories were already generated from user's premise, automatically regenerate all stories (and prompts if active) in the new language
+    if (storyAngles.length > 0 && trimmedCurrent) {
       setLoadingAngles(true);
       let updatedAngles: StoryAngle[] = [];
       try {
         const result = await postApiJson<{ angles?: StoryAngle[] }>('/api/generate-story-angles', {
-          script: nextPremise,
+          script: trimmedCurrent,
           language: newLang,
         });
         if (result.angles && Array.isArray(result.angles) && result.angles.length > 0) {
@@ -179,7 +171,7 @@ export default function App() {
       }
 
       if (updatedAngles.length === 0) {
-        updatedAngles = generateStoryAnglesLocal(nextPremise, newLang);
+        updatedAngles = generateStoryAnglesLocal(trimmedCurrent, newLang);
       }
 
       setStoryAngles(updatedAngles);
@@ -193,7 +185,8 @@ export default function App() {
 
         if (activeStep === 'prompts' || shots.length > 0) {
           setLoadingShots(true);
-          const scriptInput = matchedAngle.scriptText || nextPremise;
+          const scriptInput =
+            matchedAngle.scriptText || matchedAngle.storySummary || trimmedCurrent;
           try {
             const shotResult = await postApiJson<{ shots?: GeneratedShot[] }>(
               '/api/generate-breakdown',
@@ -201,7 +194,7 @@ export default function App() {
                 script: scriptInput,
                 preferredShotDuration: shotDurationSec,
                 targetShotCount: calculatedShotCount,
-                fastMode: true,
+                fastMode: false,
                 language: newLang,
               }
             );
@@ -268,6 +261,8 @@ export default function App() {
       if (speechSessionRef.current !== sessionId) return;
       const audio = new Audio(dataUrl);
       audio.preload = 'auto';
+      audio.preservesPitch = true;
+      audio.playbackRate = paceCfg.audioPlaybackRate;
       audioRef.current = audio;
       audio.onended = () => {
         audioRef.current = null;
@@ -418,14 +413,14 @@ export default function App() {
     setVisiblePromptCount(25);
     setActiveStep('prompts');
 
-    const scriptInput = angle.scriptText || premise.trim();
+    const scriptInput = angle.scriptText || angle.storySummary || premise.trim();
 
     try {
       const result = await postApiJson<{ shots?: GeneratedShot[] }>('/api/generate-breakdown', {
         script: scriptInput,
         preferredShotDuration: shotDurationSec,
         targetShotCount: calculatedShotCount,
-        fastMode: true,
+        fastMode: false,
         language: lang,
       });
 
@@ -465,7 +460,7 @@ export default function App() {
     { name: `3 ${t.unitHour}`, val: 3, unit: 'hours' as const },
   ];
 
-  const totalAngleCountDisplay = storyAngles.length > 0 ? storyAngles.length : 70;
+  const totalAngleCountDisplay = storyAngles.length > 0 ? storyAngles.length : 14;
 
   return (
     <div className="min-h-screen bg-[#090a0f] text-zinc-100 flex flex-col font-sans selection:bg-amber-500 selection:text-black">
@@ -726,7 +721,7 @@ export default function App() {
                 <span className="text-center leading-snug">
                   {loadingAngles
                     ? t.generatingAngles
-                    : t.generateAnglesBtn(70, formatDurationDisplay(), calculatedShotCount)}
+                    : t.generateAnglesBtn(14, formatDurationDisplay(), calculatedShotCount)}
                 </span>
               </button>
             </div>
@@ -750,7 +745,7 @@ export default function App() {
               </button>
 
               <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-                {/* Voice Pace Control (Extra Slow / Slow & Clear / Normal) */}
+                {/* Voice Storytelling Style Control */}
                 <div className="flex items-center gap-1.5 bg-[#090a12] px-2.5 py-1.5 rounded-xl border border-zinc-800">
                   <Volume2 className="w-3.5 h-3.5 text-amber-400 shrink-0" />
                   <span className="text-[11px] font-bold text-zinc-400 hidden sm:inline">
@@ -759,9 +754,9 @@ export default function App() {
                   <div className="flex items-center gap-1">
                     {(
                       [
-                        { id: 'verySlow', label: t.paceVerySlow },
-                        { id: 'slow', label: t.paceSlow },
-                        { id: 'normal', label: t.paceNormal },
+                        { id: 'story', label: t.paceVerySlow },
+                        { id: 'narrator', label: t.paceSlow },
+                        { id: 'calm', label: t.paceNormal },
                       ] as const
                     ).map((opt) => (
                       <button
@@ -888,7 +883,7 @@ export default function App() {
                               </div>
                             )}
 
-                            {/* Full 10-15 Line Story Summary */}
+                            {/* Full Story Summary */}
                             <div className="p-4 bg-[#090a12] rounded-xl border border-zinc-800 text-xs leading-relaxed text-zinc-300 font-sans space-y-1.5">
                               <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400 block font-mono">
                                 {t.storyOverviewLabel}
@@ -897,6 +892,28 @@ export default function App() {
                                 {angle.storySummary || angle.synopsis}
                               </p>
                             </div>
+
+                            {/* Background Music (BGM) & Visual Continuity Badges */}
+                            {(angle.bgm || angle.continuity) && (
+                              <div className="space-y-2">
+                                {angle.bgm && (
+                                  <div className="p-2.5 rounded-xl bg-amber-500/5 border border-amber-500/20 text-xs space-y-1">
+                                    <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400 block font-mono">
+                                      {t.bgmLabel}
+                                    </span>
+                                    <p className="text-zinc-200 leading-relaxed">{angle.bgm}</p>
+                                  </div>
+                                )}
+                                {angle.continuity && (
+                                  <div className="p-2.5 rounded-xl bg-zinc-950/80 border border-zinc-800/90 text-xs space-y-1">
+                                    <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-400 block font-mono">
+                                      {t.continuityLabel}
+                                    </span>
+                                    <p className="text-zinc-300 leading-relaxed">{angle.continuity}</p>
+                                  </div>
+                                )}
+                              </div>
+                            )}
                           </div>
 
                           <div className="pt-3 border-t border-zinc-800/80 flex items-center gap-2">
@@ -1013,13 +1030,24 @@ export default function App() {
                   const shotNumber = shot.shotNumber || idx + 1;
                   const shotDur = shot.durationSeconds || shotDurationSec;
 
+                  const shotBgm = shot.bgm || selectedAngle.bgm || '';
+                  const shotContinuity = shot.continuity || selectedAngle.continuity || '';
+
                   const vidPromptText =
                     shot.videoPrompt ||
-                    `[VIDEO GENERATION PROMPT]: Cinematic 24fps video motion prompt. Situation & Action: ${shot.action}. Dialogue/Voiceover (${lang.toUpperCase()}): "${shot.malayalamDialogue}". Camera: Smooth anamorphic tracking shot, ${shotDur} seconds.`;
+                    `[VIDEO GENERATION PROMPT]: Cinematic 24fps video motion prompt. Situation & Action: ${shot.action}.${
+                      shotContinuity ? ` Visual Continuity: ${shotContinuity}.` : ''
+                    }${
+                      shot.malayalamDialogue && shot.malayalamDialogue.trim().length > 0
+                        ? ` Spoken Dialogue (${lang.toUpperCase()}): "${shot.malayalamDialogue}".`
+                        : ' Audio: NO SPOKEN DIALOGUE — Pure visual storytelling with realistic ambient sound only.'
+                    }${shotBgm ? ` Background Music & SFX: ${shotBgm}.` : ''} Camera: Smooth anamorphic tracking shot, ${shotDur} seconds.`;
 
                   const imgPromptText =
                     shot.imagePrompt ||
-                    `[IMAGE GENERATION PROMPT]: Cinematic photorealistic 35mm film still [100% Face & Wardrobe Continuity Locked]. Situation & Action: ${shot.action}. Lighting: Natural golden hour light, volumetric shadows, 8k ultra detailed photography.`;
+                    `[IMAGE GENERATION PROMPT]: Cinematic photorealistic 35mm film still [100% Face & Wardrobe Continuity Locked]. Situation & Action: ${shot.action}.${
+                      shotContinuity ? ` Visual Continuity: ${shotContinuity}.` : ''
+                    } Lighting: Natural golden hour light, volumetric shadows, 8k ultra detailed photography.`;
 
                   const isVideoCopied = copiedKey === `vid-${idx}`;
                   const isImageCopied = copiedKey === `img-${idx}`;
@@ -1041,8 +1069,8 @@ export default function App() {
                     const masterPayload = `========================================
 SHOT ${shotNumber} (${shotDur} SECONDS) - ${shot.action}
 ========================================
-
-1. VIDEO GENERATION PROMPT (WITH INTEGRATED DIALOGUE & LIGHTING):
+${shotBgm ? `BGM & SOUND: ${shotBgm}\n` : ''}${shotContinuity ? `CONTINUITY LOCK: ${shotContinuity}\n` : ''}
+1. VIDEO GENERATION PROMPT (WITH BGM, CONTINUITY & LIGHTING):
 ${vidPromptText}
 
 2. IMAGE GENERATION PROMPT (FACE & CLOTHING CONTINUITY):
@@ -1108,6 +1136,35 @@ ${imgPromptText}`;
                             onChange={(e) => updateShotField(idx, 'action', e.target.value)}
                             className="w-full bg-[#0a0b12] border border-zinc-800 rounded-lg p-2.5 text-base sm:text-sm text-zinc-100 font-sans focus:outline-none focus:border-amber-500 transition-colors"
                           />
+                        </div>
+
+                        {/* Editable BGM & Sound Cue + Visual Continuity Lock */}
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                          <div className="space-y-1">
+                            <span className="text-[11px] font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
+                              <Music className="w-3.5 h-3.5 shrink-0" />
+                              {t.shotBgmLabel}
+                            </span>
+                            <input
+                              type="text"
+                              value={shotBgm}
+                              onChange={(e) => updateShotField(idx, 'bgm', e.target.value)}
+                              className="w-full bg-[#0a0b12] border border-amber-500/30 rounded-lg p-2.5 text-sm sm:text-xs text-zinc-100 font-sans focus:outline-none focus:border-amber-500 transition-colors"
+                            />
+                          </div>
+
+                          <div className="space-y-1">
+                            <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-400 flex items-center gap-1.5">
+                              <Layers className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                              {t.continuityLabel}
+                            </span>
+                            <input
+                              type="text"
+                              value={shotContinuity}
+                              onChange={(e) => updateShotField(idx, 'continuity', e.target.value)}
+                              className="w-full bg-[#0a0b12] border border-zinc-800 rounded-lg p-2.5 text-sm sm:text-xs text-zinc-300 font-sans focus:outline-none focus:border-amber-500 transition-colors"
+                            />
+                          </div>
                         </div>
 
                         {/* Dual Layout: Stacked on Mobile, Side-by-Side on Desktop Web */}

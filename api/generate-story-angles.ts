@@ -1,4 +1,4 @@
-import { GoogleGenAI } from '@google/genai';
+import { GoogleGenAI, ThinkingLevel } from '@google/genai';
 import { generateStoryAnglesLocal } from '../src/lib/storyEngine';
 import { AppLang, getLangConfig } from '../src/lib/i18n';
 
@@ -46,46 +46,59 @@ export default async function handler(req: any, res: any) {
     const langConfig = getLangConfig(language);
     const langCode = langConfig.code as AppLang;
 
+    // Try ultra-fast parallel AI generation using gemini-3.1-flash-lite (MINIMAL thinking)
     const ai = getGeminiClient();
     if (ai) {
       try {
-        const systemInstruction = `You are a legendary Cinema Script Consultant. Given a story concept, generate 60 distinct film storyline angles strictly in ${langConfig.geminiLangName} JSON covering thriller, drama, action, folk, scifi, comedy, and commercial ads.
-CRITICAL RULE: Write all genres, titles, characters, storySummary, synopsis, and scriptText in ${langConfig.geminiLangName}. In "storySummary", write ONLY the direct 10-line story narrative with characters, beginning, twist, and ending—never meta-commentary. Include "catKey" from ["thriller","drama","action","folk","scifi","comedy","ad"].
-{ "angles": [
-  {
-    "id": "angle-1",
-    "catKey": "thriller",
-    "genre": "...",
-    "title": "...",
-    "mood": "...",
-    "characters": "...",
-    "storySummary": "...",
-    "beginning": "...",
-    "middle": "...",
-    "ending": "...",
-    "synopsis": "...",
-    "scriptText": "..."
-  }
-] }`;
+        const generateBatch = async (cats: string[], countPerCat: number) => {
+          const total = cats.length * countPerCat;
+          const systemInstruction = `Cinema Script Consultant: Given the user's story concept, generate ${total} genuinely DISTINCT adaptations (${countPerCat} unique variations per category for categories: ${JSON.stringify(cats)}) strictly in ${langConfig.geminiLangName}.
+RULES:
+1. Stay 100% centered on the EXACT people, places, objects, and event in the user's story.
+2. Make every variation distinct (plot direction, twist, conflict, ending — zero copy-paste).
+3. Do NOT invent spoken dialogue unless the user's input mentions dialogue.
+4. Include unique "bgm" (background music/SFX) and "continuity" (visual/prop/location continuity) in ${langConfig.geminiLangName}.
+5. Keep storySummary to 2-3 punchy sentences.
+6. Set "catKey" strictly from ${JSON.stringify(cats)}.
 
-        const geminiPromise = ai.models.generateContent({
-          model: 'gemini-3.8-flash',
-          contents: `Target Language: ${langConfig.geminiLangName}\nStory concept: "${script.trim()}"`,
-          config: {
-            systemInstruction,
-            responseMimeType: 'application/json',
-          },
-        });
+JSON only:
+{ "angles": [{ "catKey": "${cats[0]}", "genre": "...", "title": "...", "mood": "...", "bgm": "...", "continuity": "...", "characters": "...", "storySummary": "..." }] }`;
 
-        const response = await withTimeout(geminiPromise, 4500);
-        if (response?.text) {
-          const parsed = JSON.parse(response.text);
-          if (parsed.angles && Array.isArray(parsed.angles) && parsed.angles.length >= 10) {
-            return res.status(200).json({ angles: parsed.angles });
-          }
+          const resBatch = await withTimeout(
+            ai.models.generateContent({
+              model: 'gemini-3.1-flash-lite',
+              contents: `Language: ${langConfig.geminiLangName}\nStory: "${script.trim()}"`,
+              config: {
+                systemInstruction,
+                responseMimeType: 'application/json',
+                thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL },
+              },
+            }),
+            12000
+          );
+          const parsed = JSON.parse(resBatch.text || '{}');
+          return Array.isArray(parsed.angles) ? parsed.angles : [];
+        };
+
+        const [batch1, batch2] = await Promise.all([
+          generateBatch(['thriller', 'drama', 'action', 'folk'], 2),
+          generateBatch(['scifi', 'comedy', 'ad'], 2),
+        ]);
+
+        const combined = [...batch1, ...batch2];
+        if (combined.length >= 6) {
+          const normalized = combined.map((a: any, idx: number) => ({
+            ...a,
+            id: `angle-${idx + 1}`,
+            synopsis: a.synopsis || a.mood || a.genre,
+            scriptText:
+              a.scriptText ||
+              `${script.trim()}\n\n${a.storySummary || ''}\n\n[BGM STYLE: ${a.bgm || ''}]\n[CONTINUITY: ${a.continuity || ''}]`,
+          }));
+          return res.status(200).json({ angles: normalized });
         }
       } catch (geminiErr: any) {
-        console.warn('Gemini story angles notice, using instant engine:', geminiErr?.message);
+        console.warn('Gemini fast story angles notice, using local fallback:', geminiErr?.message);
       }
     }
 

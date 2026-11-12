@@ -5,9 +5,14 @@ import os from 'os';
 import fs from 'fs/promises';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
-import { GoogleGenAI } from '@google/genai';
+import { GoogleGenAI, ThinkingLevel } from '@google/genai';
 import { EdgeTTS } from 'node-edge-tts';
-import { generateStoryAnglesLocal, generateBreakdownLocal } from './src/lib/storyEngine';
+import {
+  expandShotsToTargetCount,
+  generateBreakdownLocal,
+  generateStoryAnglesLocal,
+  hasExplicitDialogue,
+} from './src/lib/storyEngine';
 import {
   AppLang,
   cleanTextForSpeech,
@@ -78,7 +83,7 @@ Role hint: ${roleHint || 'Main Character'}
 Return JSON with: name, age, ethnicity, visualContinuityTags, keyFeatures.`;
 
         const response = await ai.models.generateContent({
-          model: 'gemini-3.8-flash',
+          model: 'gemini-4-hydrogen',
           contents: {
             parts: [
               { inlineData: { mimeType, data } },
@@ -87,6 +92,7 @@ Return JSON with: name, age, ethnicity, visualContinuityTags, keyFeatures.`;
           },
           config: {
             responseMimeType: 'application/json',
+            thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
           },
         });
 
@@ -124,51 +130,63 @@ app.post('/api/generate-story-angles', async (req: Request, res: Response) => {
     const langConfig = getLangConfig(language);
     const langCode = langConfig.code as AppLang;
 
-    // Try AI generation for custom story angles if Gemini is present
+    // Ultra-fast parallel AI generation using gemini-3.1-flash-lite (MINIMAL thinking)
     const ai = getGeminiClient();
     if (ai) {
       try {
-        const systemInstruction = `You are a legendary Cinema Script Consultant. Given a story concept, generate 60 distinct film storyline angles strictly in ${langConfig.geminiLangName} JSON covering thriller, drama, action, folk, scifi, comedy, and commercial ads.
-CRITICAL RULE: Write all genres, titles, characters, storySummary, synopsis, and scriptText in ${langConfig.geminiLangName}. In "storySummary", write ONLY the direct 10-line story narrative with characters, beginning, twist, and ending—never meta-commentary. Include "catKey" from ["thriller","drama","action","folk","scifi","comedy","ad"].
-{ "angles": [
-  { 
-    "id": "angle-1", 
-    "catKey": "thriller",
-    "genre": "...", 
-    "title": "...", 
-    "mood": "...", 
-    "characters": "...",
-    "storySummary": "...",
-    "beginning": "...",
-    "middle": "...",
-    "ending": "...",
-    "synopsis": "...", 
-    "scriptText": "..." 
-  }
-] }`;
+        const generateBatch = async (cats: string[], countPerCat: number) => {
+          const total = cats.length * countPerCat;
+          const systemInstruction = `Cinema Script Consultant: Given the user's story concept, generate ${total} genuinely DISTINCT adaptations (${countPerCat} unique variations per category for categories: ${JSON.stringify(cats)}) strictly in ${langConfig.geminiLangName}.
+RULES:
+1. Stay 100% centered on the EXACT people, places, objects, and event in the user's story.
+2. Make every variation distinct (plot direction, twist, conflict, ending — zero copy-paste).
+3. Do NOT invent spoken dialogue unless the user's input mentions dialogue.
+4. Include unique "bgm" (background music/SFX) and "continuity" (visual/prop/location continuity) in ${langConfig.geminiLangName}.
+5. Keep storySummary to 2-3 punchy sentences.
+6. Set "catKey" strictly from ${JSON.stringify(cats)}.
 
-        const geminiPromise = ai.models.generateContent({
-          model: 'gemini-3.8-flash',
-          contents: `Target Language: ${langConfig.geminiLangName}\nStory concept: "${script.trim()}"`,
-          config: {
-            systemInstruction,
-            responseMimeType: 'application/json',
-          },
-        });
+JSON only:
+{ "angles": [{ "catKey": "${cats[0]}", "genre": "...", "title": "...", "mood": "...", "bgm": "...", "continuity": "...", "characters": "...", "storySummary": "..." }] }`;
 
-        const response = await withTimeout(geminiPromise, 3500);
-        if (response?.text) {
-          const parsed = JSON.parse(response.text);
-          if (parsed.angles && Array.isArray(parsed.angles) && parsed.angles.length >= 10) {
-            return res.json({ angles: parsed.angles });
-          }
+          const resBatch = await withTimeout(
+            ai.models.generateContent({
+              model: 'gemini-3.1-flash-lite',
+              contents: `Language: ${langConfig.geminiLangName}\nStory: "${script.trim()}"`,
+              config: {
+                systemInstruction,
+                responseMimeType: 'application/json',
+                thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL },
+              },
+            }),
+            12000
+          );
+          const parsed = JSON.parse(resBatch.text || '{}');
+          return Array.isArray(parsed.angles) ? parsed.angles : [];
+        };
+
+        const [batch1, batch2] = await Promise.all([
+          generateBatch(['thriller', 'drama', 'action', 'folk'], 2),
+          generateBatch(['scifi', 'comedy', 'ad'], 2),
+        ]);
+
+        const combined = [...batch1, ...batch2];
+        if (combined.length >= 6) {
+          const normalized = combined.map((a: any, idx: number) => ({
+            ...a,
+            id: `angle-${idx + 1}`,
+            synopsis: a.synopsis || a.mood || a.genre,
+            scriptText:
+              a.scriptText ||
+              `${script.trim()}\n\n${a.storySummary || ''}\n\n[BGM STYLE: ${a.bgm || ''}]\n[CONTINUITY: ${a.continuity || ''}]`,
+          }));
+          return res.json({ angles: normalized });
         }
       } catch (geminiErr: any) {
-        console.warn('Gemini story angles notice, using instant engine:', geminiErr?.message);
+        console.warn('Gemini fast story angles notice, using fallback:', geminiErr?.message);
       }
     }
 
-    // Fallback instant 70 story angles engine (<5ms response)
+    // Fallback instant story-matched variations engine (100% anchored to user's premise)
     const angles = generateStoryAnglesLocal(script, langCode);
     return res.json({ angles });
   } catch (error: any) {
@@ -234,63 +252,125 @@ app.post('/api/generate-breakdown', async (req: Request, res: Response) => {
 
   const langConfig = getLangConfig(language);
   const langCode = langConfig.code as AppLang;
+  const allowDialogue = hasExplicitDialogue(script);
+  const coreAiShotCount = Math.max(4, Math.min(Number(targetShotCount) || 8, 8));
 
-  // Instant mode: sub-second generation (<5ms)
+  // Instant mode only if explicitly requested
   if (fastMode) {
     const instantBreakdown = generateBreakdownLocal(script, preferredShotDuration, characterPhotos, targetShotCount, langCode);
     return res.json(instantBreakdown);
   }
 
-  // Fast-path 1: If Groq API key is present, use it with 1.8s timeout
-  if (process.env.GROQ_API_KEY) {
-    try {
-      const groqPromise = callGroqApi(
-        `Script: """${script}"""\nDuration: ${preferredShotDuration}s per shot. Language: ${langConfig.geminiLangName}.`,
-        'You are an expert Film Director. Return JSON with "shots": [{shotNumber, durationSeconds, timing, action, characters, malayalamDialogue, dialogueEnglish, imagePrompt, videoPrompt}]'
-      );
-      const groqResult = await withTimeout(groqPromise, 1800);
-      if (groqResult && groqResult.shots) {
-        return res.json(groqResult);
-      }
-    } catch (groqErr: any) {
-      console.warn('Groq fast-path notice:', groqErr?.message);
-    }
-  }
-
-  // Fast-path 2: Gemini with strict 2.5s timeout
+  // Primary Fast AI Path: gemini-3.1-flash-lite (MINIMAL thinking)
   const ai = getGeminiClient();
   if (ai) {
     try {
-      const systemInstruction = `Break down into sequential cinematic shots of ${preferredShotDuration}s each. Write action and dialogue strictly in ${langConfig.geminiLangName}.
-Output JSON: { "shots": [{ "shotNumber": 1, "durationSeconds": ${preferredShotDuration}, "timing": "Shot 1 - ${preferredShotDuration} Seconds", "action": "...", "characters": [], "malayalamDialogue": "...", "dialogueEnglish": "...", "imagePrompt": "...", "videoPrompt": "..." }] }`;
+      const dialogueRule = allowDialogue
+        ? `The input story includes speech or dialogue. Include "malayalamDialogue" (in ${langConfig.geminiLangName}) and "dialogueEnglish" ONLY on shots where dialogue occurs. Leave "" on silent shots.`
+        : `NO-DIALOGUE RULE: The input story has NO spoken dialogue. Set "malayalamDialogue": "" and "dialogueEnglish": "" on EVERY shot. Never invent fake dialogue.`;
+
+      const systemInstruction = `Cinematographer & AI Director: Break the user's exact story into ${coreAiShotCount} sequential chronological shots of ${preferredShotDuration}s each (Beginning -> Middle -> Ending).
+RULES:
+1. 100% STORY FIDELITY: Visualize ONLY actual characters, objects, and events from the script.
+2. DISTINCT SHOTS: Vary framing across shots (Wide, Medium Tracking, Close-Up, Over-the-Shoulder, Insert Detail) — never repeat identical prompts.
+3. Include "continuity" (visual face/wardrobe/prop/lighting lock) and "bgm" (unique music & SFX cue) in English, embedding them in "videoPrompt" and continuity in "imagePrompt".
+4. Write "action" in ${langConfig.geminiLangName}; write "bgm", "continuity", "imagePrompt", and "videoPrompt" in English.
+5. ${dialogueRule}
+
+JSON only:
+{ "shots": [{ "shotNumber": 1, "durationSeconds": ${preferredShotDuration}, "timing": "Shot 01 — ${preferredShotDuration}s", "action": "...", "characters": [], "bgm": "...", "continuity": "...", "malayalamDialogue": "", "dialogueEnglish": "", "imagePrompt": "[IMAGE GENERATION PROMPT]: ...", "videoPrompt": "[VIDEO GENERATION PROMPT]: ..." }] }`;
 
       const geminiPromise = ai.models.generateContent({
-        model: 'gemini-3.8-flash',
-        contents: `Script: """${script}"""\nShot duration: ${preferredShotDuration}s. Language: ${langConfig.geminiLangName}.`,
+        model: 'gemini-3.1-flash-lite',
+        contents: `Language: ${langConfig.geminiLangName}\nCore Shots: ${coreAiShotCount}\nDuration: ${preferredShotDuration}s\nStory:\n"""${script.trim()}"""`,
         config: {
           systemInstruction,
           responseMimeType: 'application/json',
+          thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL },
         },
       });
 
-      const response = await withTimeout(geminiPromise, 2500);
+      const response = await withTimeout(geminiPromise, 14000);
       if (response?.text) {
         const parsed = JSON.parse(response.text);
-        if (parsed.shots && Array.isArray(parsed.shots)) {
-          return res.json(parsed);
+        if (parsed.shots && Array.isArray(parsed.shots) && parsed.shots.length > 0) {
+          const expandedShots = expandShotsToTargetCount(
+            parsed.shots,
+            targetShotCount,
+            preferredShotDuration,
+            allowDialogue,
+            langCode
+          );
+          return res.json({ shots: expandedShots });
         }
       }
     } catch (geminiError: any) {
-      console.warn('Gemini fast-path notice, switching to instant engine:', geminiError?.message);
+      console.warn('Gemini fast breakdown notice, using fallback:', geminiError?.message);
     }
   }
 
-  // Instant Tier: Built-in reliable Cinematic Breakdown Engine (Runs in <5ms)
+  // Fallback Tier: Story-matched Sequential Breakdown Engine (No hardcoded tea-shop presets)
   const fallbackBreakdown = generateBreakdownLocal(script, preferredShotDuration, characterPhotos, targetShotCount, langCode);
   return res.json(fallbackBreakdown);
 });
 
-// 3. Generate High-Quality Male Voiceover via Edge Neural TTS (Slow, Paused & Multi-language)
+async function synthesizeEdgeBuffer(
+  text: string,
+  voice: string,
+  lang: string,
+  rate: string,
+  pitch: string
+): Promise<Buffer> {
+  const tts = new EdgeTTS({
+    voice,
+    lang,
+    outputFormat: 'audio-24khz-48kbitrate-mono-mp3',
+    rate,
+    pitch,
+    timeout: 20000,
+  });
+
+  const chunks: Buffer[] = [];
+  for await (const chunk of tts.streamAudio(text)) {
+    if (Buffer.isBuffer(chunk)) {
+      chunks.push(chunk);
+    }
+  }
+  return Buffer.concat(chunks);
+}
+
+function buildLocalConversationalTurns(
+  text: string,
+  lang: AppLang
+): { role: 'A' | 'B'; text: string }[] {
+  const sentences = text
+    .split(/(?<=[.।!?])\s+|\n+/)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 2);
+
+  if (sentences.length <= 1) {
+    return [{ role: 'A', text }];
+  }
+
+  const reactionByLang: Record<AppLang, string> = {
+    ml: 'ശരിക്കും? എന്നിട്ട് എന്താണ് സംഭവിച്ചത്?',
+    en: 'Wait, really? What happens next in the story?',
+    hi: 'सच में? फिर आगे क्या होता है?',
+    ta: 'நிஜமாகவா? அப்புறம் என்ன நடந்தது?',
+    kn: 'ನಿಜವಾಗಿಯೂ? ಆಮೇಲೆ ಏನಾಯಿತು?',
+    te: 'నిజంగానా? ఆ తర్వాత ఏమైంది?',
+  };
+
+  const leadLines = sentences.slice(0, Math.ceil(sentences.length / 2)).join(' ');
+  const tailLines = sentences.slice(Math.ceil(sentences.length / 2)).join(' ');
+
+  return [
+    { role: 'A', text: leadLines },
+    { role: 'B', text: `${reactionByLang[lang] || reactionByLang.ml} ${tailLines}` },
+  ];
+}
+
+// 3. Expressive Conversational Storytelling Voiceover (/api/tts)
 app.post('/api/tts', async (req: Request, res: Response) => {
   const rawText = typeof req.body?.text === 'string' ? req.body.text.trim() : '';
   if (!rawText) {
@@ -298,12 +378,17 @@ app.post('/api/tts', async (req: Request, res: Response) => {
   }
 
   const langConfig = getLangConfig(req.body?.language);
+  const rawPace = req.body?.pace;
   const paceKey: VoicePace =
-    req.body?.pace === 'verySlow' || req.body?.pace === 'normal' ? req.body.pace : 'slow';
+    rawPace === 'narrator' || rawPace === 'normal'
+      ? 'narrator'
+      : rawPace === 'calm' || rawPace === 'verySlow'
+      ? 'calm'
+      : 'story';
   const paceSettings = VOICE_PACE_SETTINGS[paceKey];
 
   const cleaned = cleanTextForSpeech(rawText, langConfig.code);
-  const maxLen = 3000;
+  const maxLen = 2800;
   let preparedText = cleaned;
   if (cleaned.length > maxLen) {
     const sliced = cleaned.slice(0, maxLen);
@@ -320,35 +405,117 @@ app.post('/api/tts', async (req: Request, res: Response) => {
     return res.status(400).json({ error: 'Speakable text is empty.' });
   }
 
-  const tempFile = path.join(
-    os.tmpdir(),
-    `tts-${Date.now()}-${Math.random().toString(36).slice(2)}.mp3`
-  );
-
   try {
-    const tts = new EdgeTTS({
-      voice: langConfig.ttsVoice,
-      lang: langConfig.ttsLang,
-      outputFormat: 'audio-24khz-48kbitrate-mono-mp3',
-      rate: paceSettings.edgeRate,
-      pitch: paceSettings.edgePitch,
-      timeout: 25000,
-    });
+    const ai = getGeminiClient();
 
-    await tts.ttsPromise(preparedText, tempFile);
-    const audioBuffer = await fs.readFile(tempFile);
-    const base64Audio = audioBuffer.toString('base64');
+    if (paceKey === 'story') {
+      let turns: { role: 'A' | 'B'; text: string }[] = [];
+
+      if (ai) {
+        try {
+          const prompt = `Rewrite this story summary into 4 to 6 short, vibrant conversational lines between two male friends ("A" and "B") passionately sharing this story with real emotion and feeling strictly in ${langConfig.geminiLangName}.
+Make it sound natural, expressive, curious, and exciting — like people talking face-to-face telling a gripping cinema story (no robotic bullet headers, no stage directions).
+Preserve 100% of the actual story plot. Return valid JSON only:
+{ "lines": [{ "role": "A", "text": "..." }, { "role": "B", "text": "..." }] }`;
+
+          const resAi = await withTimeout(
+            ai.models.generateContent({
+              model: 'gemini-3.1-flash-lite',
+              contents: `Language: ${langConfig.geminiLangName}\nStory:\n${preparedText}`,
+              config: {
+                systemInstruction: prompt,
+                responseMimeType: 'application/json',
+                thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL },
+              },
+            }),
+            5000
+          );
+
+          const parsed = JSON.parse(resAi.text || '{}');
+          if (Array.isArray(parsed.lines)) {
+            turns = parsed.lines
+              .filter((l: any) => l?.text && typeof l.text === 'string')
+              .slice(0, 6)
+              .map((l: any, idx: number) => ({
+                role: (l.role === 'B' || idx % 2 === 1 ? 'B' : 'A') as 'A' | 'B',
+                text: cleanTextForSpeech(l.text, langConfig.code),
+              }))
+              .filter((l: { role: 'A' | 'B'; text: string }) => l.text.length > 0);
+          }
+        } catch {
+          turns = [];
+        }
+      }
+
+      if (turns.length < 2) {
+        turns = buildLocalConversationalTurns(preparedText, langConfig.code);
+      }
+
+      const buffers = await Promise.all(
+        turns.map((turn) =>
+          synthesizeEdgeBuffer(
+            turn.text,
+            langConfig.ttsVoice,
+            langConfig.ttsLang,
+            turn.role === 'B' ? '+6%' : '+2%',
+            turn.role === 'B' ? '+6Hz' : '-2Hz'
+          )
+        )
+      );
+
+      const combined = Buffer.concat(buffers);
+      return res.json({
+        audioDataUrl: `data:audio/mpeg;base64,${combined.toString('base64')}`,
+        voice: `${langConfig.ttsVoice} (Conversational Story Feel)`,
+        pace: paceKey,
+      });
+    }
+
+    let narrationText = preparedText;
+    if (ai && paceKey === 'narrator') {
+      try {
+        const prompt = `Rewrite this story card neatly into a captivating, natural, emotional spoken storytelling narration in ${langConfig.geminiLangName}.
+Make it flow like a passionate human cinema storyteller speaking warmly and vividly — remove stiff labels, keep all story facts intact, max 5 natural sentences. Return valid JSON: { "narration": "..." }`;
+
+        const resAi = await withTimeout(
+          ai.models.generateContent({
+            model: 'gemini-3.1-flash-lite',
+            contents: `Language: ${langConfig.geminiLangName}\nStory:\n${preparedText}`,
+            config: {
+              systemInstruction: prompt,
+              responseMimeType: 'application/json',
+              thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL },
+            },
+          }),
+          5000
+        );
+
+        const parsed = JSON.parse(resAi.text || '{}');
+        if (parsed?.narration && typeof parsed.narration === 'string') {
+          const cleaned = cleanTextForSpeech(parsed.narration, langConfig.code);
+          if (cleaned) narrationText = cleaned;
+        }
+      } catch {
+        narrationText = preparedText;
+      }
+    }
+
+    const audioBuffer = await synthesizeEdgeBuffer(
+      narrationText,
+      langConfig.ttsVoice,
+      langConfig.ttsLang,
+      paceSettings.edgeRate,
+      paceSettings.edgePitch
+    );
 
     return res.json({
-      audioDataUrl: `data:audio/mpeg;base64,${base64Audio}`,
+      audioDataUrl: `data:audio/mpeg;base64,${audioBuffer.toString('base64')}`,
       voice: langConfig.ttsVoice,
       pace: paceKey,
     });
   } catch (error: any) {
-    console.error('Error synthesizing male voice:', error);
+    console.error('Error synthesizing expressive story voice:', error);
     return res.status(500).json({ error: error?.message || 'Failed to synthesize voiceover' });
-  } finally {
-    await fs.unlink(tempFile).catch(() => {});
   }
 });
 
