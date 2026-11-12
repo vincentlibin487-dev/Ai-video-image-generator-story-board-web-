@@ -1,71 +1,221 @@
-import React, { useState } from 'react';
-import { X, Copy, Check, Sparkles, Film, Clock, Image as ImageIcon, Zap, BookOpen, ChevronRight, ArrowLeft, Layers, Edit3, Timer, Sliders, PlayCircle } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import {
+  X,
+  Copy,
+  Check,
+  Sparkles,
+  Film,
+  Clock,
+  Image as ImageIcon,
+  BookOpen,
+  ChevronRight,
+  ArrowLeft,
+  Layers,
+  Edit3,
+  Timer,
+  PlayCircle,
+  Globe,
+} from 'lucide-react';
+import {
+  StoryAngle,
+  GeneratedShot,
+  generateStoryAnglesLocal,
+  generateBreakdownLocal,
+} from './lib/storyEngine';
+import {
+  AppLang,
+  LANGUAGE_OPTIONS,
+  UI_TRANSLATIONS,
+  getLangConfig,
+} from './lib/i18n';
 
-interface StoryAngle {
-  id: string;
-  genre: string;
-  title: string;
-  mood: string;
-  characters?: string;
-  beginning?: string;
-  middle?: string;
-  ending?: string;
-  synopsis: string;
-  scriptText: string;
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/+$/, '');
+
+async function postApiJson<T>(endpoint: string, payload: unknown, signal?: AbortSignal): Promise<T> {
+  const url = `${API_BASE_URL}${endpoint}`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+    signal,
+  });
+
+  const contentType = res.headers.get('content-type') || '';
+  if (!res.ok) {
+    if (contentType.includes('application/json')) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.error || `API request failed (${res.status})`);
+    }
+    throw new Error(`API endpoint unavailable (${res.status})`);
+  }
+
+  if (!contentType.includes('application/json')) {
+    throw new Error('Expected JSON response from API endpoint.');
+  }
+
+  return res.json() as Promise<T>;
 }
 
-interface GeneratedShot {
-  shotNumber: number;
-  durationSeconds: number;
-  timing: string;
-  action: string;
-  characters?: string[];
-  malayalamDialogue: string;
-  dialogueEnglish?: string;
-  imagePrompt?: string;
-  videoPrompt?: string;
-  visualPrompt?: string;
-}
-
-const DEFAULT_SAMPLE_PREMISE = `രാജീവ് വൈകുന്നേരം നാട്ടിലെ ചായക്കടയിലിരുന്ന് ഗ്ലാസിൽ ചൂടുചായ കുടിക്കുന്നു. ചായ കുടിച്ചു കഴിഞ്ഞ് ബെഞ്ചിൽ നിന്ന് എണീറ്റ് റോഡിലേക്ക് ഇറങ്ങി നടക്കുന്നു. വൈകുന്നേരത്തെ വെളിച്ചത്തിൽ തറവാട്ടു വീട്ടിനുള്ളിലേക്ക് കയറിച്ചെല്ലുന്നു.`;
+const ALL_DEFAULT_SAMPLES = Object.values(UI_TRANSLATIONS).map((item) => item.samplePremise.trim());
 
 export default function App() {
+  const [lang, setLang] = useState<AppLang>('ml');
+  const t = UI_TRANSLATIONS[lang];
+
   // Navigation Step: 'input' (Page 1) | 'options' (Page 2) | 'prompts' (Page 3)
   const [activeStep, setActiveStep] = useState<'input' | 'options' | 'prompts'>('input');
-  const [premise, setPremise] = useState<string>(DEFAULT_SAMPLE_PREMISE);
-  const [shotDurationSec, setShotDurationSec] = useState<number>(8); // Default 8s per video clip
-  
+  const [premise, setPremise] = useState<string>(UI_TRANSLATIONS.ml.samplePremise);
+  const [shotDurationSec, setShotDurationSec] = useState<number>(8);
+
   // Total Video Duration Controls (Supports Seconds, Minutes & Hours)
-  const [durationValue, setDurationValue] = useState<number>(1); // Default 1
-  const [durationUnit, setDurationUnit] = useState<'seconds' | 'minutes' | 'hours'>('minutes'); // Default 'minutes'
+  const [durationValue, setDurationValue] = useState<number>(1);
+  const [durationUnit, setDurationUnit] = useState<'seconds' | 'minutes' | 'hours'>('minutes');
   const [customInputValue, setCustomInputValue] = useState<string>('1');
 
   const [storyAngles, setStoryAngles] = useState<StoryAngle[]>([]);
   const [selectedAngle, setSelectedAngle] = useState<StoryAngle | null>(null);
   const [shots, setShots] = useState<GeneratedShot[]>([]);
-  const [visiblePromptCount, setVisiblePromptCount] = useState<number>(20); // Pagination display for smooth performance
+  const [visiblePromptCount, setVisiblePromptCount] = useState<number>(20);
   const [loadingAngles, setLoadingAngles] = useState<boolean>(false);
   const [loadingShots, setLoadingShots] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedGenreFilter, setSelectedGenreFilter] = useState<string>('all');
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [speakingAngleId, setSpeakingAngleId] = useState<string | null>(null);
+  const [loadingTtsId, setLoadingTtsId] = useState<string | null>(null);
+
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const ttsAbortRef = useRef<AbortController | null>(null);
+  const ttsCacheRef = useRef<Map<string, string>>(new Map());
+
+  const stopAllSpeech = () => {
+    if (ttsAbortRef.current) {
+      ttsAbortRef.current.abort();
+      ttsAbortRef.current = null;
+    }
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+      audioRef.current.onended = null;
+      audioRef.current.onerror = null;
+      audioRef.current = null;
+    }
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+    }
+    setSpeakingAngleId(null);
+    setLoadingTtsId(null);
+  };
+
+  useEffect(() => {
+    return () => {
+      stopAllSpeech();
+    };
+  }, []);
+
+  useEffect(() => {
+    stopAllSpeech();
+  }, [activeStep]);
 
   // Calculate total duration in seconds based on unit
-  const totalSeconds = durationUnit === 'seconds' 
-    ? durationValue 
-    : durationUnit === 'hours' 
-    ? durationValue * 3600 
-    : durationValue * 60;
+  const totalSeconds =
+    durationUnit === 'seconds'
+      ? durationValue
+      : durationUnit === 'hours'
+      ? durationValue * 3600
+      : durationValue * 60;
 
-  // Calculate EXACT number of 8-second video clips needed (without artificial capping)
+  // Calculate EXACT number of video clips needed
   const calculatedShotCount = Math.max(1, Math.ceil(totalSeconds / shotDurationSec));
 
-  // Format Duration Description in Malayalam
+  // Format Duration Description in the active UI language
   const formatDurationDisplay = () => {
-    if (durationUnit === 'seconds') return `${durationValue} സെക്കൻഡ് (${durationValue} Seconds)`;
-    if (durationUnit === 'hours') return `${durationValue} മണിക്കൂർ (${durationValue * 60} മിനിറ്റ് / ${totalSeconds} സെക്കൻഡ്)`;
-    return `${durationValue} മിനിറ്റ് (${totalSeconds} സെക്കൻഡ്)`;
+    if (durationUnit === 'seconds') return `${durationValue} ${t.unitSecond}`;
+    if (durationUnit === 'hours') {
+      return `${durationValue} ${t.unitHour} (${durationValue * 60} ${t.unitMinute} / ${totalSeconds} ${t.unitSecond})`;
+    }
+    return `${durationValue} ${t.unitMinute} (${totalSeconds} ${t.unitSecond})`;
+  };
+
+  // Switch entire site, generated stories, options, and prompts to the newly selected language
+  const handleLanguageChange = async (newLang: AppLang) => {
+    if (newLang === lang) return;
+    stopAllSpeech();
+    setLang(newLang);
+    setError(null);
+
+    const nextUi = UI_TRANSLATIONS[newLang];
+    const trimmedCurrent = premise.trim();
+    const isDefaultSample = !trimmedCurrent || ALL_DEFAULT_SAMPLES.includes(trimmedCurrent);
+    const nextPremise = isDefaultSample ? nextUi.samplePremise : trimmedCurrent;
+
+    if (isDefaultSample) {
+      setPremise(nextPremise);
+    }
+
+    // If stories were already generated, automatically regenerate all stories (and prompts if active) in the new language
+    if (storyAngles.length > 0 && nextPremise) {
+      setLoadingAngles(true);
+      let updatedAngles: StoryAngle[] = [];
+      try {
+        const result = await postApiJson<{ angles?: StoryAngle[] }>('/api/generate-story-angles', {
+          script: nextPremise,
+          language: newLang,
+        });
+        if (result.angles && Array.isArray(result.angles) && result.angles.length > 0) {
+          updatedAngles = result.angles;
+        }
+      } catch {
+        updatedAngles = [];
+      }
+
+      if (updatedAngles.length === 0) {
+        updatedAngles = generateStoryAnglesLocal(nextPremise, newLang);
+      }
+
+      setStoryAngles(updatedAngles);
+      setLoadingAngles(false);
+
+      // If user is on Page 3 (Prompts), also translate/regenerate the active angle and shots
+      if (selectedAngle && updatedAngles.length > 0) {
+        const matchedAngle =
+          updatedAngles.find((a) => a.id === selectedAngle.id) || updatedAngles[0];
+        setSelectedAngle(matchedAngle);
+
+        if (activeStep === 'prompts' || shots.length > 0) {
+          setLoadingShots(true);
+          const scriptInput = matchedAngle.scriptText || nextPremise;
+          try {
+            const shotResult = await postApiJson<{ shots?: GeneratedShot[] }>(
+              '/api/generate-breakdown',
+              {
+                script: scriptInput,
+                preferredShotDuration: shotDurationSec,
+                targetShotCount: calculatedShotCount,
+                fastMode: true,
+                language: newLang,
+              }
+            );
+            if (shotResult.shots && Array.isArray(shotResult.shots)) {
+              setShots(shotResult.shots);
+            } else {
+              throw new Error('Fallback to local breakdown');
+            }
+          } catch {
+            const localBreakdown = generateBreakdownLocal(
+              scriptInput,
+              shotDurationSec,
+              [],
+              calculatedShotCount,
+              newLang
+            );
+            setShots(localBreakdown.shots);
+          } finally {
+            setLoadingShots(false);
+          }
+        }
+      }
+    }
   };
 
   // Preset Handlers
@@ -92,48 +242,96 @@ export default function App() {
     });
   };
 
-  // High-Quality Male Voice Toggle Speech Helper (പ്ലേ ചെയ്യാനും നിർത്താനും ഉള്ള ടോഗ്ല് ഫങ്ഷൻ)
-  const toggleSpeakText = (angleId: string, text: string) => {
-    if (!('speechSynthesis' in window)) {
-      alert('ഈ ബ്രൗസറിൽ സ്പീച്ച് സിന്തസിസ് ലഭ്യമല്ല.');
+  // High-Quality Male Voice Toggle Speech Helper
+  const toggleSpeakText = async (angleId: string, text: string) => {
+    if (speakingAngleId === angleId || loadingTtsId === angleId) {
+      stopAllSpeech();
       return;
     }
 
-    if (speakingAngleId === angleId) {
-      // Already playing this card -> Stop it!
-      window.speechSynthesis.cancel();
-      setSpeakingAngleId(null);
-    } else {
-      // Stop any ongoing speech first
-      window.speechSynthesis.cancel();
+    stopAllSpeech();
+    setLoadingTtsId(angleId);
 
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.lang = 'ml-IN'; // Malayalam voice support
-      utterance.rate = 0.92; // Natural reading speed
-      utterance.pitch = 0.82; // Deeper pitch for high quality male voice tone
+    const playDataUrl = (dataUrl: string) => {
+      const audio = new Audio(dataUrl);
+      audioRef.current = audio;
+      audio.onended = () => {
+        audioRef.current = null;
+        setSpeakingAngleId(null);
+      };
+      audio.onerror = () => {
+        audioRef.current = null;
+        setSpeakingAngleId(null);
+      };
+      setLoadingTtsId(null);
+      setSpeakingAngleId(angleId);
+      audio.play().catch(() => {
+        audioRef.current = null;
+        setSpeakingAngleId(null);
+      });
+    };
 
-      const voices = window.speechSynthesis.getVoices();
-      const mlVoice = voices.find(v => v.lang.includes('ml') || v.lang.includes('IN')) || voices[0];
-      if (mlVoice) {
-        utterance.voice = mlVoice;
+    try {
+      const cacheKey = `${lang}:${angleId}:${text.slice(0, 80)}`;
+      const cachedAudio = ttsCacheRef.current.get(cacheKey);
+      if (cachedAudio) {
+        playDataUrl(cachedAudio);
+        return;
       }
 
-      utterance.onend = () => {
-        setSpeakingAngleId(null);
-      };
-      utterance.onerror = () => {
-        setSpeakingAngleId(null);
-      };
+      const controller = new AbortController();
+      ttsAbortRef.current = controller;
 
-      window.speechSynthesis.speak(utterance);
-      setSpeakingAngleId(angleId);
+      const data = await postApiJson<{ audioDataUrl?: string }>(
+        '/api/tts',
+        { text, language: lang },
+        controller.signal
+      );
+
+      if (ttsAbortRef.current !== controller) {
+        return;
+      }
+      ttsAbortRef.current = null;
+
+      if (data?.audioDataUrl) {
+        ttsCacheRef.current.set(cacheKey, data.audioDataUrl);
+        playDataUrl(data.audioDataUrl);
+        return;
+      }
+      throw new Error('No audio data returned');
+    } catch (err: any) {
+      if (err?.name === 'AbortError') {
+        return;
+      }
+      setLoadingTtsId(null);
+      if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+        const langCfg = getLangConfig(lang);
+        window.speechSynthesis.cancel();
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.lang = langCfg.ttsLang;
+        utterance.rate = 0.92;
+        utterance.pitch = 0.78;
+        const voices = window.speechSynthesis.getVoices();
+        const matchedVoice =
+          voices.find((v) => v.lang.toLowerCase().startsWith(lang)) ||
+          voices.find((v) => v.lang.includes('IN')) ||
+          voices[0];
+        if (matchedVoice) utterance.voice = matchedVoice;
+        utterance.onend = () => setSpeakingAngleId(null);
+        utterance.onerror = () => setSpeakingAngleId(null);
+        setSpeakingAngleId(angleId);
+        window.speechSynthesis.speak(utterance);
+      } else {
+        setSpeakingAngleId(null);
+      }
     }
   };
 
-  // Step 1 -> Step 2: Generate 25 Story Angle Variations and Open Options Page
+  // Step 1 -> Step 2: Generate Story Angle Variations in Selected Language
   const handleGenerateStoryAngles = async () => {
-    if (!premise.trim()) {
-      setError('ദയവായി കഥയുടെ ഒരു ആമുഖം അല്ലെങ്കിൽ ആശയം നൽകുക.');
+    const trimmedPremise = premise.trim();
+    if (!trimmedPremise) {
+      setError(t.premiseRequiredError);
       return;
     }
 
@@ -142,76 +340,123 @@ export default function App() {
     setStoryAngles([]);
     setSelectedAngle(null);
     setShots([]);
+    setSelectedGenreFilter('all');
 
     try {
-      const res = await fetch('/api/generate-story-angles', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ script: premise.trim() }),
+      const result = await postApiJson<{ angles?: StoryAngle[] }>('/api/generate-story-angles', {
+        script: trimmedPremise,
+        language: lang,
       });
 
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || 'Failed to generate story angles');
-      }
-
-      const result = await res.json();
       if (result.angles && Array.isArray(result.angles) && result.angles.length > 0) {
         setStoryAngles(result.angles);
-        // Navigate directly to Page 2 (4 Story Options Page)
+        setActiveStep('options');
+        return;
+      }
+      throw new Error('Unexpected format received for story angles.');
+    } catch (err: any) {
+      console.warn('API /api/generate-story-angles fallback activated:', err?.message);
+      const localAngles = generateStoryAnglesLocal(trimmedPremise, lang);
+      if (localAngles.length > 0) {
+        setStoryAngles(localAngles);
         setActiveStep('options');
       } else {
-        throw new Error('Unexpected format received for story angles.');
+        setError(err?.message || t.angleErrorFallback);
       }
-    } catch (err: any) {
-      console.error(err);
-      setError(err.message || 'കഥയുടെ വേരിയേഷനുകൾ നിർമ്മിക്കുന്നതിൽ പിഴവ് സംഭവിച്ചു.');
     } finally {
       setLoadingAngles(false);
     }
   };
 
-  // Step 2 -> Step 3: Select Chosen Story Angle and Navigate to Next Dedicated Prompt Generator Page
+  // Step 2 -> Step 3: Select Chosen Story Angle and Generate Prompts
   const handleSelectStoryAndOpenPromptPage = async (angle: StoryAngle) => {
+    stopAllSpeech();
     setSelectedAngle(angle);
     setLoadingShots(true);
     setError(null);
-    setVisiblePromptCount(25); // Reset visible count to 25
+    setVisiblePromptCount(25);
     setActiveStep('prompts');
 
+    const scriptInput = angle.scriptText || premise.trim();
+
     try {
-      const res = await fetch('/api/generate-breakdown', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          script: angle.scriptText || premise,
-          preferredShotDuration: shotDurationSec,
-          targetShotCount: calculatedShotCount,
-          fastMode: true,
-        }),
+      const result = await postApiJson<{ shots?: GeneratedShot[] }>('/api/generate-breakdown', {
+        script: scriptInput,
+        preferredShotDuration: shotDurationSec,
+        targetShotCount: calculatedShotCount,
+        fastMode: true,
+        language: lang,
       });
 
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || 'Failed to generate shot prompts');
-      }
-
-      const result = await res.json();
       if (result.shots && Array.isArray(result.shots)) {
         setShots(result.shots);
-      } else {
-        throw new Error('Unexpected breakdown format.');
+        return;
       }
+      throw new Error('Unexpected breakdown format.');
     } catch (err: any) {
-      console.error(err);
-      setError(err.message || 'പ്രോംപ്റ്റുകൾ തരംതിരിക്കുന്നതിൽ പിഴവ് സംഭവിച്ചു.');
+      console.warn('API /api/generate-breakdown fallback activated:', err?.message);
+      const localBreakdown = generateBreakdownLocal(
+        scriptInput,
+        shotDurationSec,
+        [],
+        calculatedShotCount,
+        lang
+      );
+      if (localBreakdown.shots.length > 0) {
+        setShots(localBreakdown.shots);
+      } else {
+        setError(err?.message || t.breakdownErrorFallback);
+      }
     } finally {
       setLoadingShots(false);
     }
   };
 
+  const presetDurations = [
+    { name: `30 ${t.unitSecond}`, val: 30, unit: 'seconds' as const },
+    { name: `1 ${t.unitMinute}`, val: 1, unit: 'minutes' as const },
+    { name: `2 ${t.unitMinute}`, val: 2, unit: 'minutes' as const },
+    { name: `5 ${t.unitMinute}`, val: 5, unit: 'minutes' as const },
+    { name: `10 ${t.unitMinute}`, val: 10, unit: 'minutes' as const },
+    { name: `30 ${t.unitMinute}`, val: 30, unit: 'minutes' as const },
+    { name: `1 ${t.unitHour}`, val: 1, unit: 'hours' as const },
+    { name: `2 ${t.unitHour}`, val: 2, unit: 'hours' as const },
+    { name: `3 ${t.unitHour}`, val: 3, unit: 'hours' as const },
+  ];
+
+  const totalAngleCountDisplay = storyAngles.length > 0 ? storyAngles.length : 70;
+
   return (
     <div className="min-h-screen bg-[#090a0f] text-zinc-100 flex flex-col font-sans selection:bg-amber-500 selection:text-black">
+      {/* Top Global Language Switcher Bar */}
+      <div className="bg-[#07080d] border-b border-zinc-800/80 px-4 py-2.5">
+        <div className="max-w-4xl mx-auto flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-1.5 text-xs font-bold text-amber-400">
+            <Globe className="w-3.5 h-3.5" />
+            <span>{t.languageLabel}:</span>
+          </div>
+          <div className="flex flex-wrap items-center gap-1.5">
+            {LANGUAGE_OPTIONS.map((option) => {
+              const isSelected = lang === option.code;
+              return (
+                <button
+                  key={option.code}
+                  type="button"
+                  onClick={() => handleLanguageChange(option.code)}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    isSelected
+                      ? 'bg-amber-500 text-black font-extrabold shadow-sm shadow-amber-500/20'
+                      : 'bg-zinc-900 text-zinc-300 hover:text-white hover:bg-zinc-800 border border-zinc-800'
+                  }`}
+                >
+                  {option.nativeName}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
       {/* App Header with Breadcrumb Step Indicator */}
       <header className="border-b border-zinc-800/80 px-6 py-4 bg-[#0d0f17] sticky top-0 z-30 backdrop-blur-md">
         <div className="max-w-4xl mx-auto flex flex-wrap items-center justify-between gap-3">
@@ -221,12 +466,12 @@ export default function App() {
             </div>
             <div>
               <h1 className="text-base font-bold text-white tracking-wide uppercase">
-                AI Cinematic Story &amp; Prompt Studio
+                {t.appTitle}
               </h1>
               <p className="text-xs text-zinc-400">
-                {activeStep === 'input' && 'പേജ് 1: കഥയുടെ ആമുഖവും ആകെ സിനിമ ദൈർഘ്യവും'}
-                {activeStep === 'options' && 'പേജ് 2: 25 വ്യത്യസ്ത കഥാ രൂപങ്ങൾ തിരഞ്ഞെടുക്കുക'}
-                {activeStep === 'prompts' && `പേജ് 3: പ്രോംപ്റ്റുകൾ — ${formatDurationDisplay()} (${calculatedShotCount} Clips)`}
+                {activeStep === 'input' && t.page1Subtitle}
+                {activeStep === 'options' && t.page2Subtitle(totalAngleCountDisplay)}
+                {activeStep === 'prompts' && t.page3Subtitle(formatDurationDisplay(), calculatedShotCount)}
               </p>
             </div>
           </div>
@@ -241,7 +486,7 @@ export default function App() {
                   : 'bg-zinc-900 text-zinc-400 hover:text-white border border-zinc-800'
               }`}
             >
-              1. ആമുഖം
+              {t.step1}
             </span>
             <ChevronRight className="w-3.5 h-3.5 text-zinc-600" />
             <span
@@ -254,10 +499,11 @@ export default function App() {
                   : 'bg-zinc-900 text-zinc-400 hover:text-white border border-zinc-800'
               }`}
             >
-              2. കഥകൾ ({storyAngles.length})
+              {t.step2(storyAngles.length)}
             </span>
             <ChevronRight className="w-3.5 h-3.5 text-zinc-600" />
             <span
+              onClick={() => selectedAngle && shots.length > 0 && setActiveStep('prompts')}
               className={`px-2.5 py-1 rounded-lg transition-all ${
                 !selectedAngle ? 'opacity-40 cursor-not-allowed text-zinc-600' : 'cursor-pointer'
               } ${
@@ -266,7 +512,7 @@ export default function App() {
                   : 'bg-zinc-900 text-zinc-400 hover:text-white border border-zinc-800'
               }`}
             >
-              3. പ്രോംപ്റ്റുകൾ
+              {t.step3}
             </span>
           </div>
         </div>
@@ -289,10 +535,10 @@ export default function App() {
             <div className="space-y-5 bg-[#11131f] border border-zinc-800 p-6 rounded-2xl shadow-2xl">
               {/* Story Concept Box */}
               <div className="space-y-2">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
                   <label className="text-xs font-bold uppercase tracking-wider text-amber-400 flex items-center gap-2">
                     <BookOpen className="w-4 h-4" />
-                    <span>1. കഥയുടെ ആമുഖം ടൈപ്പ് ചെയ്യുക (Story Concept Input)</span>
+                    <span>{t.premiseLabel}</span>
                   </label>
                   {premise.length > 0 && (
                     <button
@@ -304,10 +550,10 @@ export default function App() {
                         setShots([]);
                       }}
                       className="flex items-center gap-1 text-xs text-amber-400 hover:text-amber-300 bg-zinc-900 hover:bg-zinc-800 border border-zinc-750 px-2.5 py-0.5 rounded-lg transition-colors cursor-pointer"
-                      title="ക്ലിയർ ചെയ്യുക"
+                      title={t.clearBtn}
                     >
                       <X className="w-3.5 h-3.5" />
-                      <span>ക്ലിയർ ചെയ്യുക (Clear ✕)</span>
+                      <span>{t.clearBtn}</span>
                     </button>
                   )}
                 </div>
@@ -317,7 +563,7 @@ export default function App() {
                     value={premise}
                     onChange={(e) => setPremise(e.target.value)}
                     rows={4}
-                    placeholder="നിങ്ങളുടെ കഥയുടെ ചുരുങ്ങിയ ആമുഖം അല്ലെങ്കിൽ കോൺസെപ്റ്റ് ഇവിടെ ടൈപ്പ് ചെയ്യുക..."
+                    placeholder={t.premisePlaceholder}
                     className="w-full bg-[#0a0b12] border border-zinc-800 rounded-xl p-4 text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-amber-500 transition-colors leading-relaxed"
                   />
                 </div>
@@ -327,23 +573,18 @@ export default function App() {
               <div className="pt-4 space-y-4 border-t border-zinc-800/80">
                 <label className="text-xs font-bold text-amber-400 uppercase tracking-wider flex items-center gap-2">
                   <Timer className="w-4 h-4" />
-                  <span>2. ആകെ സിനിമ / വീഡിയോ ദൈർഘ്യം (Select / Type Total Video Duration)</span>
+                  <span>{t.durationLabel}</span>
                 </label>
 
                 {/* Duration Presets (Seconds, Minutes, Hours) */}
                 <div className="flex flex-wrap items-center gap-2">
-                  {[
-                    { name: '30 സെക്കൻഡ്', val: 30, unit: 'seconds' as const },
-                    { name: '1 മിനിറ്റ്', val: 1, unit: 'minutes' as const },
-                    { name: '2 മിനിറ്റ്', val: 2, unit: 'minutes' as const },
-                    { name: '5 മിനിറ്റ്', val: 5, unit: 'minutes' as const },
-                    { name: '10 മിനിറ്റ്', val: 10, unit: 'minutes' as const },
-                    { name: '30 മിനിറ്റ്', val: 30, unit: 'minutes' as const },
-                    { name: '1 മണിക്കൂർ', val: 1, unit: 'hours' as const },
-                    { name: '2 മണിക്കൂർ', val: 2, unit: 'hours' as const },
-                    { name: '3 മണിക്കൂർ', val: 3, unit: 'hours' as const },
-                  ].map((preset, idx) => {
-                    const pSec = preset.unit === 'seconds' ? preset.val : preset.unit === 'hours' ? preset.val * 3600 : preset.val * 60;
+                  {presetDurations.map((preset, idx) => {
+                    const pSec =
+                      preset.unit === 'seconds'
+                        ? preset.val
+                        : preset.unit === 'hours'
+                        ? preset.val * 3600
+                        : preset.val * 60;
                     const pClips = Math.max(1, Math.ceil(pSec / shotDurationSec));
                     return (
                       <button
@@ -356,7 +597,7 @@ export default function App() {
                             : 'bg-zinc-900 text-zinc-300 hover:text-white border border-zinc-800'
                         }`}
                       >
-                        {preset.name} ({pClips} Clips)
+                        {preset.name} ({pClips} {t.clipsWord})
                       </button>
                     );
                   })}
@@ -366,7 +607,7 @@ export default function App() {
                 <div className="p-4 rounded-xl bg-[#090a12] border border-amber-500/30 space-y-3 shadow-inner">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-xs text-zinc-300 font-bold">അല്ലെങ്കിൽ ദൈർഘ്യം ടൈപ്പ് ചെയ്യുക (Type Custom Duration):</span>
+                      <span className="text-xs text-zinc-300 font-bold">{t.typeCustomDuration}</span>
                       <div className="flex items-center gap-2">
                         <input
                           type="number"
@@ -377,23 +618,23 @@ export default function App() {
                           onChange={(e) => handleCustomInputChange(e.target.value)}
                           className="w-20 bg-zinc-950 border border-amber-500/50 rounded-lg px-2.5 py-1 text-sm font-mono text-amber-400 font-extrabold focus:outline-none focus:border-amber-400 text-center"
                         />
-                        
+
                         {/* Unit Selector (Seconds / Minutes / Hours) */}
                         <select
                           value={durationUnit}
                           onChange={(e) => setDurationUnit(e.target.value as any)}
                           className="bg-zinc-950 border border-zinc-800 rounded-lg px-2.5 py-1 text-xs font-mono text-zinc-200 font-bold focus:outline-none focus:border-amber-500 cursor-pointer"
                         >
-                          <option value="seconds">സെക്കൻഡ് (Seconds)</option>
-                          <option value="minutes">മിനിറ്റ് (Minutes)</option>
-                          <option value="hours">മണിക്കൂർ (Hours)</option>
+                          <option value="seconds">{t.unitSecondsFull}</option>
+                          <option value="minutes">{t.unitMinutesFull}</option>
+                          <option value="hours">{t.unitHoursFull}</option>
                         </select>
                       </div>
                     </div>
 
                     <div className="flex items-center gap-2">
                       <Clock className="w-3.5 h-3.5 text-amber-400" />
-                      <span className="text-xs font-bold text-zinc-400">ക്ലിപ്പ് ദൈർഘ്യം:</span>
+                      <span className="text-xs font-bold text-zinc-400">{t.clipDurationLabel}</span>
                       <div className="flex gap-1">
                         {[5, 8, 10, 12].map((sec) => (
                           <button
@@ -416,11 +657,11 @@ export default function App() {
                   {/* Dynamic Big Calculation Display Banner */}
                   <div className="p-3 bg-[#131626] rounded-xl border border-amber-500/20 flex flex-wrap items-center justify-between gap-2">
                     <span className="text-xs font-mono text-zinc-300">
-                      🎬 തിരഞ്ഞെടുത്തിരിക്കുന്ന ആകെ സിനിമ സമയം: <strong className="text-white font-bold">{formatDurationDisplay()}</strong>
+                      {t.selectedTotalTime} <strong className="text-white font-bold">{formatDurationDisplay()}</strong>
                     </span>
                     <span className="text-xs font-mono px-3 py-1 rounded-lg bg-amber-500 text-black font-extrabold shadow-sm flex items-center gap-1">
                       <PlayCircle className="w-3.5 h-3.5" />
-                      ആവശ്യമായ ക്ലിപ്പുകൾ: {calculatedShotCount} ക്ലിപ്പുകൾ ({calculatedShotCount} Sequential 8s Prompts)
+                      {t.requiredClips(calculatedShotCount, shotDurationSec)}
                     </span>
                   </div>
                 </div>
@@ -435,8 +676,8 @@ export default function App() {
                   >
                     <Sparkles className={`w-4 h-4 ${loadingAngles ? 'animate-spin' : ''}`} />
                     {loadingAngles
-                      ? '25 കഥാ ശൈലികൾ നിർമ്മിക്കുന്നു...'
-                      : `25 കഥാ രൂപങ്ങൾ നിർമ്മിക്കുക (${formatDurationDisplay()} / ${calculatedShotCount} ക്ലിപ്പുകൾ) ➔`}
+                      ? t.generatingAngles
+                      : t.generateAnglesBtn(70, formatDurationDisplay(), calculatedShotCount)}
                   </button>
                 </div>
               </div>
@@ -445,7 +686,7 @@ export default function App() {
         )}
 
         {/* ================================================================= */}
-        {/* PAGE 2: 4 STORY OPTION CARDS (`activeStep === 'options'`) */}
+        {/* PAGE 2: STORY OPTION CARDS (`activeStep === 'options'`)           */}
         {/* ================================================================= */}
         {activeStep === 'options' && (
           <div className="space-y-6">
@@ -457,150 +698,171 @@ export default function App() {
                 className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-amber-400 border border-amber-500/30 text-xs font-bold transition-all cursor-pointer"
               >
                 <ArrowLeft className="w-4 h-4" />
-                <span>← ബാക്ക് (ആമുഖത്തിലേക്കും സമയം തിരുത്തലിലേക്കും പോകുക)</span>
+                <span>{t.backToInput}</span>
               </button>
 
               <span className="text-xs font-mono text-zinc-300 bg-amber-500/10 px-3 py-1 rounded-lg border border-amber-500/20">
-                തിരഞ്ഞെടുത്ത സമയം: <strong className="text-amber-400 font-bold">{formatDurationDisplay()}</strong> ({calculatedShotCount} ക്ലിപ്പുകൾ)
+                {t.selectedTimeLabel} <strong className="text-amber-400 font-bold">{formatDurationDisplay()}</strong> ({calculatedShotCount} {t.clipsWord})
               </span>
             </div>
 
             <div className="space-y-2">
               <h2 className="text-lg font-extrabold text-white flex items-center gap-2">
                 <Layers className="w-5 h-5 text-amber-400" />
-                <span>25 കഥാ ശൈലികളിൽ നിന്നു നിങ്ങളുടെ കഥ തിരഞ്ഞെടുക്കുക (Select Story Angle)</span>
+                <span>{t.selectStoryTitle(storyAngles.length)}</span>
               </h2>
               <p className="text-xs text-zinc-400">
-                താഴെ നൽകിയിരിക്കുന്ന 25 സിനിമ കഥകളിൽ ഒന്ന് തിരഞ്ഞെടുത്ത് ബട്ടണിൽ ക്ലിക്ക് ചെയ്താൽ അടുത്ത പേജിൽ {formatDurationDisplay()} നീളമുള്ള സിനിമയ്ക്ക് ആവശ്യമായ {calculatedShotCount} പ്രോംപ്റ്റുകൾ ലഭിക്കും.
+                {t.selectStoryDesc(storyAngles.length, formatDurationDisplay(), calculatedShotCount)}
               </p>
             </div>
 
+            {loadingAngles && (
+              <div className="py-12 flex flex-col items-center justify-center space-y-3 text-zinc-400 bg-[#0f111c] border border-zinc-800 rounded-2xl">
+                <Sparkles className="w-8 h-8 animate-spin text-amber-400" />
+                <span className="text-xs font-mono">{t.generatingAngles}</span>
+              </div>
+            )}
+
             {/* Genre Category Filter Bar */}
-            <div className="flex flex-wrap items-center gap-2 p-2 rounded-xl bg-[#0b0c14] border border-zinc-800">
-              {[
-                { id: 'all', label: `എല്ലാ കഥകളും (${storyAngles.length})` },
-                { id: 'thriller', label: '🕵️ ത്രില്ലർ & ക്രൈം' },
-                { id: 'action', label: '💥 ആക്ഷൻ & മാസ്' },
-                { id: 'drama', label: '🎭 ഡ്രാമ & ഇമോഷണൽ' },
-                { id: 'comedy', label: '😂 കോമഡി & ഫൺ' },
-                { id: 'scifi', label: '⏳ സയൻസ് ഫിക്ഷൻ & സാങ്കേതികം' },
-                { id: 'folk', label: '🌿 ഫോക്ക്, ഹൊറർ & നിധി' },
-                { id: 'ad', label: '📢 കൊമേഴ്സ്യൽ പരസ്യം (Ads)' },
-              ].map((filter) => (
-                <button
-                  key={filter.id}
-                  type="button"
-                  onClick={() => setSelectedGenreFilter(filter.id)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                    selectedGenreFilter === filter.id
-                      ? 'bg-amber-500 text-black font-extrabold shadow-sm'
-                      : 'bg-zinc-900 text-zinc-400 hover:text-white border border-zinc-800'
-                  }`}
-                >
-                  {filter.label}
-                </button>
-              ))}
-            </div>
+            {!loadingAngles && (
+              <>
+                <div className="flex flex-wrap items-center gap-2 p-2 rounded-xl bg-[#0b0c14] border border-zinc-800">
+                  {[
+                    { id: 'all', label: t.filterAll(storyAngles.length) },
+                    { id: 'thriller', label: t.filterThriller },
+                    { id: 'action', label: t.filterAction },
+                    { id: 'drama', label: t.filterDrama },
+                    { id: 'comedy', label: t.filterComedy },
+                    { id: 'scifi', label: t.filterScifi },
+                    { id: 'folk', label: t.filterFolk },
+                    { id: 'ad', label: t.filterAd },
+                  ].map((filter) => (
+                    <button
+                      key={filter.id}
+                      type="button"
+                      onClick={() => setSelectedGenreFilter(filter.id)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                        selectedGenreFilter === filter.id
+                          ? 'bg-amber-500 text-black font-extrabold shadow-sm'
+                          : 'bg-zinc-900 text-zinc-400 hover:text-white border border-zinc-800'
+                      }`}
+                    >
+                      {filter.label}
+                    </button>
+                  ))}
+                </div>
 
-            {/* 25+ Story Option Cards Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {storyAngles
-                .filter((angle) => {
-                  if (selectedGenreFilter === 'all') return true;
-                  if (selectedGenreFilter === 'thriller') return angle.genre.includes('ത്രില്ലർ') || angle.genre.includes('മിസ്റ്ററി') || angle.genre.includes('ക്രൈം') || angle.genre.includes('നോയർ') || angle.genre.includes('അന്വേഷണം');
-                  if (selectedGenreFilter === 'action') return angle.genre.includes('ആക്ഷൻ') || angle.genre.includes('ഗാങ്‌സ്റ്റർ') || angle.genre.includes('പോരാട്ടം') || angle.genre.includes('ബോക്സിങ്') || angle.genre.includes('റിവഞ്ച്');
-                  if (selectedGenreFilter === 'drama') return angle.genre.includes('ഡ്രാമ') || angle.genre.includes('ഇമോഷണൽ') || angle.genre.includes('പൊളിറ്റിക്കൽ') || angle.genre.includes('ക്യാമ്പസ്') || angle.genre.includes('കോർട്ട്');
-                  if (selectedGenreFilter === 'comedy') return angle.genre.includes('കോമഡി') || angle.genre.includes('ചിരി') || angle.genre.includes('ഫൺ');
-                  if (selectedGenreFilter === 'scifi') return angle.genre.includes('സയൻസ്') || angle.genre.includes('സൈബർ') || angle.genre.includes('ലൂപ്പ്') || angle.genre.includes('പ്രപഞ്ചം') || angle.genre.includes('മാജിക്') || angle.genre.includes('ഡിജിറ്റൽ');
-                  if (selectedGenreFilter === 'folk') return angle.genre.includes('ഫോക്ക്') || angle.genre.includes('യക്ഷി') || angle.genre.includes('കാവു') || angle.genre.includes('പേടിസ്വപ്ന') || angle.genre.includes('നിധി') || angle.genre.includes('മിസ്റ്റിക്ക്');
-                  if (selectedGenreFilter === 'ad') return angle.genre.includes('പരസ്യം') || angle.genre.includes('കൊമേഴ്സ്യൽ');
-                  return true;
-                })
-                .map((angle) => {
-                return (
-                  <div
-                    key={angle.id}
-                    onClick={() => handleSelectStoryAndOpenPromptPage(angle)}
-                    className="p-6 rounded-2xl bg-[#0f111c] border-2 border-zinc-800 hover:border-amber-400 hover:bg-[#131525] transition-all cursor-pointer flex flex-col justify-between space-y-4 relative group shadow-2xl"
-                  >
-                    <div className="space-y-3.5">
-                      <div className="flex items-center justify-between border-b border-zinc-800/80 pb-2.5">
-                        <span className="px-3 py-1 rounded-full text-xs font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20">
-                          {angle.genre}
-                        </span>
-                        <ChevronRight className="w-5 h-5 text-zinc-500 group-hover:text-amber-400 group-hover:translate-x-1 transition-all" />
-                      </div>
+                {/* Story Option Cards Grid */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {storyAngles
+                    .filter((angle) => {
+                      if (selectedGenreFilter === 'all') return true;
+                      if (angle.catKey) return angle.catKey === selectedGenreFilter;
+                      const g = angle.genre.toLowerCase();
+                      if (selectedGenreFilter === 'thriller') return g.includes('thriller') || g.includes('ത്രില്ലർ') || g.includes('थ्रिलर') || g.includes('திரில்லர்') || g.includes('ಥ್ರಿಲ್ಲರ್') || g.includes('థ్రిల్లర్');
+                      if (selectedGenreFilter === 'action') return g.includes('action') || g.includes('ആക്ഷൻ') || g.includes('एक्शन') || g.includes('ஆக்ஷன்') || g.includes('ಆಕ್ಷನ್') || g.includes('యాక్షన్');
+                      if (selectedGenreFilter === 'drama') return g.includes('drama') || g.includes('ഡ്രാമ') || g.includes('ड्रामा') || g.includes('டிராமா') || g.includes('ಡ್ರಾಮಾ') || g.includes('డ్రామా');
+                      if (selectedGenreFilter === 'comedy') return g.includes('comedy') || g.includes('കോമഡി') || g.includes('कॉमेडी') || g.includes('காமெடி') || g.includes('ಕಾಮಿಡಿ') || g.includes('కామెడీ');
+                      if (selectedGenreFilter === 'scifi') return g.includes('sci-fi') || g.includes('സയൻസ്') || g.includes('साइंस') || g.includes('சயின்ஸ்') || g.includes('ಸೈನ್ಸ್') || g.includes('సైన్స్');
+                      if (selectedGenreFilter === 'folk') return g.includes('folk') || g.includes('ഫോക്ക്') || g.includes('लोक') || g.includes('நாட்டு') || g.includes('ಜಾನಪದ') || g.includes('జానపద');
+                      if (selectedGenreFilter === 'ad') return g.includes('ad') || g.includes('പരസ്യം') || g.includes('विज्ञापन') || g.includes('விளம்பரம்') || g.includes('ಜಾಹೀರಾತು') || g.includes('ప్రకటన');
+                      return true;
+                    })
+                    .map((angle) => {
+                      return (
+                        <div
+                          key={angle.id}
+                          onClick={() => handleSelectStoryAndOpenPromptPage(angle)}
+                          className="p-6 rounded-2xl bg-[#0f111c] border-2 border-zinc-800 hover:border-amber-400 hover:bg-[#131525] transition-all cursor-pointer flex flex-col justify-between space-y-4 relative group shadow-2xl"
+                        >
+                          <div className="space-y-3.5">
+                            <div className="flex items-center justify-between border-b border-zinc-800/80 pb-2.5">
+                              <span className="px-3 py-1 rounded-full text-xs font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                                {angle.genre}
+                              </span>
+                              <ChevronRight className="w-5 h-5 text-zinc-500 group-hover:text-amber-400 group-hover:translate-x-1 transition-all" />
+                            </div>
 
-                      <h3 className="text-lg font-extrabold text-white tracking-wide group-hover:text-amber-300 transition-colors">
-                        {angle.title}
-                      </h3>
+                            <h3 className="text-lg font-extrabold text-white tracking-wide group-hover:text-amber-300 transition-colors">
+                              {angle.title}
+                            </h3>
 
-                      <p className="text-xs text-amber-400/90 font-mono font-semibold">
-                        {angle.mood}
-                      </p>
+                            <p className="text-xs text-amber-400/90 font-mono font-semibold">
+                              {angle.mood}
+                            </p>
 
-                      {/* Characters List */}
-                      {angle.characters && (
-                        <div className="p-3 rounded-xl bg-zinc-950/80 border border-zinc-800/80 text-xs space-y-1">
-                          <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400 block font-mono">
-                            പ്രധാന കഥാപാത്രങ്ങൾ (Characters):
-                          </span>
-                          <p className="text-zinc-200 font-medium leading-relaxed">
-                            {angle.characters}
-                          </p>
+                            {/* Characters List */}
+                            {angle.characters && (
+                              <div className="p-3 rounded-xl bg-zinc-950/80 border border-zinc-800/80 text-xs space-y-1">
+                                <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400 block font-mono">
+                                  {t.charactersLabel}
+                                </span>
+                                <p className="text-zinc-200 font-medium leading-relaxed">
+                                  {angle.characters}
+                                </p>
+                              </div>
+                            )}
+
+                            {/* Full 10-15 Line Story Summary */}
+                            <div className="p-4 bg-[#090a12] rounded-xl border border-zinc-800 text-xs leading-relaxed text-zinc-300 font-sans space-y-1.5">
+                              <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400 block font-mono">
+                                {t.storyOverviewLabel}
+                              </span>
+                              <p className="whitespace-pre-line text-zinc-200 leading-relaxed font-sans">
+                                {angle.storySummary || angle.synopsis}
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="pt-3 border-t border-zinc-800/80 flex items-center gap-2">
+                            {(() => {
+                              const isSpeaking = speakingAngleId === angle.id;
+                              const isLoadingVoice = loadingTtsId === angle.id;
+                              const isActiveVoice = isSpeaking || isLoadingVoice;
+                              return (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    const fullText = `${angle.title}. ${angle.genre}. ${angle.characters || ''}. ${angle.storySummary || angle.synopsis}`;
+                                    toggleSpeakText(angle.id, fullText);
+                                  }}
+                                  className={`px-3.5 py-3 rounded-xl border text-xs font-bold transition-all cursor-pointer flex items-center gap-2 shrink-0 ${
+                                    isActiveVoice
+                                      ? 'bg-amber-500 text-black border-amber-400 shadow-md shadow-amber-500/30'
+                                      : 'bg-zinc-900 hover:bg-zinc-800 text-amber-400 border border-amber-500/30'
+                                  }`}
+                                  title={isActiveVoice ? t.voiceStop : t.voicePlay}
+                                >
+                                  <span className="text-base">{isActiveVoice ? '⏹️' : '🎙️'}</span>
+                                  <span>
+                                    {isLoadingVoice
+                                      ? t.voiceLoadingStop
+                                      : isSpeaking
+                                      ? t.voiceStop
+                                      : t.voicePlay}
+                                  </span>
+                                </button>
+                              );
+                            })()}
+
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleSelectStoryAndOpenPromptPage(angle);
+                              }}
+                              className="flex-1 py-3.5 rounded-xl bg-amber-500 group-hover:bg-amber-400 text-black font-extrabold text-xs uppercase tracking-wider shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer"
+                            >
+                              <span>{t.selectThisStory(calculatedShotCount)}</span>
+                            </button>
+                          </div>
                         </div>
-                      )}
-
-                      {/* Full 10-15 Line Story Summary */}
-                      <div className="p-4 bg-[#090a12] rounded-xl border border-zinc-800 text-xs leading-relaxed text-zinc-300 font-sans space-y-1.5">
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400 block font-mono">
-                          കഥാ ചുരുക്കം (10-15 Line Story Overview):
-                        </span>
-                        <p className="whitespace-pre-line text-zinc-200 leading-relaxed font-sans">
-                          {(angle as any).storySummary || angle.synopsis}
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="pt-3 border-t border-zinc-800/80 flex items-center gap-2">
-                      {(() => {
-                        const isSpeaking = speakingAngleId === angle.id;
-                        return (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              const fullText = `${angle.title}. ${angle.genre}. കഥാപാത്രങ്ങൾ: ${angle.characters || ''}. കഥയുടെ വിവരണം: ${(angle as any).storySummary || angle.synopsis}`;
-                              toggleSpeakText(angle.id, fullText);
-                            }}
-                            className={`px-3.5 py-3 rounded-xl border text-xs font-bold transition-all cursor-pointer flex items-center gap-2 shrink-0 ${
-                              isSpeaking
-                                ? 'bg-amber-500 text-black border-amber-400 shadow-md shadow-amber-500/30 animate-pulse'
-                                : 'bg-zinc-900 hover:bg-zinc-800 text-amber-400 border border-amber-500/30'
-                            }`}
-                            title={isSpeaking ? 'വോയിസ് ഓവർ നിർത്തുക (Stop Voiceover)' : 'മാൻ വോയിസ് ഓവർ കേൾക്കുക (Play Male Voiceover)'}
-                          >
-                            <span className="text-base">{isSpeaking ? '⏹️' : '🎙️'}</span>
-                            <span>{isSpeaking ? 'നിർത്തുക (Stop)' : 'വോയിസ് ഓവർ (Male Voice)'}</span>
-                          </button>
-                        );
-                      })()}
-
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleSelectStoryAndOpenPromptPage(angle);
-                        }}
-                        className="flex-1 py-3.5 rounded-xl bg-amber-500 group-hover:bg-amber-400 text-black font-extrabold text-xs uppercase tracking-wider shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer"
-                      >
-                        <span>ഈ കഥ തിരഞ്ഞെടുക്കുക ({calculatedShotCount} ക്ലിപ്പുകൾ) ➔</span>
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+                      );
+                    })}
+                </div>
+              </>
+            )}
           </div>
         )}
 
@@ -617,7 +879,7 @@ export default function App() {
                 className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-amber-400 border border-amber-500/30 text-xs font-bold transition-all cursor-pointer"
               >
                 <ArrowLeft className="w-4 h-4" />
-                <span>← കഥാ രൂപങ്ങളിലേക്ക് തിരികെ പോകുക (Back to Story Angles)</span>
+                <span>{t.backToAngles}</span>
               </button>
 
               <div className="flex items-center gap-2">
@@ -633,7 +895,9 @@ export default function App() {
             {loadingShots && (
               <div className="py-16 flex flex-col items-center justify-center space-y-3 text-zinc-400 bg-[#0f111c] border border-zinc-800 rounded-2xl">
                 <Sparkles className="w-8 h-8 animate-spin text-amber-400" />
-                <span className="text-xs font-mono">{formatDurationDisplay()} നീളമുള്ള സിനിമയ്ക്ക് ആവശ്യമായ {calculatedShotCount} സീൻ പ്രോംപ്റ്റുകൾ തയ്യാറാക്കുന്നു...</span>
+                <span className="text-xs font-mono">
+                  {t.preparingPrompts(formatDurationDisplay(), calculatedShotCount)}
+                </span>
               </div>
             )}
 
@@ -643,14 +907,14 @@ export default function App() {
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="space-y-0.5">
                     <h2 className="text-base font-bold uppercase tracking-wider text-zinc-100 flex items-center gap-2">
-                      <span>സീൻ ബ്രേക്ക്ഡൗൺ പ്രോംപ്റ്റുകൾ (Sequential Shot Prompts)</span>
+                      <span>{t.breakdownTitle}</span>
                     </h2>
                     <p className="text-xs text-amber-400/90 font-mono">
-                      വേണ്ട മാറ്റങ്ങൾ ബോക്സിൽ നേരിട്ട് ടൈപ്പ് ചെയ്ത് എഡിറ്റ് ചെയ്യാവുന്നത്!
+                      {t.breakdownEditHint}
                     </p>
                   </div>
                   <span className="text-xs font-mono text-amber-300 font-extrabold px-3.5 py-1 rounded-lg bg-amber-500/10 border border-amber-500/30">
-                    ആകെ {shots.length} സീൻ ക്ലിപ്പുകൾ ({formatDurationDisplay()})
+                    {t.totalSceneClips(shots.length, formatDurationDisplay())}
                   </span>
                 </div>
 
@@ -658,9 +922,13 @@ export default function App() {
                   const shotNumber = shot.shotNumber || idx + 1;
                   const shotDur = shot.durationSeconds || shotDurationSec;
 
-                  const vidPromptText = shot.videoPrompt || `[VIDEO GENERATION PROMPT]: Cinematic 24fps video motion prompt. Character & Face Continuity: [35yo South Indian Malayali man with short dark hair, trimmed stubble beard, and dark eyes - Face ID & Wardrobe Locked]. Situation & Action: ${shot.action}. Location & Background: Traditional Kerala background environment. Lighting & Color: Volumetric cinematic ambient lighting, dramatic contrast, photorealistic motion. Malayalam Dialogue/Voiceover: "${shot.malayalamDialogue}". Camera: Smooth anamorphic tracking shot, ${shotDur} seconds.`;
+                  const vidPromptText =
+                    shot.videoPrompt ||
+                    `[VIDEO GENERATION PROMPT]: Cinematic 24fps video motion prompt. Situation & Action: ${shot.action}. Dialogue/Voiceover (${lang.toUpperCase()}): "${shot.malayalamDialogue}". Camera: Smooth anamorphic tracking shot, ${shotDur} seconds.`;
 
-                  const imgPromptText = shot.imagePrompt || `[IMAGE GENERATION PROMPT]: Cinematic photorealistic 35mm film still of 35yo South Indian Malayali man with short dark hair and trimmed beard [100% Face & Wardrobe Continuity Locked]. Situation & Action: ${shot.action}. Background & Environment: Detailed Kerala cinematic film scene. Lighting: Natural golden hour light, volumetric shadows, 8k ultra detailed photography.`;
+                  const imgPromptText =
+                    shot.imagePrompt ||
+                    `[IMAGE GENERATION PROMPT]: Cinematic photorealistic 35mm film still [100% Face & Wardrobe Continuity Locked]. Situation & Action: ${shot.action}. Lighting: Natural golden hour light, volumetric shadows, 8k ultra detailed photography.`;
 
                   const isVideoCopied = copiedKey === `vid-${idx}`;
                   const isImageCopied = copiedKey === `img-${idx}`;
@@ -702,10 +970,10 @@ ${imgPromptText}`;
                       <div className="px-5 py-3.5 bg-[#0b0c13] border-b border-zinc-800 flex flex-wrap items-center justify-between gap-3">
                         <div className="flex items-center gap-3">
                           <span className="px-3.5 py-1 rounded-lg bg-amber-500 text-black font-mono font-extrabold text-xs">
-                            SHOT {shotNumber.toString().padStart(2, '0')} — {shotDur} SECONDS
+                            SHOT {shotNumber.toString().padStart(2, '0')} — {shotDur}s
                           </span>
                           <span className="text-xs font-mono text-zinc-400 hidden sm:inline">
-                            {shot.timing || `Shot ${shotNumber} - ${shotDur} Seconds`}
+                            {shot.timing || `Shot ${shotNumber} - ${shotDur}s`}
                           </span>
                         </div>
 
@@ -722,12 +990,12 @@ ${imgPromptText}`;
                           {isVideoCopied ? (
                             <>
                               <Check className="w-4 h-4 text-black" />
-                              <span>വീഡിയോ പ്രോംപ്റ്റ് കോപ്പി ചെയ്തു!</span>
+                              <span>{t.copiedVideoPromptBtn}</span>
                             </>
                           ) : (
                             <>
                               <Copy className="w-3.5 h-3.5 text-amber-400" />
-                              <span>Copy Video Prompt (with Dialogue)</span>
+                              <span>{t.copyVideoPromptBtn}</span>
                             </>
                           )}
                         </button>
@@ -740,7 +1008,7 @@ ${imgPromptText}`;
                           <div className="flex items-center justify-between">
                             <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-400 flex items-center gap-1">
                               <Edit3 className="w-3 h-3 text-amber-400" />
-                              സീൻ വിവരണം (Shot Action Summary - എഡിറ്റ് ചെയ്യാവുന്നത്)
+                              {t.shotActionLabel}
                             </span>
                           </div>
                           <input
@@ -753,10 +1021,10 @@ ${imgPromptText}`;
 
                         {/* 1. EDITABLE VIDEO GENERATION PROMPT (PRIMARY) */}
                         <div className="p-4 rounded-xl bg-[#141624] border-2 border-amber-500/50 space-y-2.5 shadow-lg">
-                          <div className="flex items-center justify-between border-b border-amber-500/20 pb-2">
+                          <div className="flex items-center justify-between gap-2 flex-wrap border-b border-amber-500/20 pb-2">
                             <span className="text-xs font-bold text-amber-400 uppercase tracking-wider flex items-center gap-1.5">
                               <Film className="w-4 h-4 text-amber-400" />
-                              1. വീഡിയോ ജനറേഷൻ പ്രോംപ്റ്റ് (Editable Video Prompt + Dialogue + Lighting + Background)
+                              {t.videoPromptHeading}
                             </span>
                             <button
                               type="button"
@@ -770,12 +1038,12 @@ ${imgPromptText}`;
                               {isVideoCopied ? (
                                 <>
                                   <Check className="w-3.5 h-3.5" />
-                                  <span>Copied Video Prompt!</span>
+                                  <span>{t.copiedVideoShort}</span>
                                 </>
                               ) : (
                                 <>
                                   <Copy className="w-3.5 h-3.5" />
-                                  <span>Copy Video Prompt (ഡയലോഗ് അടക്കം കോപ്പി ചെയ്യുക)</span>
+                                  <span>{t.copyVideoWithDialogue}</span>
                                 </>
                               )}
                             </button>
@@ -791,10 +1059,10 @@ ${imgPromptText}`;
 
                         {/* 2. EDITABLE IMAGE GENERATION PROMPT (SECONDARY) */}
                         <div className="p-4 rounded-xl bg-[#0d0f17] border border-zinc-800 space-y-2">
-                          <div className="flex items-center justify-between border-b border-zinc-800 pb-2">
+                          <div className="flex items-center justify-between gap-2 flex-wrap border-b border-zinc-800 pb-2">
                             <span className="text-[11px] font-mono font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-1.5">
                               <ImageIcon className="w-3.5 h-3.5 text-zinc-400" />
-                              2. ഇമേജ് ജനറേഷൻ പ്രോംപ്റ്റ് (Editable Image Prompt - Character Face &amp; Clothing Continuity)
+                              {t.imagePromptHeading}
                             </span>
                             <button
                               type="button"
@@ -808,12 +1076,12 @@ ${imgPromptText}`;
                               {isImageCopied ? (
                                 <>
                                   <Check className="w-3.5 h-3.5" />
-                                  <span>Copied Image Prompt</span>
+                                  <span>{t.copiedImageShort}</span>
                                 </>
                               ) : (
                                 <>
                                   <Copy className="w-3.5 h-3.5" />
-                                  <span>Copy Image Prompt</span>
+                                  <span>{t.copyImageShort}</span>
                                 </>
                               )}
                             </button>
@@ -830,7 +1098,7 @@ ${imgPromptText}`;
                         {/* 3. Master Copy Footer */}
                         <div className="pt-3 border-t border-zinc-800/80 flex flex-wrap items-center justify-between gap-3 bg-[#0a0b12] -mx-5 -mb-5 p-4 rounded-b-2xl">
                           <span className="text-xs text-zinc-400 font-mono">
-                            Master Block (Video Prompt + Image Prompt Combined)
+                            {t.masterBlockDesc}
                           </span>
                           <button
                             type="button"
@@ -844,12 +1112,12 @@ ${imgPromptText}`;
                             {isMasterCopied ? (
                               <>
                                 <Check className="w-4 h-4" />
-                                <span>മൊത്തം കോപ്പി ചെയ്തു (Master Block Copied!)</span>
+                                <span>{t.masterCopied}</span>
                               </>
                             ) : (
                               <>
                                 <Copy className="w-4 h-4" />
-                                <span>1-Click Master Copy Both</span>
+                                <span>{t.masterCopyBoth}</span>
                               </>
                             )}
                           </button>
@@ -867,7 +1135,7 @@ ${imgPromptText}`;
                       onClick={() => setVisiblePromptCount((prev) => Math.min(shots.length, prev + 25))}
                       className="px-8 py-3 rounded-xl bg-zinc-800 hover:bg-amber-500 hover:text-black text-amber-400 text-xs font-extrabold uppercase tracking-wider transition-all cursor-pointer border border-amber-500/30 shadow-lg"
                     >
-                      കൂടുതൽ പ്രോംപ്റ്റുകൾ കാണുക ({visiblePromptCount} of {shots.length} Shown - Load 25 More Clips)
+                      {t.loadMorePrompts(visiblePromptCount, shots.length)}
                     </button>
                   </div>
                 )}
