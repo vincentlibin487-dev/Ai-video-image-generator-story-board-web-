@@ -15,6 +15,7 @@ import {
   Timer,
   PlayCircle,
   Globe,
+  Volume2,
 } from 'lucide-react';
 import {
   StoryAngle,
@@ -26,8 +27,13 @@ import {
   AppLang,
   LANGUAGE_OPTIONS,
   UI_TRANSLATIONS,
+  VOICE_PACE_SETTINGS,
+  VoicePace,
+  buildCardNarrationText,
+  cleanTextForSpeech,
   getLangConfig,
 } from './lib/i18n';
+import { StickyBottomAd, triggerAdsterraPopunder } from './components/AdsterraAds';
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/+$/, '');
 
@@ -83,12 +89,15 @@ export default function App() {
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [speakingAngleId, setSpeakingAngleId] = useState<string | null>(null);
   const [loadingTtsId, setLoadingTtsId] = useState<string | null>(null);
+  const [voicePace, setVoicePace] = useState<VoicePace>('slow');
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const ttsAbortRef = useRef<AbortController | null>(null);
   const ttsCacheRef = useRef<Map<string, string>>(new Map());
+  const speechSessionRef = useRef<number>(0);
 
   const stopAllSpeech = () => {
+    speechSessionRef.current += 1;
     if (ttsAbortRef.current) {
       ttsAbortRef.current.abort();
       ttsAbortRef.current = null;
@@ -242,18 +251,23 @@ export default function App() {
     });
   };
 
-  // High-Quality Male Voice Toggle Speech Helper
-  const toggleSpeakText = async (angleId: string, text: string) => {
+  // High-Quality Male Voice Toggle Speech Helper (Slow, Paused & Clearly Articulated)
+  const toggleSpeakText = async (angleId: string, rawText: string) => {
     if (speakingAngleId === angleId || loadingTtsId === angleId) {
       stopAllSpeech();
       return;
     }
 
     stopAllSpeech();
+    const sessionId = speechSessionRef.current;
+    const paceCfg = VOICE_PACE_SETTINGS[voicePace];
+    const cleanText = cleanTextForSpeech(rawText, lang);
     setLoadingTtsId(angleId);
 
     const playDataUrl = (dataUrl: string) => {
+      if (speechSessionRef.current !== sessionId) return;
       const audio = new Audio(dataUrl);
+      audio.preload = 'auto';
       audioRef.current = audio;
       audio.onended = () => {
         audioRef.current = null;
@@ -272,7 +286,7 @@ export default function App() {
     };
 
     try {
-      const cacheKey = `${lang}:${angleId}:${text.slice(0, 80)}`;
+      const cacheKey = `${lang}:${voicePace}:${angleId}:${cleanText.slice(0, 80)}`;
       const cachedAudio = ttsCacheRef.current.get(cacheKey);
       if (cachedAudio) {
         playDataUrl(cachedAudio);
@@ -284,11 +298,11 @@ export default function App() {
 
       const data = await postApiJson<{ audioDataUrl?: string }>(
         '/api/tts',
-        { text, language: lang },
+        { text: cleanText, language: lang, pace: voicePace },
         controller.signal
       );
 
-      if (ttsAbortRef.current !== controller) {
+      if (ttsAbortRef.current !== controller || speechSessionRef.current !== sessionId) {
         return;
       }
       ttsAbortRef.current = null;
@@ -300,27 +314,51 @@ export default function App() {
       }
       throw new Error('No audio data returned');
     } catch (err: any) {
-      if (err?.name === 'AbortError') {
+      if (err?.name === 'AbortError' || speechSessionRef.current !== sessionId) {
         return;
       }
       setLoadingTtsId(null);
       if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
         const langCfg = getLangConfig(lang);
         window.speechSynthesis.cancel();
-        const utterance = new SpeechSynthesisUtterance(text);
-        utterance.lang = langCfg.ttsLang;
-        utterance.rate = 0.92;
-        utterance.pitch = 0.78;
         const voices = window.speechSynthesis.getVoices();
         const matchedVoice =
           voices.find((v) => v.lang.toLowerCase().startsWith(lang)) ||
           voices.find((v) => v.lang.includes('IN')) ||
           voices[0];
-        if (matchedVoice) utterance.voice = matchedVoice;
-        utterance.onend = () => setSpeakingAngleId(null);
-        utterance.onerror = () => setSpeakingAngleId(null);
+
+        const chunks = cleanText
+          .split(/\n{2,}|(?<=[.।!?])\s+/)
+          .map((s) => s.replace(/\.{3,}/g, '.').trim())
+          .filter(Boolean);
+
         setSpeakingAngleId(angleId);
-        window.speechSynthesis.speak(utterance);
+
+        const speakChunk = (idx: number) => {
+          if (speechSessionRef.current !== sessionId || idx >= chunks.length) {
+            if (speechSessionRef.current === sessionId) {
+              setSpeakingAngleId(null);
+            }
+            return;
+          }
+          const utterance = new SpeechSynthesisUtterance(chunks[idx]);
+          utterance.lang = langCfg.ttsLang;
+          utterance.rate = paceCfg.webRate;
+          utterance.pitch = 0.85;
+          if (matchedVoice) utterance.voice = matchedVoice;
+          utterance.onend = () => {
+            if (speechSessionRef.current !== sessionId) return;
+            setTimeout(() => speakChunk(idx + 1), paceCfg.pauseMs);
+          };
+          utterance.onerror = () => {
+            if (speechSessionRef.current === sessionId) {
+              setSpeakingAngleId(null);
+            }
+          };
+          window.speechSynthesis.speak(utterance);
+        };
+
+        speakChunk(0);
       } else {
         setSpeakingAngleId(null);
       }
@@ -329,6 +367,8 @@ export default function App() {
 
   // Step 1 -> Step 2: Generate Story Angle Variations in Selected Language
   const handleGenerateStoryAngles = async () => {
+    triggerAdsterraPopunder();
+
     const trimmedPremise = premise.trim();
     if (!trimmedPremise) {
       setError(t.premiseRequiredError);
@@ -370,6 +410,7 @@ export default function App() {
 
   // Step 2 -> Step 3: Select Chosen Story Angle and Generate Prompts
   const handleSelectStoryAndOpenPromptPage = async (angle: StoryAngle) => {
+    triggerAdsterraPopunder();
     stopAllSpeech();
     setSelectedAngle(angle);
     setLoadingShots(true);
@@ -429,13 +470,13 @@ export default function App() {
   return (
     <div className="min-h-screen bg-[#090a0f] text-zinc-100 flex flex-col font-sans selection:bg-amber-500 selection:text-black">
       {/* Top Global Language Switcher Bar */}
-      <div className="bg-[#07080d] border-b border-zinc-800/80 px-4 py-2.5">
-        <div className="max-w-4xl mx-auto flex flex-wrap items-center justify-between gap-2">
-          <div className="flex items-center gap-1.5 text-xs font-bold text-amber-400">
-            <Globe className="w-3.5 h-3.5" />
-            <span>{t.languageLabel}:</span>
+      <div className="bg-[#07080d] border-b border-zinc-800/80 px-3.5 sm:px-6 lg:px-8 py-2">
+        <div className="max-w-7xl mx-auto flex items-center justify-between gap-2.5">
+          <div className="flex items-center gap-1.5 text-xs font-bold text-amber-400 shrink-0">
+            <Globe className="w-3.5 h-3.5 shrink-0" />
+            <span className="hidden sm:inline">{t.languageLabel}:</span>
           </div>
-          <div className="flex flex-wrap items-center gap-1.5">
+          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar whitespace-nowrap sm:flex-wrap py-0.5">
             {LANGUAGE_OPTIONS.map((option) => {
               const isSelected = lang === option.code;
               return (
@@ -443,7 +484,7 @@ export default function App() {
                   key={option.code}
                   type="button"
                   onClick={() => handleLanguageChange(option.code)}
-                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  className={`px-2.5 py-1.5 sm:py-1 rounded-lg text-xs font-bold transition-all cursor-pointer shrink-0 ${
                     isSelected
                       ? 'bg-amber-500 text-black font-extrabold shadow-sm shadow-amber-500/20'
                       : 'bg-zinc-900 text-zinc-300 hover:text-white hover:bg-zinc-800 border border-zinc-800'
@@ -457,18 +498,18 @@ export default function App() {
         </div>
       </div>
 
-      {/* App Header with Breadcrumb Step Indicator */}
-      <header className="border-b border-zinc-800/80 px-6 py-4 bg-[#0d0f17] sticky top-0 z-30 backdrop-blur-md">
-        <div className="max-w-4xl mx-auto flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-2.5">
-            <div className="p-2 rounded-xl bg-amber-500 text-black shadow-md shadow-amber-500/20">
+      {/* App Header with Desktop Breadcrumb Step Indicator */}
+      <header className="border-b border-zinc-800/80 px-3.5 sm:px-6 lg:px-8 py-3 sm:py-4 bg-[#0d0f17]/95 sticky top-0 z-30 backdrop-blur-md">
+        <div className="max-w-7xl mx-auto flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="p-2 rounded-xl bg-amber-500 text-black shadow-md shadow-amber-500/20 shrink-0">
               <Film className="w-5 h-5" />
             </div>
-            <div>
-              <h1 className="text-base font-bold text-white tracking-wide uppercase">
+            <div className="min-w-0">
+              <h1 className="text-sm sm:text-base font-bold text-white tracking-wide uppercase truncate">
                 {t.appTitle}
               </h1>
-              <p className="text-xs text-zinc-400">
+              <p className="text-[11px] sm:text-xs text-zinc-400 line-clamp-1">
                 {activeStep === 'input' && t.page1Subtitle}
                 {activeStep === 'options' && t.page2Subtitle(totalAngleCountDisplay)}
                 {activeStep === 'prompts' && t.page3Subtitle(formatDurationDisplay(), calculatedShotCount)}
@@ -476,9 +517,10 @@ export default function App() {
             </div>
           </div>
 
-          {/* Breadcrumb Steps Navigation */}
-          <div className="flex items-center gap-1.5 text-xs font-mono">
-            <span
+          {/* Desktop / Tablet Breadcrumb Steps Navigation */}
+          <div className="hidden sm:flex items-center gap-1.5 text-xs font-mono shrink-0">
+            <button
+              type="button"
               onClick={() => setActiveStep('input')}
               className={`px-2.5 py-1 rounded-lg cursor-pointer transition-all ${
                 activeStep === 'input'
@@ -487,9 +529,11 @@ export default function App() {
               }`}
             >
               {t.step1}
-            </span>
+            </button>
             <ChevronRight className="w-3.5 h-3.5 text-zinc-600" />
-            <span
+            <button
+              type="button"
+              disabled={storyAngles.length === 0}
               onClick={() => storyAngles.length > 0 && setActiveStep('options')}
               className={`px-2.5 py-1 rounded-lg transition-all ${
                 storyAngles.length === 0 ? 'opacity-40 cursor-not-allowed text-zinc-600' : 'cursor-pointer'
@@ -500,9 +544,11 @@ export default function App() {
               }`}
             >
               {t.step2(storyAngles.length)}
-            </span>
+            </button>
             <ChevronRight className="w-3.5 h-3.5 text-zinc-600" />
-            <span
+            <button
+              type="button"
+              disabled={!selectedAngle || shots.length === 0}
               onClick={() => selectedAngle && shots.length > 0 && setActiveStep('prompts')}
               className={`px-2.5 py-1 rounded-lg transition-all ${
                 !selectedAngle ? 'opacity-40 cursor-not-allowed text-zinc-600' : 'cursor-pointer'
@@ -513,13 +559,13 @@ export default function App() {
               }`}
             >
               {t.step3}
-            </span>
+            </button>
           </div>
         </div>
       </header>
 
-      {/* Main Container */}
-      <main className="flex-1 max-w-4xl w-full mx-auto px-4 py-8">
+      {/* Main Container (Safe bottom clearance for Sticky Bottom Ad + Mobile Nav) */}
+      <main className="flex-1 max-w-7xl w-full mx-auto px-3.5 sm:px-6 lg:px-8 py-4 sm:py-8 pb-36 sm:pb-20 md:pb-28">
         {/* Error notification */}
         {error && (
           <div className="mb-6 p-3 bg-red-500/10 border border-red-500/30 text-red-300 text-sm rounded-xl">
@@ -531,156 +577,158 @@ export default function App() {
         {/* PAGE 1: STORY PREMISE & TOTAL FILM DURATION INPUT (`activeStep === 'input'`) */}
         {/* ================================================================= */}
         {activeStep === 'input' && (
-          <div className="space-y-6">
-            <div className="space-y-5 bg-[#11131f] border border-zinc-800 p-6 rounded-2xl shadow-2xl">
-              {/* Story Concept Box */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between gap-2 flex-wrap">
-                  <label className="text-xs font-bold uppercase tracking-wider text-amber-400 flex items-center gap-2">
-                    <BookOpen className="w-4 h-4" />
-                    <span>{t.premiseLabel}</span>
-                  </label>
-                  {premise.length > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setPremise('');
-                        setStoryAngles([]);
-                        setSelectedAngle(null);
-                        setShots([]);
-                      }}
-                      className="flex items-center gap-1 text-xs text-amber-400 hover:text-amber-300 bg-zinc-900 hover:bg-zinc-800 border border-zinc-750 px-2.5 py-0.5 rounded-lg transition-colors cursor-pointer"
-                      title={t.clearBtn}
-                    >
-                      <X className="w-3.5 h-3.5" />
-                      <span>{t.clearBtn}</span>
-                    </button>
-                  )}
-                </div>
-
-                <div className="relative">
-                  <textarea
-                    value={premise}
-                    onChange={(e) => setPremise(e.target.value)}
-                    rows={4}
-                    placeholder={t.premisePlaceholder}
-                    className="w-full bg-[#0a0b12] border border-zinc-800 rounded-xl p-4 text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-amber-500 transition-colors leading-relaxed"
-                  />
-                </div>
-              </div>
-
-              {/* Total Video Duration Selector & Custom Typing Box */}
-              <div className="pt-4 space-y-4 border-t border-zinc-800/80">
-                <label className="text-xs font-bold text-amber-400 uppercase tracking-wider flex items-center gap-2">
-                  <Timer className="w-4 h-4" />
-                  <span>{t.durationLabel}</span>
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6 items-start">
+            {/* Left Studio Panel (Mobile Top / Desktop 7 cols): Story Concept */}
+            <div className="lg:col-span-7 bg-[#11131f] border border-zinc-800 p-4 sm:p-6 rounded-2xl shadow-2xl space-y-3">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <label className="text-xs font-bold uppercase tracking-wider text-amber-400 flex items-center gap-2">
+                  <BookOpen className="w-4 h-4 shrink-0" />
+                  <span>{t.premiseLabel}</span>
                 </label>
-
-                {/* Duration Presets (Seconds, Minutes, Hours) */}
-                <div className="flex flex-wrap items-center gap-2">
-                  {presetDurations.map((preset, idx) => {
-                    const pSec =
-                      preset.unit === 'seconds'
-                        ? preset.val
-                        : preset.unit === 'hours'
-                        ? preset.val * 3600
-                        : preset.val * 60;
-                    const pClips = Math.max(1, Math.ceil(pSec / shotDurationSec));
-                    return (
-                      <button
-                        key={idx}
-                        type="button"
-                        onClick={() => handleSelectPreset(preset.val, preset.unit)}
-                        className={`px-3.5 py-2 rounded-xl text-xs font-mono font-bold transition-all cursor-pointer ${
-                          durationValue === preset.val && durationUnit === preset.unit
-                            ? 'bg-amber-500 text-black border-amber-400 font-extrabold shadow-md shadow-amber-500/20'
-                            : 'bg-zinc-900 text-zinc-300 hover:text-white border border-zinc-800'
-                        }`}
-                      >
-                        {preset.name} ({pClips} {t.clipsWord})
-                      </button>
-                    );
-                  })}
-                </div>
-
-                {/* Custom Typing Box for Duration & Unit Switcher */}
-                <div className="p-4 rounded-xl bg-[#090a12] border border-amber-500/30 space-y-3 shadow-inner">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-xs text-zinc-300 font-bold">{t.typeCustomDuration}</span>
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="number"
-                          min="1"
-                          max="180"
-                          step="0.5"
-                          value={customInputValue}
-                          onChange={(e) => handleCustomInputChange(e.target.value)}
-                          className="w-20 bg-zinc-950 border border-amber-500/50 rounded-lg px-2.5 py-1 text-sm font-mono text-amber-400 font-extrabold focus:outline-none focus:border-amber-400 text-center"
-                        />
-
-                        {/* Unit Selector (Seconds / Minutes / Hours) */}
-                        <select
-                          value={durationUnit}
-                          onChange={(e) => setDurationUnit(e.target.value as any)}
-                          className="bg-zinc-950 border border-zinc-800 rounded-lg px-2.5 py-1 text-xs font-mono text-zinc-200 font-bold focus:outline-none focus:border-amber-500 cursor-pointer"
-                        >
-                          <option value="seconds">{t.unitSecondsFull}</option>
-                          <option value="minutes">{t.unitMinutesFull}</option>
-                          <option value="hours">{t.unitHoursFull}</option>
-                        </select>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      <Clock className="w-3.5 h-3.5 text-amber-400" />
-                      <span className="text-xs font-bold text-zinc-400">{t.clipDurationLabel}</span>
-                      <div className="flex gap-1">
-                        {[5, 8, 10, 12].map((sec) => (
-                          <button
-                            key={sec}
-                            type="button"
-                            onClick={() => setShotDurationSec(sec)}
-                            className={`px-2.5 py-0.5 rounded text-[11px] font-mono font-bold cursor-pointer ${
-                              shotDurationSec === sec
-                                ? 'bg-amber-500 text-black'
-                                : 'bg-zinc-900 text-zinc-400 border border-zinc-800'
-                            }`}
-                          >
-                            {sec}s
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Dynamic Big Calculation Display Banner */}
-                  <div className="p-3 bg-[#131626] rounded-xl border border-amber-500/20 flex flex-wrap items-center justify-between gap-2">
-                    <span className="text-xs font-mono text-zinc-300">
-                      {t.selectedTotalTime} <strong className="text-white font-bold">{formatDurationDisplay()}</strong>
-                    </span>
-                    <span className="text-xs font-mono px-3 py-1 rounded-lg bg-amber-500 text-black font-extrabold shadow-sm flex items-center gap-1">
-                      <PlayCircle className="w-3.5 h-3.5" />
-                      {t.requiredClips(calculatedShotCount, shotDurationSec)}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Submit Button to Open Page 2 */}
-                <div className="pt-2 flex justify-end">
+                {premise.length > 0 && (
                   <button
                     type="button"
-                    onClick={handleGenerateStoryAngles}
-                    disabled={loadingAngles || !premise.trim()}
-                    className="w-full sm:w-auto px-8 py-4 rounded-xl bg-gradient-to-r from-amber-500 via-amber-400 to-amber-500 hover:brightness-110 text-black font-extrabold text-xs uppercase tracking-wider shadow-lg shadow-amber-500/20 transition-all cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50"
+                    onClick={() => {
+                      setPremise('');
+                      setStoryAngles([]);
+                      setSelectedAngle(null);
+                      setShots([]);
+                    }}
+                    className="flex items-center gap-1 text-xs text-amber-400 hover:text-amber-300 bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 px-2.5 py-1 rounded-lg transition-colors cursor-pointer"
+                    title={t.clearBtn}
                   >
-                    <Sparkles className={`w-4 h-4 ${loadingAngles ? 'animate-spin' : ''}`} />
-                    {loadingAngles
-                      ? t.generatingAngles
-                      : t.generateAnglesBtn(70, formatDurationDisplay(), calculatedShotCount)}
+                    <X className="w-3.5 h-3.5" />
+                    <span>{t.clearBtn}</span>
                   </button>
+                )}
+              </div>
+
+              <div className="relative">
+                <textarea
+                  value={premise}
+                  onChange={(e) => setPremise(e.target.value)}
+                  rows={6}
+                  placeholder={t.premisePlaceholder}
+                  className="w-full min-h-[160px] lg:min-h-[300px] bg-[#0a0b12] border border-zinc-800 rounded-xl p-3.5 sm:p-4 text-base sm:text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-amber-500 transition-colors leading-relaxed resize-y"
+                />
+              </div>
+            </div>
+
+            {/* Right Studio Panel (Mobile Bottom / Desktop 5 cols): Duration, Clips & CTA */}
+            <div className="lg:col-span-5 bg-[#11131f] border border-zinc-800 p-4 sm:p-6 rounded-2xl shadow-2xl space-y-4">
+              <label className="text-xs font-bold text-amber-400 uppercase tracking-wider flex items-center gap-2">
+                <Timer className="w-4 h-4 shrink-0" />
+                <span>{t.durationLabel}</span>
+              </label>
+
+              {/* Duration Presets (Responsive Mobile 3-col Grid / Desktop Flex Wrap) */}
+              <div className="grid grid-cols-3 sm:flex sm:flex-wrap items-center gap-2">
+                {presetDurations.map((preset, idx) => {
+                  const pSec =
+                    preset.unit === 'seconds'
+                      ? preset.val
+                      : preset.unit === 'hours'
+                      ? preset.val * 3600
+                      : preset.val * 60;
+                  const pClips = Math.max(1, Math.ceil(pSec / shotDurationSec));
+                  return (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => handleSelectPreset(preset.val, preset.unit)}
+                      className={`px-2.5 sm:px-3.5 py-2.5 sm:py-2 rounded-xl text-[11px] sm:text-xs font-mono font-bold transition-all cursor-pointer text-center ${
+                        durationValue === preset.val && durationUnit === preset.unit
+                          ? 'bg-amber-500 text-black border-amber-400 font-extrabold shadow-md shadow-amber-500/20'
+                          : 'bg-zinc-900 text-zinc-300 hover:text-white border border-zinc-800'
+                      }`}
+                    >
+                      <span className="block sm:inline">{preset.name}</span>{' '}
+                      <span className="opacity-80 text-[10px] sm:text-xs">
+                        ({pClips} {t.clipsWord})
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Custom Typing Box for Duration & Unit Switcher */}
+              <div className="p-3.5 sm:p-4 rounded-xl bg-[#090a12] border border-amber-500/30 space-y-3 shadow-inner">
+                <div className="flex flex-col gap-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-xs text-zinc-300 font-bold">{t.typeCustomDuration}</span>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        min="1"
+                        max="180"
+                        step="0.5"
+                        value={customInputValue}
+                        onChange={(e) => handleCustomInputChange(e.target.value)}
+                        className="w-20 bg-zinc-950 border border-amber-500/50 rounded-lg px-2.5 py-1.5 sm:py-1 text-base sm:text-sm font-mono text-amber-400 font-extrabold focus:outline-none focus:border-amber-400 text-center"
+                      />
+
+                      <select
+                        value={durationUnit}
+                        onChange={(e) => setDurationUnit(e.target.value as any)}
+                        className="bg-zinc-950 border border-zinc-800 rounded-lg px-2.5 py-1.5 sm:py-1 text-sm sm:text-xs font-mono text-zinc-200 font-bold focus:outline-none focus:border-amber-500 cursor-pointer"
+                      >
+                        <option value="seconds">{t.unitSecondsFull}</option>
+                        <option value="minutes">{t.unitMinutesFull}</option>
+                        <option value="hours">{t.unitHoursFull}</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-zinc-800/60">
+                    <div className="flex items-center gap-1.5">
+                      <Clock className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                      <span className="text-xs font-bold text-zinc-400">{t.clipDurationLabel}</span>
+                    </div>
+                    <div className="flex gap-1.5">
+                      {[5, 8, 10, 12].map((sec) => (
+                        <button
+                          key={sec}
+                          type="button"
+                          onClick={() => setShotDurationSec(sec)}
+                          className={`px-3 py-1 rounded-lg text-xs font-mono font-bold cursor-pointer transition-all ${
+                            shotDurationSec === sec
+                              ? 'bg-amber-500 text-black'
+                              : 'bg-zinc-900 text-zinc-400 border border-zinc-800 hover:text-white'
+                          }`}
+                        >
+                          {sec}s
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Dynamic Big Calculation Display Banner */}
+                <div className="p-3 bg-[#131626] rounded-xl border border-amber-500/20 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                  <span className="text-xs font-mono text-zinc-300">
+                    {t.selectedTotalTime} <strong className="text-white font-bold">{formatDurationDisplay()}</strong>
+                  </span>
+                  <span className="text-xs font-mono px-3 py-1.5 rounded-lg bg-amber-500 text-black font-extrabold shadow-sm flex items-center justify-center gap-1.5 w-full sm:w-auto">
+                    <PlayCircle className="w-3.5 h-3.5 shrink-0" />
+                    {t.requiredClips(calculatedShotCount, shotDurationSec)}
+                  </span>
                 </div>
               </div>
+
+              {/* Submit Button to Open Page 2 */}
+              <button
+                type="button"
+                onClick={handleGenerateStoryAngles}
+                disabled={loadingAngles || !premise.trim()}
+                className="w-full px-6 py-4 rounded-xl bg-gradient-to-r from-amber-500 via-amber-400 to-amber-500 hover:brightness-110 active:scale-[0.99] text-black font-extrabold text-xs sm:text-sm uppercase tracking-wider shadow-lg shadow-amber-500/20 transition-all cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                <Sparkles className={`w-4 h-4 shrink-0 ${loadingAngles ? 'animate-spin' : ''}`} />
+                <span className="text-center leading-snug">
+                  {loadingAngles
+                    ? t.generatingAngles
+                    : t.generateAnglesBtn(70, formatDurationDisplay(), calculatedShotCount)}
+                </span>
+              </button>
             </div>
           </div>
         )}
@@ -690,8 +738,8 @@ export default function App() {
         {/* ================================================================= */}
         {activeStep === 'options' && (
           <div className="space-y-6">
-            {/* Page Header with Back Button */}
-            <div className="flex flex-wrap items-center justify-between gap-3 bg-[#111320] p-4 rounded-xl border border-zinc-800">
+            {/* Page Header with Back Button & Voice Speed Controls */}
+            <div className="flex flex-wrap items-center justify-between gap-3 bg-[#111320] p-3.5 sm:p-4 rounded-xl border border-zinc-800">
               <button
                 type="button"
                 onClick={() => setActiveStep('input')}
@@ -701,9 +749,46 @@ export default function App() {
                 <span>{t.backToInput}</span>
               </button>
 
-              <span className="text-xs font-mono text-zinc-300 bg-amber-500/10 px-3 py-1 rounded-lg border border-amber-500/20">
-                {t.selectedTimeLabel} <strong className="text-amber-400 font-bold">{formatDurationDisplay()}</strong> ({calculatedShotCount} {t.clipsWord})
-              </span>
+              <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+                {/* Voice Pace Control (Extra Slow / Slow & Clear / Normal) */}
+                <div className="flex items-center gap-1.5 bg-[#090a12] px-2.5 py-1.5 rounded-xl border border-zinc-800">
+                  <Volume2 className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                  <span className="text-[11px] font-bold text-zinc-400 hidden sm:inline">
+                    {t.voicePaceLabel}
+                  </span>
+                  <div className="flex items-center gap-1">
+                    {(
+                      [
+                        { id: 'verySlow', label: t.paceVerySlow },
+                        { id: 'slow', label: t.paceSlow },
+                        { id: 'normal', label: t.paceNormal },
+                      ] as const
+                    ).map((opt) => (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() => {
+                          if (voicePace !== opt.id) {
+                            stopAllSpeech();
+                            setVoicePace(opt.id);
+                          }
+                        }}
+                        className={`px-2 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
+                          voicePace === opt.id
+                            ? 'bg-amber-500 text-black font-extrabold'
+                            : 'bg-zinc-900 text-zinc-400 hover:text-white'
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <span className="text-xs font-mono text-zinc-300 bg-amber-500/10 px-3 py-1.5 rounded-lg border border-amber-500/20">
+                  {t.selectedTimeLabel} <strong className="text-amber-400 font-bold">{formatDurationDisplay()}</strong> ({calculatedShotCount} {t.clipsWord})
+                </span>
+              </div>
             </div>
 
             <div className="space-y-2">
@@ -723,10 +808,10 @@ export default function App() {
               </div>
             )}
 
-            {/* Genre Category Filter Bar */}
+            {/* Genre Category Filter Bar (Swipeable Single Row on Mobile, Wrapping Grid on Desktop) */}
             {!loadingAngles && (
               <>
-                <div className="flex flex-wrap items-center gap-2 p-2 rounded-xl bg-[#0b0c14] border border-zinc-800">
+                <div className="flex items-center gap-2 overflow-x-auto no-scrollbar whitespace-nowrap sm:flex-wrap p-2 rounded-xl bg-[#0b0c14] border border-zinc-800">
                   {[
                     { id: 'all', label: t.filterAll(storyAngles.length) },
                     { id: 'thriller', label: t.filterThriller },
@@ -741,7 +826,7 @@ export default function App() {
                       key={filter.id}
                       type="button"
                       onClick={() => setSelectedGenreFilter(filter.id)}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                      className={`px-3 py-2 sm:py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer shrink-0 ${
                         selectedGenreFilter === filter.id
                           ? 'bg-amber-500 text-black font-extrabold shadow-sm'
                           : 'bg-zinc-900 text-zinc-400 hover:text-white border border-zinc-800'
@@ -752,8 +837,8 @@ export default function App() {
                   ))}
                 </div>
 
-                {/* Story Option Cards Grid */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Story Option Cards Grid (1 col Mobile, 2 col Tablet, 3 col Desktop Web) */}
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-6">
                   {storyAngles
                     .filter((angle) => {
                       if (selectedGenreFilter === 'all') return true;
@@ -773,7 +858,7 @@ export default function App() {
                         <div
                           key={angle.id}
                           onClick={() => handleSelectStoryAndOpenPromptPage(angle)}
-                          className="p-6 rounded-2xl bg-[#0f111c] border-2 border-zinc-800 hover:border-amber-400 hover:bg-[#131525] transition-all cursor-pointer flex flex-col justify-between space-y-4 relative group shadow-2xl"
+                          className="p-4 sm:p-6 rounded-2xl bg-[#0f111c] border-2 border-zinc-800 hover:border-amber-400 hover:bg-[#131525] transition-all cursor-pointer flex flex-col justify-between space-y-4 relative group shadow-2xl"
                         >
                           <div className="space-y-3.5">
                             <div className="flex items-center justify-between border-b border-zinc-800/80 pb-2.5">
@@ -824,7 +909,13 @@ export default function App() {
                                   type="button"
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    const fullText = `${angle.title}. ${angle.genre}. ${angle.characters || ''}. ${angle.storySummary || angle.synopsis}`;
+                                    const fullText = buildCardNarrationText({
+                                      title: angle.title,
+                                      genre: angle.genre,
+                                      characters: angle.characters,
+                                      summary: angle.storySummary || angle.synopsis,
+                                      lang,
+                                    });
                                     toggleSpeakText(angle.id, fullText);
                                   }}
                                   className={`px-3.5 py-3 rounded-xl border text-xs font-bold transition-all cursor-pointer flex items-center gap-2 shrink-0 ${
@@ -967,9 +1058,9 @@ ${imgPromptText}`;
                       className="bg-[#10121d] border border-zinc-800 rounded-2xl overflow-hidden shadow-2xl transition-all"
                     >
                       {/* Shot Header Bar */}
-                      <div className="px-5 py-3.5 bg-[#0b0c13] border-b border-zinc-800 flex flex-wrap items-center justify-between gap-3">
-                        <div className="flex items-center gap-3">
-                          <span className="px-3.5 py-1 rounded-lg bg-amber-500 text-black font-mono font-extrabold text-xs">
+                      <div className="px-4 sm:px-5 py-3 sm:py-3.5 bg-[#0b0c13] border-b border-zinc-800 flex flex-wrap items-center justify-between gap-2.5 sm:gap-3">
+                        <div className="flex items-center gap-2.5 sm:gap-3">
+                          <span className="px-3 py-1 rounded-lg bg-amber-500 text-black font-mono font-extrabold text-xs">
                             SHOT {shotNumber.toString().padStart(2, '0')} — {shotDur}s
                           </span>
                           <span className="text-xs font-mono text-zinc-400 hidden sm:inline">
@@ -981,7 +1072,7 @@ ${imgPromptText}`;
                         <button
                           type="button"
                           onClick={copyVideoPrompt}
-                          className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                          className={`flex items-center gap-1.5 px-3 sm:px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                             isVideoCopied
                               ? 'bg-emerald-500 text-black font-extrabold shadow-md shadow-emerald-500/20'
                               : 'bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30'
@@ -1002,7 +1093,7 @@ ${imgPromptText}`;
                       </div>
 
                       {/* Structured Editable Container Body */}
-                      <div className="p-5 space-y-4">
+                      <div className="p-4 sm:p-5 space-y-4">
                         {/* Editable Scene Action Summary */}
                         <div className="space-y-1">
                           <div className="flex items-center justify-between">
@@ -1015,95 +1106,98 @@ ${imgPromptText}`;
                             type="text"
                             value={shot.action}
                             onChange={(e) => updateShotField(idx, 'action', e.target.value)}
-                            className="w-full bg-[#0a0b12] border border-zinc-800 rounded-lg p-2.5 text-sm text-zinc-100 font-sans focus:outline-none focus:border-amber-500 transition-colors"
+                            className="w-full bg-[#0a0b12] border border-zinc-800 rounded-lg p-2.5 text-base sm:text-sm text-zinc-100 font-sans focus:outline-none focus:border-amber-500 transition-colors"
                           />
                         </div>
 
-                        {/* 1. EDITABLE VIDEO GENERATION PROMPT (PRIMARY) */}
-                        <div className="p-4 rounded-xl bg-[#141624] border-2 border-amber-500/50 space-y-2.5 shadow-lg">
-                          <div className="flex items-center justify-between gap-2 flex-wrap border-b border-amber-500/20 pb-2">
-                            <span className="text-xs font-bold text-amber-400 uppercase tracking-wider flex items-center gap-1.5">
-                              <Film className="w-4 h-4 text-amber-400" />
-                              {t.videoPromptHeading}
-                            </span>
-                            <button
-                              type="button"
-                              onClick={copyVideoPrompt}
-                              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-extrabold transition-all cursor-pointer ${
-                                isVideoCopied
-                                  ? 'bg-emerald-500 text-black'
-                                  : 'bg-amber-500 hover:bg-amber-400 text-black shadow-md shadow-amber-500/20'
-                              }`}
-                            >
-                              {isVideoCopied ? (
-                                <>
-                                  <Check className="w-3.5 h-3.5" />
-                                  <span>{t.copiedVideoShort}</span>
-                                </>
-                              ) : (
-                                <>
-                                  <Copy className="w-3.5 h-3.5" />
-                                  <span>{t.copyVideoWithDialogue}</span>
-                                </>
-                              )}
-                            </button>
+                        {/* Dual Layout: Stacked on Mobile, Side-by-Side on Desktop Web */}
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                          {/* 1. EDITABLE VIDEO GENERATION PROMPT (PRIMARY) */}
+                          <div className="p-3.5 sm:p-4 rounded-xl bg-[#141624] border-2 border-amber-500/50 space-y-2.5 shadow-lg flex flex-col">
+                            <div className="flex items-center justify-between gap-2 flex-wrap border-b border-amber-500/20 pb-2">
+                              <span className="text-xs font-bold text-amber-400 uppercase tracking-wider flex items-center gap-1.5">
+                                <Film className="w-4 h-4 text-amber-400 shrink-0" />
+                                {t.videoPromptHeading}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={copyVideoPrompt}
+                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-extrabold transition-all cursor-pointer ${
+                                  isVideoCopied
+                                    ? 'bg-emerald-500 text-black'
+                                    : 'bg-amber-500 hover:bg-amber-400 text-black shadow-md shadow-amber-500/20'
+                                }`}
+                              >
+                                {isVideoCopied ? (
+                                  <>
+                                    <Check className="w-3.5 h-3.5" />
+                                    <span>{t.copiedVideoShort}</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Copy className="w-3.5 h-3.5" />
+                                    <span>{t.copyVideoWithDialogue}</span>
+                                  </>
+                                )}
+                              </button>
+                            </div>
+
+                            <textarea
+                              value={vidPromptText}
+                              onChange={(e) => updateShotField(idx, 'videoPrompt', e.target.value)}
+                              rows={5}
+                              className="w-full flex-1 text-sm sm:text-xs text-zinc-100 font-mono leading-relaxed bg-zinc-950 p-3.5 sm:p-4 rounded-lg border border-zinc-800 focus:outline-none focus:border-amber-500 selection:bg-amber-500 selection:text-black resize-y"
+                            />
                           </div>
 
-                          <textarea
-                            value={vidPromptText}
-                            onChange={(e) => updateShotField(idx, 'videoPrompt', e.target.value)}
-                            rows={5}
-                            className="w-full text-xs text-zinc-100 font-mono leading-relaxed bg-zinc-950 p-4 rounded-lg border border-zinc-800 focus:outline-none focus:border-amber-500 selection:bg-amber-500 selection:text-black resize-y"
-                          />
-                        </div>
+                          {/* 2. EDITABLE IMAGE GENERATION PROMPT (SECONDARY) */}
+                          <div className="p-3.5 sm:p-4 rounded-xl bg-[#0d0f17] border border-zinc-800 space-y-2.5 flex flex-col">
+                            <div className="flex items-center justify-between gap-2 flex-wrap border-b border-zinc-800 pb-2">
+                              <span className="text-[11px] font-mono font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-1.5">
+                                <ImageIcon className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
+                                {t.imagePromptHeading}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={copyImagePrompt}
+                                className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                                  isImageCopied
+                                    ? 'bg-emerald-500 text-black'
+                                    : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700'
+                                }`}
+                              >
+                                {isImageCopied ? (
+                                  <>
+                                    <Check className="w-3.5 h-3.5" />
+                                    <span>{t.copiedImageShort}</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Copy className="w-3.5 h-3.5" />
+                                    <span>{t.copyImageShort}</span>
+                                  </>
+                                )}
+                              </button>
+                            </div>
 
-                        {/* 2. EDITABLE IMAGE GENERATION PROMPT (SECONDARY) */}
-                        <div className="p-4 rounded-xl bg-[#0d0f17] border border-zinc-800 space-y-2">
-                          <div className="flex items-center justify-between gap-2 flex-wrap border-b border-zinc-800 pb-2">
-                            <span className="text-[11px] font-mono font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-1.5">
-                              <ImageIcon className="w-3.5 h-3.5 text-zinc-400" />
-                              {t.imagePromptHeading}
-                            </span>
-                            <button
-                              type="button"
-                              onClick={copyImagePrompt}
-                              className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                                isImageCopied
-                                  ? 'bg-emerald-500 text-black'
-                                  : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700'
-                              }`}
-                            >
-                              {isImageCopied ? (
-                                <>
-                                  <Check className="w-3.5 h-3.5" />
-                                  <span>{t.copiedImageShort}</span>
-                                </>
-                              ) : (
-                                <>
-                                  <Copy className="w-3.5 h-3.5" />
-                                  <span>{t.copyImageShort}</span>
-                                </>
-                              )}
-                            </button>
+                            <textarea
+                              value={imgPromptText}
+                              onChange={(e) => updateShotField(idx, 'imagePrompt', e.target.value)}
+                              rows={5}
+                              className="w-full flex-1 text-sm sm:text-xs text-zinc-300 font-mono leading-relaxed bg-zinc-950 p-3.5 sm:p-4 rounded-lg border border-zinc-800 focus:outline-none focus:border-amber-500 selection:bg-amber-500 selection:text-black resize-y"
+                            />
                           </div>
-
-                          <textarea
-                            value={imgPromptText}
-                            onChange={(e) => updateShotField(idx, 'imagePrompt', e.target.value)}
-                            rows={4}
-                            className="w-full text-xs text-zinc-300 font-mono leading-relaxed bg-zinc-950 p-3.5 rounded-lg border border-zinc-850 focus:outline-none focus:border-amber-500 selection:bg-amber-500 selection:text-black resize-y"
-                          />
                         </div>
 
                         {/* 3. Master Copy Footer */}
-                        <div className="pt-3 border-t border-zinc-800/80 flex flex-wrap items-center justify-between gap-3 bg-[#0a0b12] -mx-5 -mb-5 p-4 rounded-b-2xl">
+                        <div className="pt-3 border-t border-zinc-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[#0a0b12] -mx-4 sm:-mx-5 -mb-4 sm:-mb-5 p-4 rounded-b-2xl">
                           <span className="text-xs text-zinc-400 font-mono">
                             {t.masterBlockDesc}
                           </span>
                           <button
                             type="button"
                             onClick={copyMasterBlock}
-                            className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-extrabold uppercase tracking-wider transition-all cursor-pointer shadow-lg ${
+                            className={`w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-3 sm:py-2.5 rounded-xl text-xs font-extrabold uppercase tracking-wider transition-all cursor-pointer shadow-lg ${
                               isMasterCopied
                                 ? 'bg-emerald-500 text-black shadow-emerald-500/20'
                                 : 'bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-black shadow-amber-500/20'
@@ -1133,7 +1227,7 @@ ${imgPromptText}`;
                     <button
                       type="button"
                       onClick={() => setVisiblePromptCount((prev) => Math.min(shots.length, prev + 25))}
-                      className="px-8 py-3 rounded-xl bg-zinc-800 hover:bg-amber-500 hover:text-black text-amber-400 text-xs font-extrabold uppercase tracking-wider transition-all cursor-pointer border border-amber-500/30 shadow-lg"
+                      className="w-full sm:w-auto px-8 py-3.5 sm:py-3 rounded-xl bg-zinc-800 hover:bg-amber-500 hover:text-black text-amber-400 text-xs font-extrabold uppercase tracking-wider transition-all cursor-pointer border border-amber-500/30 shadow-lg"
                     >
                       {t.loadMorePrompts(visiblePromptCount, shots.length)}
                     </button>
@@ -1144,6 +1238,57 @@ ${imgPromptText}`;
           </div>
         )}
       </main>
+
+      {/* Mobile Bottom App Navigation Bar (Positioned cleanly above the 50px Mobile Sticky Ad Banner) */}
+      <nav className="sm:hidden fixed bottom-[54px] inset-x-0 z-40 bg-[#0d0f17]/95 backdrop-blur-lg border-t border-zinc-800 px-2 py-2 grid grid-cols-3 gap-1.5 shadow-[0_-8px_30px_rgba(0,0,0,0.65)]">
+        <button
+          type="button"
+          onClick={() => setActiveStep('input')}
+          className={`flex flex-col items-center justify-center gap-1 py-1.5 px-1 rounded-xl text-[11px] font-bold transition-all cursor-pointer ${
+            activeStep === 'input'
+              ? 'bg-amber-500 text-black font-extrabold shadow-sm'
+              : 'text-zinc-400 hover:text-white bg-zinc-900/70'
+          }`}
+        >
+          <BookOpen className="w-4 h-4" />
+          <span className="truncate max-w-full">{t.step1}</span>
+        </button>
+
+        <button
+          type="button"
+          disabled={storyAngles.length === 0}
+          onClick={() => storyAngles.length > 0 && setActiveStep('options')}
+          className={`flex flex-col items-center justify-center gap-1 py-1.5 px-1 rounded-xl text-[11px] font-bold transition-all ${
+            storyAngles.length === 0 ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'
+          } ${
+            activeStep === 'options'
+              ? 'bg-amber-500 text-black font-extrabold shadow-sm'
+              : 'text-zinc-400 hover:text-white bg-zinc-900/70'
+          }`}
+        >
+          <Layers className="w-4 h-4" />
+          <span className="truncate max-w-full">{t.step2(storyAngles.length)}</span>
+        </button>
+
+        <button
+          type="button"
+          disabled={!selectedAngle || shots.length === 0}
+          onClick={() => selectedAngle && shots.length > 0 && setActiveStep('prompts')}
+          className={`flex flex-col items-center justify-center gap-1 py-1.5 px-1 rounded-xl text-[11px] font-bold transition-all ${
+            !selectedAngle || shots.length === 0 ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'
+          } ${
+            activeStep === 'prompts'
+              ? 'bg-amber-500 text-black font-extrabold shadow-sm'
+              : 'text-zinc-400 hover:text-white bg-zinc-900/70'
+          }`}
+        >
+          <Film className="w-4 h-4" />
+          <span className="truncate max-w-full">{t.step3}</span>
+        </button>
+      </nav>
+
+      {/* Persistent Sticky Bottom Adsterra Banner (320x50 Mobile / 728x90 Desktop) */}
+      <StickyBottomAd />
     </div>
   );
 }

@@ -22,6 +22,74 @@ export function getLangConfig(code?: string): LangOption {
   return LANGUAGE_OPTIONS.find((l) => l.code === code) || LANGUAGE_OPTIONS[0];
 }
 
+export type VoicePace = 'verySlow' | 'slow' | 'normal';
+
+export const VOICE_PACE_SETTINGS: Record<
+  VoicePace,
+  { edgeRate: string; edgePitch: string; webRate: number; pauseMs: number }
+> = {
+  verySlow: { edgeRate: '-30%', edgePitch: '-2Hz', webRate: 0.72, pauseMs: 700 },
+  slow: { edgeRate: '-20%', edgePitch: '-2Hz', webRate: 0.80, pauseMs: 520 },
+  normal: { edgeRate: '-8%', edgePitch: '-1Hz', webRate: 0.92, pauseMs: 320 },
+};
+
+/**
+ * Cleans emojis/symbols and inserts clear, natural pauses between sentences
+ * so TTS narrates calmly and accurately without rushing.
+ */
+export function cleanTextForSpeech(rawText: string, lang: AppLang = 'ml'): string {
+  const andConnector =
+    lang === 'en' ? ' and ' : lang === 'hi' ? ' और ' : ', ';
+
+  const cleaned = rawText
+    // Strip emojis, pictographs, variation selectors, zero-width joiners
+    .replace(/[\p{Extended_Pictographic}\uFE0F\u200D]/gu, ' ')
+    // Replace ampersands and bullets/dashes with natural connectors/pauses
+    .replace(/\s*&\s*/g, andConnector)
+    .replace(/\s*[•●▪▫■□★☆✦✧→➔➡🎬🎙️⏹️]+\s*/g, ', ')
+    .replace(/\s*[—–/]+\s*/g, ', ')
+    // Remove parentheses/brackets smoothly, turning them into commas
+    .replace(/[()[\]{}]/g, ', ')
+    // Remove stray quotation marks and hash symbols
+    .replace(/["'“”‘’#*]/g, ' ')
+    // Normalize whitespace around punctuation
+    .replace(/\s*,\s*/g, ', ')
+    .replace(/(,\s*){2,}/g, ', ')
+    // Put deliberate breathing pauses after every sentence ending (. । ! ?)
+    .replace(/([.।!?])\s+/g, '$1...\n\n')
+    // Preserve paragraph breaks as distinct pauses
+    .replace(/\n{3,}/g, '\n\n')
+    .replace(/[ \t]{2,}/g, ' ')
+    .trim();
+
+  return cleaned;
+}
+
+export function buildCardNarrationText({
+  title,
+  genre,
+  characters,
+  summary,
+  lang,
+}: {
+  title: string;
+  genre?: string;
+  characters?: string;
+  summary: string;
+  lang: AppLang;
+}): string {
+  const ui = UI_TRANSLATIONS[lang] || UI_TRANSLATIONS.ml;
+  const charPrefix = ui.charactersLabel.replace(/[:：]\s*$/, '');
+  const parts = [
+    title ? `${title}.` : '',
+    genre ? `${genre}.` : '',
+    characters ? `${charPrefix}, ${characters}.` : '',
+    summary || '',
+  ].filter(Boolean);
+
+  return cleanTextForSpeech(parts.join('\n\n'), lang);
+}
+
 export interface UiStrings {
   appTitle: string;
   languageLabel: string;
@@ -67,6 +135,10 @@ export interface UiStrings {
   voiceLoadingStop: string;
   voiceStop: string;
   voicePlay: string;
+  voicePaceLabel: string;
+  paceVerySlow: string;
+  paceSlow: string;
+  paceNormal: string;
   selectThisStory: (clips: number) => string;
   backToAngles: string;
   preparingPrompts: (dur: string, clips: number) => string;
@@ -135,7 +207,11 @@ export const UI_TRANSLATIONS: Record<AppLang, UiStrings> = {
     storyOverviewLabel: 'കഥാ ചുരുക്കം (Story Overview):',
     voiceLoadingStop: 'ലോഡ് ചെയ്യുന്നു... (Stop)',
     voiceStop: 'നിർത്തുക (Stop)',
-    voicePlay: 'വോയിസ് ഓവർ (Male)',
+    voicePlay: 'വോയിസ് കേൾക്കുക',
+    voicePaceLabel: 'വോയിസ് വേഗത:',
+    paceVerySlow: 'വളരെ പതുക്കെ',
+    paceSlow: 'പതുക്കെ & വ്യക്തം',
+    paceNormal: 'സാധാരണ',
     selectThisStory: (clips) => `ഈ കഥ തിരഞ്ഞെടുക്കുക (${clips} ക്ലിപ്പുകൾ) ➔`,
     backToAngles: '← കഥാ രൂപങ്ങളിലേക്ക് തിരികെ പോകുക',
     preparingPrompts: (d, clips) => `${d} നീളമുള്ള സിനിമയ്ക്ക് ആവശ്യമായ ${clips} സീൻ പ്രോംപ്റ്റുകൾ തയ്യാറാക്കുന്നു...`,
@@ -202,7 +278,11 @@ export const UI_TRANSLATIONS: Record<AppLang, UiStrings> = {
     storyOverviewLabel: 'Story Overview:',
     voiceLoadingStop: 'Loading... (Stop)',
     voiceStop: 'Stop Voiceover',
-    voicePlay: 'Voiceover (Male)',
+    voicePlay: 'Listen Voiceover',
+    voicePaceLabel: 'Voice Pace:',
+    paceVerySlow: 'Extra Slow',
+    paceSlow: 'Slow & Clear',
+    paceNormal: 'Normal',
     selectThisStory: (clips) => `Select This Story (${clips} Clips) ➔`,
     backToAngles: '← Back to Story Angles',
     preparingPrompts: (d, clips) => `Preparing ${clips} sequential scene prompts for your ${d} film...`,
@@ -269,7 +349,11 @@ export const UI_TRANSLATIONS: Record<AppLang, UiStrings> = {
     storyOverviewLabel: 'कहानी का सारांश (Story Overview):',
     voiceLoadingStop: 'लोड हो रहा है... (रोकें)',
     voiceStop: 'रोकें (Stop)',
-    voicePlay: 'वॉइस ओवर सुनें (Male)',
+    voicePlay: 'आवाज़ सुनें',
+    voicePaceLabel: 'आवाज़ की गति:',
+    paceVerySlow: 'बहुत धीमी',
+    paceSlow: 'धीमी और स्पष्ट',
+    paceNormal: 'सामान्य',
     selectThisStory: (clips) => `यह कहानी चुनें (${clips} क्लिप्स) ➔`,
     backToAngles: '← कहानियों पर वापस जाएं',
     preparingPrompts: (d, clips) => `${d} की फिल्म के लिए ${clips} सीन प्रॉम्प्ट्स तैयार किए जा रहे हैं...`,
@@ -336,7 +420,11 @@ export const UI_TRANSLATIONS: Record<AppLang, UiStrings> = {
     storyOverviewLabel: 'கதைச் சுருக்கம் (Story Overview):',
     voiceLoadingStop: 'ஏற்றுகிறது... (நிறுத்து)',
     voiceStop: 'நிறுத்து (Stop)',
-    voicePlay: 'குரல் கேட்க (Male)',
+    voicePlay: 'குரலில் கேட்க',
+    voicePaceLabel: 'குரல் வேகம்:',
+    paceVerySlow: 'மிக மெதுவாக',
+    paceSlow: 'மெதுவாக & தெளிவாக',
+    paceNormal: 'சாதாரணம்',
     selectThisStory: (clips) => `இந்தக் கதையைத் தேர்ந்தெடு (${clips} கிளிப்புகள்) ➔`,
     backToAngles: '← கதைகளுக்குத் திரும்பு',
     preparingPrompts: (d, clips) => `${d} படத்திற்கான ${clips} காட்சி ப்ராம்ப்ட்கள் தயாராகின்றன...`,
@@ -403,7 +491,11 @@ export const UI_TRANSLATIONS: Record<AppLang, UiStrings> = {
     storyOverviewLabel: 'ಕಥಾ ಸಾರಾಂಶ (Story Overview):',
     voiceLoadingStop: 'ಲೋಡ್ ಆಗುತ್ತಿದೆ... (ನಿಲ್ಲಿಸಿ)',
     voiceStop: 'ನಿಲ್ಲಿಸಿ (Stop)',
-    voicePlay: 'ಧ್ವನಿ ಕೇಳಿ (Male)',
+    voicePlay: 'ಧ್ವನಿ ಕೇಳಿ',
+    voicePaceLabel: 'ಧ್ವನಿ ವೇಗ:',
+    paceVerySlow: 'ತುಂಬಾ ನಿಧಾನ',
+    paceSlow: 'ನಿಧಾನ & ಸ್ಪಷ್ಟ',
+    paceNormal: 'ಸಾಮಾನ್ಯ',
     selectThisStory: (clips) => `ಈ ಕಥೆ ಆಯ್ಕೆಮಾಡಿ (${clips} ಕ್ಲಿಪ್‌ಗಳು) ➔`,
     backToAngles: '← ಕಥೆಗಳಿಗೆ ಹಿಂತಿರುಗಿ',
     preparingPrompts: (d, clips) => `${d} ಚಿತ್ರಕ್ಕಾಗಿ ${clips} ದೃಶ್ಯ ಪ್ರಾಂಪ್ಟ್‌ಗಳನ್ನು ಸಿದ್ಧಪಡಿಸಲಾಗುತ್ತಿದೆ...`,
@@ -470,7 +562,11 @@ export const UI_TRANSLATIONS: Record<AppLang, UiStrings> = {
     storyOverviewLabel: 'కథా సారాంశం (Story Overview):',
     voiceLoadingStop: 'లోడ్ అవుతోంది... (ఆపు)',
     voiceStop: 'ఆపు (Stop)',
-    voicePlay: 'వాయిస్ ఓవర్ వినండి (Male)',
+    voicePlay: 'వాయిస్ వినండి',
+    voicePaceLabel: 'వాయిస్ వేగం:',
+    paceVerySlow: 'చాలా నెమ్మదిగా',
+    paceSlow: 'నెమ్మదిగా & స్పష్టంగా',
+    paceNormal: 'సాధారణం',
     selectThisStory: (clips) => `ఈ కథను ఎంచుకోండి (${clips} క్లిప్‌లు) ➔`,
     backToAngles: '← కథలకు తిరిగి వెళ్ళండి',
     preparingPrompts: (d, clips) => `${d} సినిమా కోసం ${clips} సీన్ ప్రాంప్ట్‌లు సిద్ధమవుతున్నాయి...`,

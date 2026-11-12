@@ -8,7 +8,13 @@ import dotenv from 'dotenv';
 import { GoogleGenAI } from '@google/genai';
 import { EdgeTTS } from 'node-edge-tts';
 import { generateStoryAnglesLocal, generateBreakdownLocal } from './src/lib/storyEngine';
-import { AppLang, getLangConfig } from './src/lib/i18n';
+import {
+  AppLang,
+  cleanTextForSpeech,
+  getLangConfig,
+  VOICE_PACE_SETTINGS,
+  VoicePace,
+} from './src/lib/i18n';
 
 dotenv.config();
 
@@ -284,14 +290,35 @@ Output JSON: { "shots": [{ "shotNumber": 1, "durationSeconds": ${preferredShotDu
   return res.json(fallbackBreakdown);
 });
 
-// 3. Generate High-Quality Male Voiceover via Edge Neural TTS (Multi-language)
+// 3. Generate High-Quality Male Voiceover via Edge Neural TTS (Slow, Paused & Multi-language)
 app.post('/api/tts', async (req: Request, res: Response) => {
-  const text = typeof req.body?.text === 'string' ? req.body.text.trim() : '';
-  if (!text) {
+  const rawText = typeof req.body?.text === 'string' ? req.body.text.trim() : '';
+  if (!rawText) {
     return res.status(400).json({ error: 'Text is required for TTS.' });
   }
 
   const langConfig = getLangConfig(req.body?.language);
+  const paceKey: VoicePace =
+    req.body?.pace === 'verySlow' || req.body?.pace === 'normal' ? req.body.pace : 'slow';
+  const paceSettings = VOICE_PACE_SETTINGS[paceKey];
+
+  const cleaned = cleanTextForSpeech(rawText, langConfig.code);
+  const maxLen = 3000;
+  let preparedText = cleaned;
+  if (cleaned.length > maxLen) {
+    const sliced = cleaned.slice(0, maxLen);
+    const lastBreak = Math.max(
+      sliced.lastIndexOf('\n'),
+      sliced.lastIndexOf('.'),
+      sliced.lastIndexOf('।'),
+      sliced.lastIndexOf(' ')
+    );
+    preparedText = (lastBreak > maxLen * 0.5 ? sliced.slice(0, lastBreak + 1) : sliced).trim();
+  }
+
+  if (!preparedText) {
+    return res.status(400).json({ error: 'Speakable text is empty.' });
+  }
 
   const tempFile = path.join(
     os.tmpdir(),
@@ -303,18 +330,19 @@ app.post('/api/tts', async (req: Request, res: Response) => {
       voice: langConfig.ttsVoice,
       lang: langConfig.ttsLang,
       outputFormat: 'audio-24khz-48kbitrate-mono-mp3',
-      rate: '0%',
-      pitch: '0%',
-      timeout: 12000,
+      rate: paceSettings.edgeRate,
+      pitch: paceSettings.edgePitch,
+      timeout: 25000,
     });
 
-    await tts.ttsPromise(text.slice(0, 2000), tempFile);
+    await tts.ttsPromise(preparedText, tempFile);
     const audioBuffer = await fs.readFile(tempFile);
     const base64Audio = audioBuffer.toString('base64');
 
     return res.json({
       audioDataUrl: `data:audio/mpeg;base64,${base64Audio}`,
       voice: langConfig.ttsVoice,
+      pace: paceKey,
     });
   } catch (error: any) {
     console.error('Error synthesizing male voice:', error);
