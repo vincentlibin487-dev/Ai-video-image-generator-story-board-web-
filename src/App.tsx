@@ -40,6 +40,8 @@ import {
   TopBannerAd,
   BottomBannerAd,
   InFeedBannerAd,
+  InlineVideoAdPair,
+  FloatingMiniVideoAd,
 } from './components/AdsterraAds';
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/+$/, '');
@@ -837,9 +839,10 @@ export default function App() {
               </button>
             </div>
 
-            {/* Wide Centered Ad Card on Page 1 */}
-            <div className="lg:col-span-12">
-              <InFeedBannerAd slotId="page1-center" />
+            {/* Wide Centered Ad Card + 2-Second Skippable Video Ads on Page 1 */}
+            <div className="lg:col-span-12 space-y-4">
+              <InlineVideoAdPair sectionId="page1-video-pair" />
+              <InFeedBannerAd slotId="page1-center" slotIndex={0} />
             </div>
           </div>
         )}
@@ -1095,7 +1098,7 @@ export default function App() {
                             </div>
                           </div>
 
-                          {showAdAfter && <InFeedBannerAd slotId={`angle-slot-${angleIdx}`} />}
+                          {showAdAfter && <InFeedBannerAd slotId={`angle-slot-${angleIdx}`} slotIndex={angleIdx} />}
                         </React.Fragment>
                       );
                     })}
@@ -1601,7 +1604,7 @@ ${imgPromptText}`;
                       </div>
                     </div>
 
-                      {showShotAdAfter && <InFeedBannerAd slotId={`shot-slot-${idx}`} />}
+                      {showShotAdAfter && <InFeedBannerAd slotId={`shot-slot-${idx}`} slotIndex={idx} />}
                     </React.Fragment>
                   );
                 })}
@@ -1645,9 +1648,13 @@ ${imgPromptText}`;
             })()}
           </div>
         )}
-        {/* Bottom In-Flow Banner placed cleanly at end of content without covering bottom navigation buttons */}
+        {/* Compact In-Page 2-Second Skippable Video Ads Pair + Bottom Banner (never hides buttons) */}
+        {activeStep !== 'input' && <InlineVideoAdPair sectionId={`bottom-pair-${activeStep}`} />}
         <BottomBannerAd />
       </main>
+
+      {/* Non-blocking Corner Mini Skippable Video Ad (Desktop) */}
+      <FloatingMiniVideoAd />
 
       {/* Mobile Bottom App Navigation Bar (Positioned cleanly at bottom-0 with 100% direct button visibility) */}
       <nav className="sm:hidden fixed bottom-0 inset-x-0 z-40 bg-[#0d0f17]/95 backdrop-blur-lg border-t border-zinc-800 px-2 py-2 grid grid-cols-3 gap-1.5 shadow-[0_-8px_30px_rgba(0,0,0,0.65)]">
