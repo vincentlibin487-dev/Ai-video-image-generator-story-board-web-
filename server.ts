@@ -13,6 +13,7 @@ import {
   generateBreakdownLocal,
   generateStoryAnglesLocal,
   isExplicitlySilent,
+  mergeAnglesEnsuringAllCategories,
 } from './src/lib/storyEngine';
 import {
   AppLang,
@@ -123,13 +124,20 @@ Return JSON with: name, age, ethnicity, visualContinuityTags, keyFeatures.`;
 // Route to generate story angle options
 app.post('/api/generate-story-angles', async (req: Request, res: Response) => {
   try {
-    const { script, language = 'ml', dialogueMode = 'dynamic' } = req.body || {};
+    const {
+      script,
+      language = 'ml',
+      dialogueMode = 'dynamic',
+      targetShotCount = 8,
+      durationDisplay = '',
+    } = req.body || {};
     if (!script || typeof script !== 'string' || script.trim().length === 0) {
       return res.status(400).json({ error: 'Story script concept is required.' });
     }
 
     const langConfig = getLangConfig(language);
     const langCode = langConfig.code as AppLang;
+    const clipCount = Math.max(4, Number(targetShotCount) || 8);
     const modeNote =
       dialogueMode === 'silent'
         ? 'Format every variation for PURE VISUAL / SLAPSTICK SILENT COMEDY or VISUAL STORYTELLING (zero spoken dialogue, rich visual humor and reactions).'
@@ -137,7 +145,7 @@ app.post('/api/generate-story-angles', async (req: Request, res: Response) => {
         ? 'Include crisp, varied spoken dialogue cues with zero repeated lines across situations.'
         : 'Blend punchy dialogue moments with hilarious silent visual-comedy reactions dynamically.';
 
-    // Ultra-fast 4 parallel small AI batches (2-4 angles each) for crisp ~3-5s generation
+    // Ultra-fast 4 parallel small AI batches (2-4 angles each)
     const ai = getGeminiClient();
     if (ai) {
       try {
@@ -148,14 +156,20 @@ app.post('/api/generate-story-angles', async (req: Request, res: Response) => {
               ? 'Write all fields clearly in natural English.'
               : `100% PURE ${langConfig.geminiLangName} ONLY: Write ALL fields (genre, title, mood, bgm, continuity, characters, storySummary) strictly in pure ${langConfig.geminiLangName} Unicode script. ZERO English words or foreign letters.`;
 
-          const systemInstruction = `Cinema Script Consultant: Generate ${total} genuinely DISTINCT film adaptations (${countPerCat} unique variations per category for: ${JSON.stringify(cats)}).
-RULES:
-1. Stay 100% centered on the EXACT people, animals, places, objects, and core event in the user's input story.
-2. CLEAR BEGINNING-TO-END ARC + ZERO REPETITION: Every variation must have a completely DIFFERENT escalating chain of problems, surprises, or comedy angles flowing cleanly from Introduction -> Distinct Middle Escalations -> Satisfying Ending. Do NOT repeat the same conflict or wording across cards.
-3. ${modeNote}
-4. ${nativeOnlyRule}
-5. Include rich "bgm" (background music & SFX), "continuity" (visual character/clothing/prop lock), and 3 punchy sentences in "storySummary" outlining Beginning, Escalating Twist, and Ending.
-6. Set "catKey" strictly from ${JSON.stringify(cats)}.
+          const systemInstruction = `Master Film Screenwriter: Transform the user's brief story idea into ${total} COMPLETELY DIFFERENT multi-character film stories (${countPerCat} distinct storylines per category for: ${JSON.stringify(cats)}).
+CRITICAL NON-REPETITION & STORY EXPANSION RULES:
+1. SEED USED ONCE ONLY (ZERO REPETITION): Treat the user's input STRICTLY as Sentence 1 (the opening hook). NEVER repeat, echo, or re-paste the user's opening lines again in later sentences of "storySummary"! Every sentence after Sentence 1 must introduce brand-new events.
+2. EXPAND WITH NEW CHARACTERS & MULTIPLE SITUATIONS FOR A ${clipCount}-CLIP (${durationDisplay || `${clipCount} shots`}) VIDEO:
+   - Invent 2 to 4 NEW supporting characters with natural local names in "characters" suited to each category.
+   - Write a flowing 4 to 5 sentence narrative story in "storySummary":
+     * Sentence 1: Opening moment adapted from the user's seed.
+     * Sentence 2: A NEW named character enters and sparks a concrete problem, threat, or comic misunderstanding.
+     * Sentence 3: An escalating second situation / chase / emotional twist involving another obstacle.
+     * Sentence 4: Surprising turning point + concrete climax resolution & satisfying ending.
+3. Each variation across ${JSON.stringify(cats)} must tell a TOTALLY different story plot, conflict, and ending matching its category (Thriller mystery vs Comedy chaos vs Action escape vs Folk horror vs Sci-Fi twist vs Emotional Drama vs Commercial Ad).
+4. ${modeNote}
+5. ${nativeOnlyRule}
+6. Include rich "bgm" (background music & SFX) and "continuity" (visual wardrobe/prop continuity). Keep "catKey" strictly as the exact lowercase ASCII tag from ${JSON.stringify(cats)}.
 
 JSON only:
 { "angles": [{ "catKey": "${cats[0]}", "genre": "...", "title": "...", "mood": "...", "bgm": "...", "continuity": "...", "characters": "...", "storySummary": "..." }] }`;
@@ -163,14 +177,14 @@ JSON only:
           const resBatch = await withTimeout(
             ai.models.generateContent({
               model: 'gemini-3.1-flash-lite',
-              contents: `Language: ${langConfig.geminiLangName}\nDialogue Mode: ${dialogueMode}\nStory: "${script.trim()}"`,
+              contents: `Language: ${langConfig.geminiLangName}\nDialogue Mode: ${dialogueMode}\nVideo Length: ${clipCount} clips (${durationDisplay || `${clipCount} shots`})\nUser's Short Opening Seed: "${script.trim()}"`,
               config: {
                 systemInstruction,
                 responseMimeType: 'application/json',
-                thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL },
+                thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
               },
             }),
-            12000
+            16000
           );
           const parsed = JSON.parse(resBatch.text || '{}');
           return Array.isArray(parsed.angles) ? parsed.angles : [];
@@ -183,25 +197,26 @@ JSON only:
           generateBatch(['ad'], 2),
         ]);
 
+        const fallbackAngles = generateStoryAnglesLocal(script, langCode, clipCount);
         const combined = settled.flatMap((r) => (r.status === 'fulfilled' ? r.value : []));
-        if (combined.length >= 6) {
+        if (combined.length >= 4) {
           const normalized = combined.map((a: any, idx: number) => ({
             ...a,
             id: `angle-${idx + 1}`,
             synopsis: a.synopsis || a.mood || a.genre,
             scriptText:
               a.scriptText ||
-              `${script.trim()}\n\n${a.storySummary || ''}\n\n[BGM STYLE: ${a.bgm || ''}]\n[CONTINUITY: ${a.continuity || ''}]`,
+              `${a.storySummary || script.trim()}\n\n[CHARACTERS: ${a.characters || ''}]\n[BGM STYLE: ${a.bgm || ''}]\n[CONTINUITY: ${a.continuity || ''}]`,
           }));
-          return res.json({ angles: normalized });
+          return res.json({ angles: mergeAnglesEnsuringAllCategories(normalized, fallbackAngles) });
         }
       } catch (geminiErr: any) {
         console.warn('Gemini fast story angles notice, using fallback:', geminiErr?.message);
       }
     }
 
-    // Fallback instant story-matched variations engine (100% anchored to user's premise)
-    const angles = generateStoryAnglesLocal(script, langCode);
+    // Fallback instant multi-character story-expansion engine (zero repetition)
+    const angles = generateStoryAnglesLocal(script, langCode, clipCount);
     return res.json({ angles });
   } catch (error: any) {
     console.error('Error generating story angles:', error);

@@ -37,11 +37,9 @@ import {
   getLangConfig,
 } from './lib/i18n';
 import {
-  StickyTopAd,
-  StickyBottomAd,
-  InFeedWideVideoAd,
-  InterstitialVideoAdModal,
-  triggerAdsterraPopunder,
+  TopBannerAd,
+  BottomBannerAd,
+  InFeedBannerAd,
 } from './components/AdsterraAds';
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/+$/, '');
@@ -71,6 +69,30 @@ async function postApiJson<T>(endpoint: string, payload: unknown, signal?: Abort
   return res.json() as Promise<T>;
 }
 
+const AutoResizeTextarea: React.FC<React.TextareaHTMLAttributes<HTMLTextAreaElement>> = ({
+  value,
+  className = '',
+  ...props
+}) => {
+  const ref = useRef<HTMLTextAreaElement | null>(null);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${el.scrollHeight}px`;
+  }, [value]);
+
+  return (
+    <textarea
+      ref={ref}
+      value={value}
+      className={`overflow-hidden resize-none ${className}`}
+      {...props}
+    />
+  );
+};
+
 export default function App() {
   const [lang, setLang] = useState<AppLang>('ml');
   const t = UI_TRANSLATIONS[lang];
@@ -98,23 +120,14 @@ export default function App() {
   const [loadingTtsId, setLoadingTtsId] = useState<string | null>(null);
   const [voicePace, setVoicePace] = useState<VoicePace>('story');
   const [dialogueMode, setDialogueMode] = useState<DialogueMode>('dynamic');
-  const [showVideoAdModal, setShowVideoAdModal] = useState<boolean>(false);
+  const [promptViewMode, setPromptViewMode] = useState<'all' | 'single'>('all');
+  const [focusedShotIndex, setFocusedShotIndex] = useState<number>(0);
+  const [editingShots, setEditingShots] = useState<Record<number, boolean>>({});
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const ttsAbortRef = useRef<AbortController | null>(null);
   const ttsCacheRef = useRef<Map<string, string>>(new Map());
   const speechSessionRef = useRef<number>(0);
-  const adInteractionCountRef = useRef<number>(0);
-
-  // Trigger 2-second auto-skip video ad & popunder ONLY every 2-3 interactions (not every click)
-  const triggerThrottledAdBreak = () => {
-    adInteractionCountRef.current += 1;
-    const count = adInteractionCountRef.current;
-    if (count === 2 || (count > 2 && (count - 2) % 3 === 0)) {
-      setShowVideoAdModal(true);
-      triggerAdsterraPopunder();
-    }
-  };
 
   const stopAllSpeech = () => {
     speechSessionRef.current += 1;
@@ -144,6 +157,9 @@ export default function App() {
 
   useEffect(() => {
     stopAllSpeech();
+    if (typeof window !== 'undefined') {
+      window.scrollTo({ top: 0, behavior: 'auto' });
+    }
   }, [activeStep]);
 
   // Calculate total duration in seconds based on unit
@@ -184,6 +200,8 @@ export default function App() {
           script: trimmedCurrent,
           language: newLang,
           dialogueMode,
+          targetShotCount: calculatedShotCount,
+          durationDisplay: formatDurationDisplay(),
         });
         if (result.angles && Array.isArray(result.angles) && result.angles.length > 0) {
           updatedAngles = result.angles;
@@ -193,7 +211,7 @@ export default function App() {
       }
 
       if (updatedAngles.length === 0) {
-        updatedAngles = generateStoryAnglesLocal(trimmedCurrent, newLang);
+        updatedAngles = generateStoryAnglesLocal(trimmedCurrent, newLang, calculatedShotCount);
       }
 
       setStoryAngles(updatedAngles);
@@ -207,8 +225,11 @@ export default function App() {
 
         if (activeStep === 'prompts' || shots.length > 0) {
           setLoadingShots(true);
+          const baseText = matchedAngle.scriptText || matchedAngle.storySummary || trimmedCurrent;
           const scriptInput =
-            matchedAngle.scriptText || matchedAngle.storySummary || trimmedCurrent;
+            matchedAngle.characters && !baseText.includes('[CHARACTERS:')
+              ? `${baseText}\n\n[CHARACTERS: ${matchedAngle.characters}]`
+              : baseText;
           try {
             const shotResult = await postApiJson<{ shots?: GeneratedShot[] }>(
               '/api/generate-breakdown',
@@ -290,7 +311,6 @@ export default function App() {
     }
 
     stopAllSpeech();
-    triggerThrottledAdBreak();
     const sessionId = speechSessionRef.current;
     const paceCfg = VOICE_PACE_SETTINGS[voicePace];
     const cleanText = cleanTextForSpeech(rawText, lang);
@@ -401,8 +421,6 @@ export default function App() {
 
   // Step 1 -> Step 2: Generate Story Angle Variations in Selected Language
   const handleGenerateStoryAngles = async () => {
-    triggerThrottledAdBreak();
-
     const trimmedPremise = premise.trim();
     if (!trimmedPremise) {
       setError(t.premiseRequiredError);
@@ -421,6 +439,8 @@ export default function App() {
         script: trimmedPremise,
         language: lang,
         dialogueMode,
+        targetShotCount: calculatedShotCount,
+        durationDisplay: formatDurationDisplay(),
       });
 
       if (result.angles && Array.isArray(result.angles) && result.angles.length > 0) {
@@ -431,7 +451,7 @@ export default function App() {
       throw new Error('Unexpected format received for story angles.');
     } catch (err: any) {
       console.warn('API /api/generate-story-angles fallback activated:', err?.message);
-      const localAngles = generateStoryAnglesLocal(trimmedPremise, lang);
+      const localAngles = generateStoryAnglesLocal(trimmedPremise, lang, calculatedShotCount);
       if (localAngles.length > 0) {
         setStoryAngles(localAngles);
         setActiveStep('options');
@@ -449,15 +469,20 @@ export default function App() {
     modeOverride?: DialogueMode
   ) => {
     const activeMode = modeOverride ?? dialogueMode;
-    triggerThrottledAdBreak();
     stopAllSpeech();
     setSelectedAngle(angle);
+    setFocusedShotIndex(0);
+    setEditingShots({});
     setLoadingShots(true);
     setError(null);
     setVisiblePromptCount(25);
     setActiveStep('prompts');
 
-    const scriptInput = angle.scriptText || angle.storySummary || premise.trim();
+    const baseText = angle.scriptText || angle.storySummary || premise.trim();
+    const scriptInput =
+      angle.characters && !baseText.includes('[CHARACTERS:')
+        ? `${baseText}\n\n[CHARACTERS: ${angle.characters}]`
+        : baseText;
 
     try {
       const result = await postApiJson<{ shots?: GeneratedShot[] }>('/api/generate-breakdown', {
@@ -516,11 +541,8 @@ export default function App() {
   const totalAngleCountDisplay = storyAngles.length > 0 ? storyAngles.length : 14;
 
   return (
-    <div className="min-h-screen bg-[#090a0f] text-zinc-100 flex flex-col font-sans selection:bg-amber-500 selection:text-black pt-[54px] md:pt-[94px] max-w-full overflow-x-hidden">
-      {/* Persistent Sticky Top Advertisement Banner */}
-      <StickyTopAd />
-
-      {/* Top Global Language Switcher Bar */}
+    <div className="min-h-screen bg-[#090a0f] text-zinc-100 flex flex-col font-sans selection:bg-amber-500 selection:text-black max-w-full overflow-x-clip touch-pan-y">
+      {/* Top Global Language Switcher Bar (Always Unobstructed) */}
       <div className="bg-[#07080d] border-b border-zinc-800/80 px-3.5 sm:px-6 lg:px-8 py-2">
         <div className="max-w-7xl mx-auto flex items-center justify-between gap-2.5">
           <div className="flex items-center gap-1.5 text-xs font-bold text-amber-400 shrink-0">
@@ -549,8 +571,8 @@ export default function App() {
         </div>
       </div>
 
-      {/* App Header with Desktop Breadcrumb Step Indicator */}
-      <header className="border-b border-zinc-800/80 px-3.5 sm:px-6 lg:px-8 py-3 sm:py-4 bg-[#0d0f17]/95 sticky top-[54px] md:top-[94px] z-30 backdrop-blur-md">
+      {/* App Header with Desktop Breadcrumb Step Indicator (unobstructed at top) */}
+      <header className="border-b border-zinc-800/80 px-3.5 sm:px-6 lg:px-8 py-3 sm:py-4 bg-[#0d0f17]/95 sm:sticky sm:top-0 z-30 backdrop-blur-md">
         <div className="max-w-7xl mx-auto flex items-center justify-between gap-3">
           <div className="flex items-center gap-2.5 min-w-0">
             <div className="p-2 rounded-xl bg-amber-500 text-black shadow-md shadow-amber-500/20 shrink-0">
@@ -615,8 +637,11 @@ export default function App() {
         </div>
       </header>
 
-      {/* Main Container (Safe bottom clearance for Sticky Bottom Ad + Mobile Nav) */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-8 pb-36 sm:pb-28 md:pb-32 overflow-x-hidden">
+      {/* Main Container (Safe bottom clearance above mobile bottom nav so no buttons are covered) */}
+      <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-6 pb-24 sm:pb-10 overflow-x-clip touch-pan-y">
+        {/* Top In-Flow Banner placed cleanly below Language Bar & Header */}
+        <TopBannerAd />
+
         {/* Error notification */}
         {error && (
           <div className="mb-6 p-3 bg-red-500/10 border border-red-500/30 text-red-300 text-sm rounded-xl">
@@ -655,12 +680,12 @@ export default function App() {
               </div>
 
               <div className="relative">
-                <textarea
+                <AutoResizeTextarea
                   value={premise}
                   onChange={(e) => setPremise(e.target.value)}
                   rows={6}
                   placeholder={t.premisePlaceholder}
-                  className="w-full min-h-[160px] lg:min-h-[300px] bg-[#0a0b12] border border-zinc-800 rounded-xl p-3.5 sm:p-4 text-base sm:text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-amber-500 transition-colors leading-relaxed resize-y"
+                  className="w-full min-h-[160px] lg:min-h-[300px] bg-[#0a0b12] border border-zinc-800 rounded-xl p-3.5 sm:p-4 text-base sm:text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-amber-500 transition-colors leading-relaxed"
                 />
               </div>
             </div>
@@ -812,9 +837,9 @@ export default function App() {
               </button>
             </div>
 
-            {/* Wide In-Screen Continuous Video & Banner Slot on Page 1 */}
+            {/* Wide Centered Ad Card on Page 1 */}
             <div className="lg:col-span-12">
-              <InFeedWideVideoAd slotId="page1-center" />
+              <InFeedBannerAd slotId="page1-center" />
             </div>
           </div>
         )}
@@ -923,8 +948,8 @@ export default function App() {
                   ))}
                 </div>
 
-                {/* Story Option Cards Grid (1 col Mobile, 2 col Tablet, 3 col Desktop Web) */}
-                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-6">
+                {/* Story Option Cards Grid (1 col Mobile, 2 col Tablet/Desktop so banner cards sit cleanly between every 2 cards) */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
                   {storyAngles
                     .filter((angle) => {
                       if (selectedGenreFilter === 'all') return true;
@@ -941,49 +966,57 @@ export default function App() {
                     })
                     .map((angle, angleIdx, visibleAngles) => {
                       const showAdAfter =
-                        visibleAngles.length > 1 &&
-                        (angleIdx === 1 || (angleIdx > 1 && (angleIdx - 1) % 3 === 0));
+                        visibleAngles.length > 2 &&
+                        (angleIdx + 1) % 2 === 0 &&
+                        angleIdx < visibleAngles.length - 1;
 
                       return (
                         <React.Fragment key={angle.id}>
-                          <div
-                            onClick={() => handleSelectStoryAndOpenPromptPage(angle)}
-                            className="p-4 sm:p-6 rounded-2xl bg-[#0f111c] border-2 border-zinc-800 hover:border-amber-400 hover:bg-[#131525] transition-all cursor-pointer flex flex-col justify-between space-y-4 relative group shadow-2xl"
-                          >
-                            <div className="space-y-3.5">
+                          <div className="p-4 sm:p-6 rounded-2xl bg-[#0f111c] border-2 border-zinc-800 hover:border-amber-400/70 transition-all flex flex-col justify-between space-y-4 relative shadow-2xl">
+                            <div className="space-y-3.5 select-text">
                               <div className="flex items-center justify-between border-b border-zinc-800/80 pb-2.5">
                                 <span className="px-3 py-1 rounded-full text-xs font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20">
                                   {angle.genre}
                                 </span>
-                                <ChevronRight className="w-5 h-5 text-zinc-500 group-hover:text-amber-400 group-hover:translate-x-1 transition-all" />
+                                <button
+                                  type="button"
+                                  onClick={() => handleSelectStoryAndOpenPromptPage(angle)}
+                                  className="p-1.5 rounded-lg text-zinc-400 hover:text-amber-400 hover:bg-zinc-800 transition-all cursor-pointer"
+                                  aria-label={t.selectThisStory(calculatedShotCount)}
+                                >
+                                  <ChevronRight className="w-5 h-5" />
+                                </button>
                               </div>
 
-                              <h3 className="text-lg font-extrabold text-white tracking-wide group-hover:text-amber-300 transition-colors">
+                              <h3
+                                onClick={() => handleSelectStoryAndOpenPromptPage(angle)}
+                                className="text-lg font-extrabold text-white tracking-wide hover:text-amber-300 transition-colors cursor-pointer break-words"
+                              >
                                 {angle.title}
                               </h3>
 
-                              <p className="text-xs text-amber-400/90 font-mono font-semibold">
+                              <p className="text-xs text-amber-400/90 font-mono font-semibold break-words">
                                 {angle.mood}
                               </p>
 
                               {/* Characters List */}
                               {angle.characters && (
-                                <div className="p-3 rounded-xl bg-zinc-950/80 border border-zinc-800/80 text-xs space-y-1">
+                                <div className="p-3 rounded-xl bg-zinc-950/80 border border-zinc-800/80 text-sm sm:text-xs space-y-1">
                                   <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400 block font-mono">
                                     {t.charactersLabel}
                                   </span>
-                                  <p className="text-zinc-200 font-medium leading-relaxed">
+                                  <p className="text-zinc-200 font-medium leading-relaxed break-words">
                                     {angle.characters}
                                   </p>
                                 </div>
                               )}
 
                               {/* Full Story Summary */}
-                              <div className="p-4 bg-[#090a12] rounded-xl border border-zinc-800 text-xs leading-relaxed text-zinc-300 font-sans space-y-1.5">
+                              <div className="p-4 bg-[#090a12] rounded-xl border border-zinc-800 text-sm sm:text-[13px] leading-relaxed text-zinc-200 font-sans space-y-1.5">
                                 <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400 block font-mono">
                                   {t.storyOverviewLabel}
                                 </span>
-                                <p className="whitespace-pre-line text-zinc-200 leading-relaxed font-sans">
+                                <p className="whitespace-pre-line text-zinc-100 leading-relaxed font-sans break-words">
                                   {angle.storySummary || angle.synopsis}
                                 </p>
                               </div>
@@ -996,7 +1029,7 @@ export default function App() {
                                       <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400 block font-mono">
                                         {t.bgmLabel}
                                       </span>
-                                      <p className="text-zinc-200 leading-relaxed">{angle.bgm}</p>
+                                      <p className="text-zinc-200 leading-relaxed break-words">{angle.bgm}</p>
                                     </div>
                                   )}
                                   {angle.continuity && (
@@ -1004,7 +1037,7 @@ export default function App() {
                                       <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-400 block font-mono">
                                         {t.continuityLabel}
                                       </span>
-                                      <p className="text-zinc-300 leading-relaxed">{angle.continuity}</p>
+                                      <p className="text-zinc-300 leading-relaxed break-words">{angle.continuity}</p>
                                     </div>
                                   )}
                                 </div>
@@ -1062,7 +1095,7 @@ export default function App() {
                             </div>
                           </div>
 
-                          {showAdAfter && <InFeedWideVideoAd slotId={`angle-slot-${angleIdx}`} />}
+                          {showAdAfter && <InFeedBannerAd slotId={`angle-slot-${angleIdx}`} />}
                         </React.Fragment>
                       );
                     })}
@@ -1139,10 +1172,25 @@ export default function App() {
               </div>
             )}
 
-            {/* Editable Vertically Descending Shot Prompt Cards */}
-            {!loadingShots && shots.length > 0 && (
-              <div className="space-y-6">
-                <div className="flex flex-wrap items-center justify-between gap-2">
+            {/* Editable Vertically Descending or Single Full-Screen Shot Prompt Cards */}
+            {!loadingShots && shots.length > 0 && (() => {
+              const safeFocusedIdx = Math.min(focusedShotIndex, Math.max(0, shots.length - 1));
+              const displayedEntries =
+                promptViewMode === 'single'
+                  ? [{ shot: shots[safeFocusedIdx], idx: safeFocusedIdx }]
+                  : shots.slice(0, visiblePromptCount).map((shot, idx) => ({ shot, idx }));
+
+              const jumpToShot = (nextIdx: number) => {
+                const bounded = Math.max(0, Math.min(shots.length - 1, nextIdx));
+                setFocusedShotIndex(bounded);
+                if (typeof window !== 'undefined') {
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                }
+              };
+
+              return (
+              <div className="space-y-5">
+                <div className="flex flex-wrap items-center justify-between gap-2.5">
                   <div className="space-y-0.5">
                     <h2 className="text-base font-bold uppercase tracking-wider text-zinc-100 flex items-center gap-2">
                       <span>{t.breakdownTitle}</span>
@@ -1156,14 +1204,86 @@ export default function App() {
                   </span>
                 </div>
 
-                {shots.slice(0, visiblePromptCount).map((shot, idx) => {
+                {/* Reading Mode Toggle Bar: Full-Screen One-by-One Card OR Smooth Free Vertical Scroll */}
+                <div className="p-2.5 rounded-xl bg-[#0e101c] border border-zinc-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div className="grid grid-cols-2 sm:flex items-center gap-1.5 w-full sm:w-auto">
+                    <button
+                      type="button"
+                      onClick={() => setPromptViewMode('all')}
+                      className={`px-3 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer text-center ${
+                        promptViewMode === 'all'
+                          ? 'bg-amber-500 text-black font-extrabold shadow-sm'
+                          : 'bg-zinc-900 text-zinc-300 border border-zinc-800 hover:text-white'
+                      }`}
+                    >
+                      {t.viewAllShotsBtn}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPromptViewMode('single')}
+                      className={`px-3 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer text-center ${
+                        promptViewMode === 'single'
+                          ? 'bg-amber-500 text-black font-extrabold shadow-sm'
+                          : 'bg-zinc-900 text-zinc-300 border border-zinc-800 hover:text-white'
+                      }`}
+                    >
+                      {t.viewSingleShotBtn}
+                    </button>
+                  </div>
+
+                  {promptViewMode === 'single' && (
+                    <div className="flex items-center justify-between sm:justify-end gap-2">
+                      <button
+                        type="button"
+                        disabled={safeFocusedIdx === 0}
+                        onClick={() => jumpToShot(safeFocusedIdx - 1)}
+                        className="px-3 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 disabled:opacity-40 text-amber-400 border border-amber-500/30 text-xs font-bold cursor-pointer disabled:cursor-not-allowed"
+                      >
+                        {t.prevShotBtn}
+                      </button>
+                      <span className="text-xs font-mono font-bold text-white px-2">
+                        {t.shotOfTotal(safeFocusedIdx + 1, shots.length)}
+                      </span>
+                      <button
+                        type="button"
+                        disabled={safeFocusedIdx >= shots.length - 1}
+                        onClick={() => jumpToShot(safeFocusedIdx + 1)}
+                        className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 disabled:opacity-40 text-black text-xs font-extrabold cursor-pointer disabled:cursor-not-allowed"
+                      >
+                        {t.nextShotBtn}
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Quick Shot Number Jump Strip when in One-by-One Full View */}
+                {promptViewMode === 'single' && shots.length > 1 && (
+                  <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-1">
+                    {shots.map((_, sIdx) => (
+                      <button
+                        key={sIdx}
+                        type="button"
+                        onClick={() => jumpToShot(sIdx)}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-mono font-bold shrink-0 cursor-pointer transition-all ${
+                          sIdx === safeFocusedIdx
+                            ? 'bg-amber-500 text-black font-extrabold shadow-sm'
+                            : 'bg-zinc-900 text-zinc-400 border border-zinc-800 hover:text-white'
+                        }`}
+                      >
+                        #{(sIdx + 1).toString().padStart(2, '0')}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {displayedEntries.map(({ shot, idx }) => {
                   const shotNumber = shot.shotNumber || idx + 1;
                   const shotDur = shot.durationSeconds || shotDurationSec;
 
                   const shotBgm = shot.bgm || selectedAngle.bgm || '';
                   const shotContinuity = shot.continuity || selectedAngle.continuity || '';
-
                   const shotDialogue = shot.malayalamDialogue || '';
+                  const isEditingThisShot = Boolean(editingShots[idx]);
 
                   const vidPromptText =
                     shot.videoPrompt ||
@@ -1190,14 +1310,12 @@ export default function App() {
                   const copyVideoPrompt = () => {
                     navigator.clipboard.writeText(vidPromptText);
                     setCopiedKey(`vid-${idx}`);
-                    triggerThrottledAdBreak();
                     setTimeout(() => setCopiedKey(null), 2000);
                   };
 
                   const copyImagePrompt = () => {
                     navigator.clipboard.writeText(imgPromptText);
                     setCopiedKey(`img-${idx}`);
-                    triggerThrottledAdBreak();
                     setTimeout(() => setCopiedKey(null), 2000);
                   };
 
@@ -1213,20 +1331,20 @@ ${vidPromptText}
 ${imgPromptText}`;
                     navigator.clipboard.writeText(masterPayload);
                     setCopiedKey(`master-${idx}`);
-                    triggerThrottledAdBreak();
                     setTimeout(() => setCopiedKey(null), 2000);
                   };
 
                   const showShotAdAfter =
-                    idx === 1 || (idx > 1 && (idx - 1) % 3 === 0);
+                    promptViewMode === 'all' &&
+                    displayedEntries.length > 2 &&
+                    (idx + 1) % 2 === 0 &&
+                    idx < displayedEntries.length - 1;
 
                   return (
                     <React.Fragment key={idx}>
-                      <div
-                        className="bg-[#10121d] border border-zinc-800 rounded-2xl overflow-hidden shadow-2xl transition-all"
-                      >
+                      <div className="bg-[#10121d] border border-zinc-800 rounded-2xl shadow-2xl transition-all">
                       {/* Shot Header Bar */}
-                      <div className="px-4 sm:px-5 py-3 sm:py-3.5 bg-[#0b0c13] border-b border-zinc-800 flex flex-wrap items-center justify-between gap-2.5 sm:gap-3">
+                      <div className="px-4 sm:px-5 py-3 sm:py-3.5 bg-[#0b0c13] border-b border-zinc-800 rounded-t-2xl flex flex-wrap items-center justify-between gap-2.5 sm:gap-3">
                         <div className="flex items-center gap-2.5 sm:gap-3">
                           <span className="px-3 py-1 rounded-lg bg-amber-500 text-black font-mono font-extrabold text-xs">
                             SHOT {shotNumber.toString().padStart(2, '0')} — {shotDur}s
@@ -1236,96 +1354,135 @@ ${imgPromptText}`;
                           </span>
                         </div>
 
-                        {/* Quick Copy Video Prompt Button */}
-                        <button
-                          type="button"
-                          onClick={copyVideoPrompt}
-                          className={`flex items-center gap-1.5 px-3 sm:px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                            isVideoCopied
-                              ? 'bg-emerald-500 text-black font-extrabold shadow-md shadow-emerald-500/20'
-                              : 'bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30'
-                          }`}
-                        >
-                          {isVideoCopied ? (
-                            <>
-                              <Check className="w-4 h-4 text-black" />
-                              <span>{t.copiedVideoPromptBtn}</span>
-                            </>
-                          ) : (
-                            <>
-                              <Copy className="w-3.5 h-3.5 text-amber-400" />
-                              <span>{t.copyVideoPromptBtn}</span>
-                            </>
-                          )}
-                        </button>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          {/* Inline Edit / Done Toggle (keeps mobile finger scrolling 100% free when reading) */}
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setEditingShots((prev) => ({ ...prev, [idx]: !prev[idx] }))
+                            }
+                            className={`flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                              isEditingThisShot
+                                ? 'bg-emerald-500 text-black font-extrabold'
+                                : 'bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border border-zinc-700'
+                            }`}
+                          >
+                            <span>{isEditingThisShot ? t.doneEditingBtn : t.editShotBtn}</span>
+                          </button>
+
+                          {/* Quick Copy Video Prompt Button */}
+                          <button
+                            type="button"
+                            onClick={copyVideoPrompt}
+                            className={`flex items-center gap-1.5 px-3 sm:px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                              isVideoCopied
+                                ? 'bg-emerald-500 text-black font-extrabold shadow-md shadow-emerald-500/20'
+                                : 'bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                            }`}
+                          >
+                            {isVideoCopied ? (
+                              <>
+                                <Check className="w-4 h-4 text-black" />
+                                <span>{t.copiedVideoPromptBtn}</span>
+                              </>
+                            ) : (
+                              <>
+                                <Copy className="w-3.5 h-3.5 text-amber-400" />
+                                <span>{t.copyVideoPromptBtn}</span>
+                              </>
+                            )}
+                          </button>
+                        </div>
                       </div>
 
-                      {/* Structured Editable Container Body */}
+                      {/* Full-Height Non-Scrolling Body (100% visible & swipe-free) */}
                       <div className="p-4 sm:p-5 space-y-4">
-                        {/* Editable Scene Action Summary */}
-                        <div className="space-y-1">
-                          <div className="flex items-center justify-between">
-                            <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-400 flex items-center gap-1">
-                              <Edit3 className="w-3 h-3 text-amber-400" />
-                              {t.shotActionLabel}
-                            </span>
-                          </div>
-                          <input
-                            type="text"
-                            value={shot.action}
-                            onChange={(e) => updateShotField(idx, 'action', e.target.value)}
-                            className="w-full bg-[#0a0b12] border border-zinc-800 rounded-lg p-2.5 text-base sm:text-sm text-zinc-100 font-sans focus:outline-none focus:border-amber-500 transition-colors"
-                          />
+                        {/* Scene Action Summary */}
+                        <div className="space-y-1.5">
+                          <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-400 flex items-center gap-1">
+                            <Edit3 className="w-3 h-3 text-amber-400" />
+                            {t.shotActionLabel}
+                          </span>
+                          {isEditingThisShot ? (
+                            <AutoResizeTextarea
+                              rows={2}
+                              value={shot.action}
+                              onChange={(e) => updateShotField(idx, 'action', e.target.value)}
+                              className="w-full bg-[#0a0b12] border border-zinc-700 rounded-lg p-3 text-base sm:text-sm text-zinc-100 font-sans focus:outline-none focus:border-amber-500 leading-relaxed"
+                            />
+                          ) : (
+                            <p className="w-full bg-[#0a0b12] border border-zinc-800/90 rounded-lg p-3 text-sm sm:text-[15px] text-zinc-100 font-sans leading-relaxed whitespace-pre-wrap break-words select-text">
+                              {shot.action}
+                            </p>
+                          )}
                         </div>
 
-                        {/* Editable Dialogue, BGM & Visual Continuity Lock */}
+                        {/* Dialogue, BGM & Visual Continuity Lock */}
                         <div className="space-y-3">
-                          <div className="space-y-1">
+                          <div className="space-y-1.5">
                             <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-400 flex items-center gap-1.5">
                               <MessageSquare className="w-3.5 h-3.5 shrink-0" />
                               {t.shotDialogueLabel}
                             </span>
-                            <input
-                              type="text"
-                              value={shotDialogue}
-                              placeholder="—"
-                              onChange={(e) => updateShotField(idx, 'malayalamDialogue', e.target.value)}
-                              className="w-full bg-[#0a0b12] border border-emerald-500/30 rounded-lg p-2.5 text-sm sm:text-xs text-emerald-100 placeholder-zinc-600 font-sans focus:outline-none focus:border-emerald-400 transition-colors"
-                            />
+                            {isEditingThisShot ? (
+                              <AutoResizeTextarea
+                                rows={2}
+                                value={shotDialogue}
+                                placeholder="—"
+                                onChange={(e) => updateShotField(idx, 'malayalamDialogue', e.target.value)}
+                                className="w-full bg-[#0a0b12] border border-emerald-500/40 rounded-lg p-3 text-sm text-emerald-100 placeholder-zinc-600 font-sans focus:outline-none focus:border-emerald-400 leading-relaxed"
+                              />
+                            ) : (
+                              <p className="w-full bg-[#0a0b12] border border-emerald-500/25 rounded-lg p-3 text-sm text-emerald-100 font-sans leading-relaxed whitespace-pre-wrap break-words select-text">
+                                {shotDialogue || '—'}
+                              </p>
+                            )}
                           </div>
 
                           <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-                            <div className="space-y-1">
+                            <div className="space-y-1.5">
                               <span className="text-[11px] font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
                                 <Music className="w-3.5 h-3.5 shrink-0" />
                                 {t.shotBgmLabel}
                               </span>
-                              <input
-                                type="text"
-                                value={shotBgm}
-                                onChange={(e) => updateShotField(idx, 'bgm', e.target.value)}
-                                className="w-full bg-[#0a0b12] border border-amber-500/30 rounded-lg p-2.5 text-sm sm:text-xs text-zinc-100 font-sans focus:outline-none focus:border-amber-500 transition-colors"
-                              />
+                              {isEditingThisShot ? (
+                                <AutoResizeTextarea
+                                  rows={2}
+                                  value={shotBgm}
+                                  onChange={(e) => updateShotField(idx, 'bgm', e.target.value)}
+                                  className="w-full bg-[#0a0b12] border border-amber-500/40 rounded-lg p-3 text-sm sm:text-xs text-zinc-100 font-sans focus:outline-none focus:border-amber-500 leading-relaxed"
+                                />
+                              ) : (
+                                <p className="w-full bg-[#0a0b12] border border-amber-500/25 rounded-lg p-3 text-xs sm:text-sm text-zinc-100 font-sans leading-relaxed whitespace-pre-wrap break-words select-text">
+                                  {shotBgm}
+                                </p>
+                              )}
                             </div>
 
-                            <div className="space-y-1">
+                            <div className="space-y-1.5">
                               <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-400 flex items-center gap-1.5">
                                 <Layers className="w-3.5 h-3.5 text-amber-400 shrink-0" />
                                 {t.continuityLabel}
                               </span>
-                              <input
-                                type="text"
-                                value={shotContinuity}
-                                onChange={(e) => updateShotField(idx, 'continuity', e.target.value)}
-                                className="w-full bg-[#0a0b12] border border-zinc-800 rounded-lg p-2.5 text-sm sm:text-xs text-zinc-300 font-sans focus:outline-none focus:border-amber-500 transition-colors"
-                              />
+                              {isEditingThisShot ? (
+                                <AutoResizeTextarea
+                                  rows={2}
+                                  value={shotContinuity}
+                                  onChange={(e) => updateShotField(idx, 'continuity', e.target.value)}
+                                  className="w-full bg-[#0a0b12] border border-zinc-700 rounded-lg p-3 text-sm sm:text-xs text-zinc-300 font-sans focus:outline-none focus:border-amber-500 leading-relaxed"
+                                />
+                              ) : (
+                                <p className="w-full bg-[#0a0b12] border border-zinc-800/90 rounded-lg p-3 text-xs sm:text-sm text-zinc-300 font-sans leading-relaxed whitespace-pre-wrap break-words select-text">
+                                  {shotContinuity}
+                                </p>
+                              )}
                             </div>
                           </div>
                         </div>
 
                         {/* Dual Layout: Stacked on Mobile, Side-by-Side on Desktop Web */}
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                          {/* 1. EDITABLE VIDEO GENERATION PROMPT (PRIMARY) */}
+                          {/* 1. VIDEO GENERATION PROMPT (FULL READABLE HEIGHT) */}
                           <div className="p-3.5 sm:p-4 rounded-xl bg-[#141624] border-2 border-amber-500/50 space-y-2.5 shadow-lg flex flex-col">
                             <div className="flex items-center justify-between gap-2 flex-wrap border-b border-amber-500/20 pb-2">
                               <span className="text-xs font-bold text-amber-400 uppercase tracking-wider flex items-center gap-1.5">
@@ -1355,15 +1512,21 @@ ${imgPromptText}`;
                               </button>
                             </div>
 
-                            <textarea
-                              value={vidPromptText}
-                              onChange={(e) => updateShotField(idx, 'videoPrompt', e.target.value)}
-                              rows={5}
-                              className="w-full flex-1 text-sm sm:text-xs text-zinc-100 font-mono leading-relaxed bg-zinc-950 p-3.5 sm:p-4 rounded-lg border border-zinc-800 focus:outline-none focus:border-amber-500 selection:bg-amber-500 selection:text-black resize-y"
-                            />
+                            {isEditingThisShot ? (
+                              <AutoResizeTextarea
+                                value={vidPromptText}
+                                onChange={(e) => updateShotField(idx, 'videoPrompt', e.target.value)}
+                                rows={4}
+                                className="w-full text-sm sm:text-xs text-zinc-100 font-mono leading-relaxed bg-zinc-950 p-3.5 sm:p-4 rounded-lg border border-zinc-700 focus:outline-none focus:border-amber-500 selection:bg-amber-500 selection:text-black"
+                              />
+                            ) : (
+                              <div className="w-full text-sm sm:text-[13px] text-zinc-100 font-mono leading-relaxed bg-zinc-950 p-3.5 sm:p-4 rounded-lg border border-zinc-800 whitespace-pre-wrap break-words select-text">
+                                {vidPromptText}
+                              </div>
+                            )}
                           </div>
 
-                          {/* 2. EDITABLE IMAGE GENERATION PROMPT (SECONDARY) */}
+                          {/* 2. IMAGE GENERATION PROMPT (FULL READABLE HEIGHT) */}
                           <div className="p-3.5 sm:p-4 rounded-xl bg-[#0d0f17] border border-zinc-800 space-y-2.5 flex flex-col">
                             <div className="flex items-center justify-between gap-2 flex-wrap border-b border-zinc-800 pb-2">
                               <span className="text-[11px] font-mono font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-1.5">
@@ -1393,12 +1556,18 @@ ${imgPromptText}`;
                               </button>
                             </div>
 
-                            <textarea
-                              value={imgPromptText}
-                              onChange={(e) => updateShotField(idx, 'imagePrompt', e.target.value)}
-                              rows={5}
-                              className="w-full flex-1 text-sm sm:text-xs text-zinc-300 font-mono leading-relaxed bg-zinc-950 p-3.5 sm:p-4 rounded-lg border border-zinc-800 focus:outline-none focus:border-amber-500 selection:bg-amber-500 selection:text-black resize-y"
-                            />
+                            {isEditingThisShot ? (
+                              <AutoResizeTextarea
+                                value={imgPromptText}
+                                onChange={(e) => updateShotField(idx, 'imagePrompt', e.target.value)}
+                                rows={4}
+                                className="w-full text-sm sm:text-xs text-zinc-300 font-mono leading-relaxed bg-zinc-950 p-3.5 sm:p-4 rounded-lg border border-zinc-700 focus:outline-none focus:border-amber-500 selection:bg-amber-500 selection:text-black"
+                              />
+                            ) : (
+                              <div className="w-full text-sm sm:text-[13px] text-zinc-200 font-mono leading-relaxed bg-zinc-950 p-3.5 sm:p-4 rounded-lg border border-zinc-800 whitespace-pre-wrap break-words select-text">
+                                {imgPromptText}
+                              </div>
+                            )}
                           </div>
                         </div>
 
@@ -1432,13 +1601,35 @@ ${imgPromptText}`;
                       </div>
                     </div>
 
-                      {showShotAdAfter && <InFeedWideVideoAd slotId={`shot-slot-${idx}`} />}
+                      {showShotAdAfter && <InFeedBannerAd slotId={`shot-slot-${idx}`} />}
                     </React.Fragment>
                   );
                 })}
 
+                {/* Bottom Prev / Next Bar when in One-by-One Full View */}
+                {promptViewMode === 'single' && shots.length > 1 && (
+                  <div className="flex items-center justify-between gap-3 pt-2">
+                    <button
+                      type="button"
+                      disabled={safeFocusedIdx === 0}
+                      onClick={() => jumpToShot(safeFocusedIdx - 1)}
+                      className="flex-1 sm:flex-none px-4 py-3 rounded-xl bg-zinc-900 hover:bg-zinc-800 disabled:opacity-40 text-amber-400 border border-amber-500/30 text-xs font-bold cursor-pointer disabled:cursor-not-allowed"
+                    >
+                      {t.prevShotBtn}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={safeFocusedIdx >= shots.length - 1}
+                      onClick={() => jumpToShot(safeFocusedIdx + 1)}
+                      className="flex-1 sm:flex-none px-5 py-3 rounded-xl bg-amber-500 hover:bg-amber-400 disabled:opacity-40 text-black text-xs font-extrabold cursor-pointer disabled:cursor-not-allowed"
+                    >
+                      {t.nextShotBtn}
+                    </button>
+                  </div>
+                )}
+
                 {/* Show More Clips Pagination Button if shots > visiblePromptCount */}
-                {shots.length > visiblePromptCount && (
+                {promptViewMode === 'all' && shots.length > visiblePromptCount && (
                   <div className="pt-4 text-center">
                     <button
                       type="button"
@@ -1450,13 +1641,16 @@ ${imgPromptText}`;
                   </div>
                 )}
               </div>
-            )}
+              );
+            })()}
           </div>
         )}
+        {/* Bottom In-Flow Banner placed cleanly at end of content without covering bottom navigation buttons */}
+        <BottomBannerAd />
       </main>
 
-      {/* Mobile Bottom App Navigation Bar (Positioned cleanly above the 50px Mobile Sticky Ad Banner) */}
-      <nav className="sm:hidden fixed bottom-[54px] inset-x-0 z-40 bg-[#0d0f17]/95 backdrop-blur-lg border-t border-zinc-800 px-2 py-2 grid grid-cols-3 gap-1.5 shadow-[0_-8px_30px_rgba(0,0,0,0.65)]">
+      {/* Mobile Bottom App Navigation Bar (Positioned cleanly at bottom-0 with 100% direct button visibility) */}
+      <nav className="sm:hidden fixed bottom-0 inset-x-0 z-40 bg-[#0d0f17]/95 backdrop-blur-lg border-t border-zinc-800 px-2 py-2 grid grid-cols-3 gap-1.5 shadow-[0_-8px_30px_rgba(0,0,0,0.65)]">
         <button
           type="button"
           onClick={() => setActiveStep('input')}
@@ -1502,15 +1696,6 @@ ${imgPromptText}`;
           <span className="truncate max-w-full">{t.step3}</span>
         </button>
       </nav>
-
-      {/* Persistent Sticky Bottom Adsterra Banner (320x50 Mobile / 728x90 Desktop) */}
-      <StickyBottomAd />
-
-      {/* 2-Second Auto-Skip Sponsored Video Break (Triggered every 2-3 actions) */}
-      <InterstitialVideoAdModal
-        open={showVideoAdModal}
-        onClose={() => setShowVideoAdModal(false)}
-      />
     </div>
   );
 }

@@ -7,7 +7,10 @@
     background-color: #090a0f;
     color: #e2e8f0;
     max-width: 100%;
-    overflow-x: hidden;
+    overflow-x: clip;
+    touch-action: pan-y;
+    overscroll-behavior-y: auto;
+    -webkit-overflow-scrolling: touch;
     -webkit-tap-highlight-color: transparent;
   }
 

@@ -544,17 +544,508 @@ const DYNAMIC_STORY_PACKS: Record<AppLang, GenreTemplatePack> = {
   },
 };
 
-export function generateStoryAnglesLocal(premise: string, lang: AppLang = 'ml'): StoryAngle[] {
-  const baseText = premise.trim();
+interface GenreExpansionArc {
+  titleTag: string;
+  mood: string;
+  characters: string;
+  situation1: string;
+  situation2: string;
+  climaxEnding: string;
+}
+
+type ExpansionPackByGenre = Record<GenreKey, [GenreExpansionArc, GenreExpansionArc]>;
+
+const STORY_EXPANSION_BLUEPRINTS: Record<AppLang, ExpansionPackByGenre> = {
+  ml: {
+    thriller: [
+      {
+        titleTag: 'രഹസ്യ ഡയറിയും പിന്തുടരലും',
+        mood: 'Suspenseful Mystery • Clues & Tension',
+        characters: 'പ്രധാന കഥാപാത്രം, ദുരൂഹ യാത്രികൻ കാർത്തിക്, സബ് ഇൻസ്പെക്ടർ അർജുൻ',
+        situation1: 'പരിഭ്രമത്തിനിടയിൽ മുന്നിൽ നിന്ന അജ്ഞാതനായ കാർത്തിക് പെട്ടെന്ന് ഒരു പഴയ ലോക്ക് ചെയ്ത ഡയറിയും താക്കോലും താഴെയിട്ട് ഇരുട്ടിലേക്ക് ഓടിമറയുന്നു.',
+        situation2: 'അത് തിരികെ കൊടുക്കാനായി പിന്നാലെ പോകുമ്പോൾ ഇൻസ്പെക്ടർ അർജുനും കറുത്ത വാനിൽ എത്തുന്ന ഒരു അക്രമി സംഘവും അതേ സാധനത്തിനായി തിരച്ചിൽ നടത്തുന്നതായി മനസ്സിലാകുന്നു.',
+        climaxEnding: 'ഒടുവിൽ ചതിക്കുഴികൾ മറികടന്ന് ഡയറിയിലെ തെളിവ് പോലീസിന് കൈമാറുന്നതോടെ വലിയൊരു ക്രിമിനൽ സംഘം കുടുങ്ങുകയും എല്ലാവരും സുരക്ഷിതരാവുകയും ചെയ്യുന്നു.',
+      },
+      {
+        titleTag: 'അവസാന ബസിലെ നിഗൂഢത',
+        mood: 'Psychological Thriller • Hidden Truth',
+        characters: 'പ്രധാന കഥാപാത്രം, അയൽക്കാരി ലത, പുരാവസ്തു ഗവേഷകൻ ഡോ. മേനോൻ',
+        situation1: 'ഭയത്തോടെ മാറിനിൽക്കുന്നതിനിടയിൽ അയൽക്കാരിയായ ലത വിളിച്ചുപറയുന്ന ഒരു അടിയന്തര മുന്നറിയിപ്പ് കാര്യങ്ങൾ കൂടുതൽ സങ്കീർണ്ണമാക്കുന്നു.',
+        situation2: 'ഡോ. മേനോൻ സൂക്ഷിച്ചിരുന്ന പഴയ നാണയപ്പെട്ടിയും രാത്രിയിലെ വൈദ്യുതി മുടക്കവും കൂടി എത്തുന്നതോടെ ആ സ്ഥലത്ത് മറ്റൊരാൾ കൂടി ഒളിച്ചിരിപ്പുണ്ടെന്ന് വ്യക്തമാകുന്നു.',
+        climaxEnding: 'ധൈര്യം സംഭരിച്ച് വിളക്ക് തെളിയിക്കുമ്പോൾ വർഷങ്ങൾ പഴക്കമുള്ളൊരു തെറ്റിദ്ധാരണയുടെ ചുരുളഴിയുകയും യഥാർത്ഥ കുറ്റവാളിയെ പിടികൂടുകയും ചെയ്യുന്നു.',
+      },
+    ],
+    drama: [
+      {
+        titleTag: 'മറന്നുപോയ കത്തും കൂടിച്ചേരലും',
+        mood: 'Heartfelt Emotional • Family Ties',
+        characters: 'പ്രധാന കഥാപാത്രം, വൃദ്ധനായ പോസ്റ്റ്മാൻ രാഘവൻ, സഹോദരി ദേവിക',
+        situation1: 'ആദ്യത്തെ അമ്പരപ്പ് മാറുമ്പോൾ മുന്നിൽ നിൽക്കുന്നത് വർഷങ്ങളായി കാണാതിരുന്ന പോസ്റ്റ്മാൻ രാഘവനാണെന്നും അദ്ദേഹത്തിന്റെ കയ്യിൽ ദേവികയുടെ ഒരു പഴയ കത്തുണ്ടെന്നും തിരിച്ചറിയുന്നു.',
+        situation2: 'കുടുംബത്തിലെ പഴയ പിണക്കങ്ങളും സാമ്പത്തിക ബുദ്ധിമുട്ടുകളും കാരണം ഇത്രയും കാലം കൈമാറാതെ പോയ ആ സത്യം തുറന്നുപറയുമ്പോൾ വൈകാരികമായ ഒരു പ്രതിസന്ധി ഉടലെടുക്കുന്നു.',
+        climaxEnding: 'കണ്ണീരിനിടയിലും എല്ലാവരും പരസ്പരം മാപ്പ് നൽകുകയും തകർന്നുപോയ ആ കുടുംബബന്ധം വീണ്ടും സ്നേഹത്തോടെ ഒന്നിക്കുകയും ചെയ്യുന്നു.',
+      },
+      {
+        titleTag: 'മഴക്കാലത്തെ വാഗ്ദാനം',
+        mood: 'Touching Drama • Quiet Sacrifice',
+        characters: 'പ്രധാന കഥാപാത്രം, അമ്മ ലക്ഷ്മി, ബാല്യകാല സുഹൃത്ത് രോഹൻ',
+        situation1: 'പ്രശ്നത്തിൽ നിന്ന് ഒഴിഞ്ഞുമാറാൻ ശ്രമിക്കുന്നതിനിടയിൽ അമ്മ ലക്ഷ്മിയുടെ ആരോഗ്യവാർത്തയും സുഹൃത്ത് രോഹന്റെ അപ്രതീക്ഷിത വരവും പുതിയൊരു ഉത്തരവാദിത്തം ഏൽപ്പിക്കുന്നു.',
+        situation2: 'സ്വന്തം സ്വപ്നവും കുടുംബത്തിന്റെ ആവശ്യവും തമ്മിലുള്ള വലിയൊരു ആത്മസംഘർഷത്തിനൊടുവിൽ കടുത്തൊരു തീരുമാനം എടുക്കേണ്ടി വരുന്നു.',
+        climaxEnding: 'സ്വന്തം കഴിവ് ഉപയോഗിച്ച് പ്രതിസന്ധി മറികടക്കുമ്പോൾ അമ്മയുടെ മുഖത്ത് അഭിമാനവും പ്രത്യാശയും നിറയുന്ന ഹൃദ്യമായൊരു അന്ത്യമാകുന്നു.',
+      },
+    ],
+    action: [
+      {
+        titleTag: 'രാത്രിയിലെ ഹൈ-സ്പീഡ് രക്ഷപ്പെടൽ',
+        mood: 'High-Octane Action • Adrenaline Chase',
+        characters: 'പ്രധാന കഥാപാത്രം, രഹസ്യ ഏജന്റ് വിക്രം, ഹാക്കർ പ്രിയ',
+        situation1: 'പ്രശ്നം തുടങ്ങിയ തൊട്ടടുത്ത നിമിഷം പരിക്കേറ്റ ഏജന്റ് വിക്രം രഹസ്യ ചിപ്പ് കൈമാറി ബൈക്കിൽ വരുന്ന അക്രമികളിൽ നിന്ന് രക്ഷപ്പെടാൻ സഹായം തേടുന്നു.',
+        situation2: 'തകർന്ന പാലത്തിലൂടെയും തിരക്കേറിയ മാർക്കറ്റിലൂടെയും പ്രിയയുടെ ഫോൺ നിർദ്ദേശങ്ങൾ പിന്തുടർന്ന് സാഹസികമായൊരു ഓട്ടവും ചെറുത്തുനിൽപ്പും നടക്കുന്നു.',
+        climaxEnding: 'അവസാന പോരാട്ടത്തിൽ ശത്രുക്കളെ കീഴടക്കി രഹസ്യ വിവരങ്ങൾ സുരക്ഷിത കേന്ദ്രത്തിൽ എത്തിക്കുന്നതോടെ മിഷൻ വിജയിക്കുന്നു.',
+      },
+      {
+        titleTag: 'അവസാന ചെക്ക്പോസ്റ്റ്',
+        mood: 'Mass Action • Heroic Defense',
+        characters: 'പ്രധാന കഥാപാത്രം, ഫോറസ്റ്റ് ഗൈഡ് ശങ്കർ, കള്ളക്കടത്തു സംഘം',
+        situation1: 'പ്രതിസന്ധിയിൽ പതറാതെ നിൽക്കുമ്പോൾ പരിചയസമ്പന്നനായ ഗൈഡ് ശങ്കർ അപകടമേഖലയിലേക്കുള്ള കുറുക്കുവഴി അടയ്ക്കാൻ കൂടെച്ചേരുന്നു.',
+        situation2: 'ജീപ്പിന്റെ ബ്രേക്ക് നഷ്ടപ്പെടുകയും കള്ളക്കടത്തുകാർ വഴി തടയുകയും ചെയ്യുമ്പോൾ ആയുധങ്ങളില്ലാതെ ചുറ്റുമുള്ള വസ്തുക്കൾ ഉപയോഗിച്ച് നേരിടേണ്ടി വരുന്നു.',
+        climaxEnding: 'പുലർച്ചെയോടെ ശത്രുക്കളെയെല്ലാം തകർത്ത് നാട്ടുകാർക്ക് മുന്നിൽ യഥാർത്ഥ ഹീറോയായി തിരിച്ചെത്തുന്നു.',
+      },
+    ],
+    folk: [
+      {
+        titleTag: 'കാവിലെ മൺചിരാതിന്റെ രഹസ്യം',
+        mood: 'Atmospheric Folk • Eerie Mystery',
+        characters: 'പ്രധാന കഥാപാത്രം, കാവിലെ കാവൽക്കാരൻ കേളുപ്പണിക്കർ, ഗവേഷക അനന്യ',
+        situation1: 'ഭയന്ന് പിന്തിരിഞ്ഞ നിമിഷം കയ്യിലൊരു പഴയ ഓട്ടുവിളക്കുമായി കാവൽക്കാരൻ കേളുപ്പണിക്കർ പ്രത്യക്ഷപ്പെട്ട് ആൽമരത്തിനപ്പുറത്തേക്ക് പോകരുതെന്ന് മുന്നറിയിപ്പ് നൽകുന്നു.',
+        situation2: 'ചരിത്ര ഗവേഷക അനന്യയോടൊപ്പം പഴയ ശിലാലിഖിതങ്ങൾ പരിശോധിക്കുമ്പോൾ നൂറ്റാണ്ടുകൾക്ക് മുൻപ് മറച്ചുവെച്ചൊരു നിധിശാപത്തിന്റെ സൂചന ലഭിക്കുന്നു.',
+        climaxEnding: 'അർദ്ധരാത്രിയിലെ ആചാരപ്പുകയ്ക്കിടയിലൂടെ യഥാർത്ഥ രഹസ്യം കണ്ടെത്തുന്നതോടെ ഗ്രാമത്തെ വിഴുങ്ങിയ ഭയം എന്നെന്നേക്കുമായി നീങ്ങുന്നു.',
+      },
+      {
+        titleTag: 'പഴയ നാലുകെട്ടിലെ നിഴൽ',
+        mood: 'Supernatural Mystery • Midnight Chills',
+        characters: 'പ്രധാന കഥാപാത്രം, കാര്യസ്ഥൻ കുട്ടൻ, ഫോട്ടോഗ്രാഫർ നന്ദൻ',
+        situation1: 'കാറ്റിന്റെ ശബ്ദത്തിനിടയിൽ അടഞ്ഞുകിടന്ന മുകൾനിലയിലെ വാതിൽ തനിയെ തുറക്കുകയും കാര്യസ്ഥൻ കുട്ടൻ വിളറിവെളുത്ത് അങ്ങോട്ട് ചൂണ്ടിക്കാണിക്കുകയും ചെയ്യുന്നു.',
+        situation2: 'നന്ദൻ ക്യാമറയിൽ പകർത്തിയ ചിത്രങ്ങളിൽ സാധാരണ കണ്ണുകൾക്ക് കാണാത്തൊരു നിഴൽ രൂപവും പഴയൊരു താക്കോൽക്കൂട്ടവും തെളിയുന്നു.',
+        climaxEnding: 'നിലവറയിലെ പഴയ പെട്ടി തുറന്ന് സത്യം പുറത്തുകൊണ്ടുവരുമ്പോൾ പ്രതീക്ഷിക്കാത്തൊരു ക്ലൈമാക്സ് കാത്തിരിക്കുന്നു.',
+      },
+    ],
+    scifi: [
+      {
+        titleTag: 'ടൈം ലൂപ്പിലെ പത്താമത്തെ മിനിറ്റ്',
+        mood: 'Mind-Bending Sci-Fi • Time Paradox',
+        characters: 'പ്രധാന കഥാപാത്രം, ശാസ്ത്രജ്ഞ ഡോ. താര, അയൽവാസി സഞ്ജയ്',
+        situation1: 'ആദ്യത്തെ ഞെട്ടലിനിടയിൽ മുന്നിൽ എത്തിയ ഡോ. താരയുടെ കയ്യിലെ വാച്ചിൽ സമയം പുറകോട്ട് ഓടുന്നത് കാണുകയും ഇതേ സംഭവം മുൻപും നടന്നതായി തിരിച്ചറിയുകയും ചെയ്യുന്നു.',
+        situation2: 'സഞ്ജയ്‌യുടെ ലാബിൽ നിന്നുള്ള സിഗ്നൽ തകരാർ കാരണം ഓരോ പത്ത് മിനിറ്റിലും അതേ നിമിഷത്തിലേക്ക് വീണ്ടും വീണ്ടും കുടുങ്ങുന്ന പ്രതിസന്ധി ഉണ്ടാകുന്നു.',
+        climaxEnding: 'അവസാന സെക്കൻഡിൽ ടൈം ഫ്രീക്വൻസി ശരിയാക്കി ടൈം ലൂപ്പ് തകർക്കുന്നതോടെ പുതിയൊരു പ്രഭാതത്തിലേക്ക് കടക്കുന്നു.',
+      },
+      {
+        titleTag: 'മറുലോകത്തു നിന്നൊരു സന്ദേശം',
+        mood: 'Futuristic Mystery • Parallel World',
+        characters: 'പ്രധാന കഥാപാത്രം, റേഡിയോ എൻജിനീയർ കിരൺ, എ.ഐ സഹായി നോവ',
+        situation1: 'സാഹചര്യം വഷളാകുമ്പോൾ പോക്കറ്റിലെ ഫോണിൽ ഭാവിയിൽ നിന്നുള്ളൊരു അടിയന്തര ശബ്ദസന്ദേശം എത്തുകയും കിരൺ സഹായത്തിന് എത്തുകയും ചെയ്യുന്നു.',
+        situation2: 'അദൃശ്യമായൊരു എനർജി മതിൽ വഴി തടയുമ്പോൾ നോവയുടെ ഡാറ്റാ മാപ്പ് ഉപയോഗിച്ച് പ്രപഞ്ച വാതിൽ അടയ്ക്കാൻ ശ്രമം നടത്തുന്നു.',
+        climaxEnding: 'ഊർജ്ജ പ്രവാഹത്തെ മറികടന്ന് സന്ദേശം ഡീകോഡ് ചെയ്യുമ്പോൾ വരാനിരുന്ന വലിയൊരു അപകടം ഒഴിവാകുന്നു.',
+      },
+    ],
+    comedy: [
+      {
+        titleTag: 'കല്യാണപ്പന്തലിലെ കൂട്ടക്കുഴപ്പം',
+        mood: 'Laugh-Out-Loud Comedy • Situational Chaos',
+        characters: 'പ്രധാന കഥാപാത്രം, പരിഭ്രാന്തനായ വരൻ സുകു, കർക്കശക്കാരൻ അമ്മാവൻ മാധവൻ, ചായക്കടക്കാരൻ ബാബു',
+        situation1: 'പേടിച്ചോടിയതിനു തൊട്ടുപിന്നാലെ മുണ്ടും മടക്കിക്കുത്തി പായുന്ന വരൻ സുകു മുന്നിലേക്ക് ചാടിവീഴുകയും കല്യാണത്തിന് വഴിതെറ്റിയെന്ന് അലറുകയും ചെയ്യുന്നു.',
+        situation2: 'പിന്നാലെ ലഡു ട്രേയുമായി എത്തുന്ന അമ്മാവൻ മാധവനും തമാശക്കാരനായ ബാബുവും ചേർന്ന് ആളുമാറി മറ്റൊരു സ്കൂട്ടറിൽ കയറുന്നതോടെ അബദ്ധങ്ങളുടെ ഘോഷയാത്ര തുടങ്ങുന്നു.',
+        climaxEnding: 'വലിയ കോലാഹലത്തിനൊടുവിൽ അമ്മാവൻ ചെളിയിൽ വീഴുകയും എല്ലാ തെറ്റിദ്ധാരണകളും മാറി കൂട്ടച്ചിരിയോടെ കല്യാണവേദിയിലെത്തുകയും ചെയ്യുന്നു.',
+      },
+      {
+        titleTag: 'അയൽക്കാരന്റെ കുരുക്ക്',
+        mood: 'Playful Family Fun • Visual Gags',
+        characters: 'പ്രധാന കഥാപാത്രം, അയൽക്കാരൻ വർഗീസ് അങ്കിൾ, കുസൃതിക്കുട്ടി ചിന്നു',
+        situation1: 'വിവരം അറിയാതെ ഓടിമാറുമ്പോൾ വർഗീസ് അങ്കിളിന്റെ പുതിയ കുടയും പാൽപ്പാത്രവും തട്ടിമറിഞ്ഞ് വലിയൊരു ബഹളത്തിന് തുടക്കമാകുന്നു.',
+        situation2: 'തെറ്റ് മറയ്ക്കാൻ ചിന്നുവിനൊപ്പം ചേർന്ന് നടത്തുന്ന ഓരോ തന്ത്രവും വിപരീതഫലമായി അടുക്കളയിലും മുറ്റത്തും രസകരമായ കുഴപ്പങ്ങൾ ഉണ്ടാക്കുന്നു.',
+        climaxEnding: 'സത്യം പുറത്തായ നിമിഷം അങ്കിളിന് ചിരി അടക്കാൻ കഴിയാതെ വരികയും എല്ലാവരും ചേർന്ന് ചായ കുടിച്ച് പിരിയുകയും ചെയ്യുന്നു.',
+      },
+    ],
+    ad: [
+      {
+        titleTag: 'വിശ്വാസത്തിന്റെ പുതിയ വെളിച്ചം',
+        mood: 'Warm Commercial • Brand Hero Moment',
+        characters: 'പ്രധാന കഥാപാത്രം, കരുതലുള്ള അച്ഛൻ, ചിരിച്ചെത്തുന്ന സുഹൃത്തുക്കൾ',
+        situation1: 'ചെറിയൊരു ആശയക്കുഴപ്പവും ഇരുട്ടും നിറഞ്ഞ നിമിഷത്തിൽ വിശ്വസ്തമായ ആ സ്മാർട്ട് ഉൽപ്പന്നം ഓൺ ആകുന്നതോടെ പരിസരം പകൽ പോലെ തിളങ്ങുന്നു.',
+        situation2: 'പ്രയാസകരമായ സാഹചര്യം നിമിഷനേരം കൊണ്ട് ലളിതവും സുരക്ഷിതവുമാകുന്നത് കണ്ട് ചുറ്റുമുള്ളവർ അത്ഭുതപ്പെടുന്നു.',
+        climaxEnding: 'കുടുംബത്തിന്റെ പുഞ്ചിരിയും ഹൃദ്യമായൊരു ബ്രാൻഡ് സന്ദേശവും ചേർന്ന് മനസ്സിൽ തങ്ങിനിൽക്കുന്ന പരസ്യമായി മാറുന്നു.',
+      },
+      {
+        titleTag: 'നാടൻ രുചിയുടെ സന്തോഷം',
+        mood: 'Energetic Promo • Feel-Good Connect',
+        characters: 'പ്രധാന കഥാപാത്രം, മുത്തശ്ശി കല്യാണി, അയൽവീട്ടിലെ കുട്ടികൾ',
+        situation1: 'ആദ്യത്തെ അമ്പരപ്പിന് പിന്നാലെ മുത്തശ്ശി കല്യാണിയുടെ അടുക്കളയിൽ നിന്ന് ഉയരുന്ന മനോഹരമായ സുഗന്ധം എല്ലാവരുടെയും ശ്രദ്ധ മാറ്റുന്നു.',
+        situation2: 'തിടുക്കത്തിൽ എത്തിയ കുട്ടികളും അതിഥികളും ഒരുമിച്ചിരുന്ന് രുചികരമായ വിഭവം പങ്കിടുമ്പോൾ ക്ഷീണമെല്ലാം മാറി ആഘോഷമാകുന്നു.',
+        climaxEnding: 'മനോഹരമായൊരു ടാഗ്‌ലൈൻ ഷോട്ടോടെ പ്രേക്ഷകരിൽ ഉൽപ്പന്നത്തോട് പ്രിയം വളർത്തുന്ന ഫിനാലെ.',
+      },
+    ],
+  },
+  en: {
+    thriller: [
+      {
+        titleTag: 'The Dropped Encrypted Diary',
+        mood: 'Suspenseful Mystery • Clues & Tension',
+        characters: 'Lead Character, Mysterious Courier Karthik, Sub-Inspector Arjun',
+        situation1: 'Mid-panic, the mysterious stranger Karthik drops a locked metal diary and key on the ground before vanishing into the dark alley.',
+        situation2: 'When the protagonist tries to turn it in, Inspector Arjun warns that armed men in a black van are hunting anyone holding that exact diary.',
+        climaxEnding: 'Outsmarting an ambush near the old bridge, the protagonist delivers the diary proof to police and exposes the entire syndicate.',
+      },
+      {
+        titleTag: 'Shadows at the Last Bus Stop',
+        mood: 'Psychological Thriller • Hidden Truth',
+        characters: 'Lead Character, Neighbor Latha, Archivist Dr. Menon',
+        situation1: 'Stepping back in fear, neighbor Latha yells an urgent warning from across the street, revealing someone has been watching the house all week.',
+        situation2: 'A sudden power outage and Dr. Menon’s missing antique coin box expose footprints leading straight into the locked basement.',
+        climaxEnding: 'Shining a flashlight inside uncovers a shocking impersonator and brings the years-old neighborhood mystery to a gripping close.',
+      },
+    ],
+    drama: [
+      {
+        titleTag: 'The Unsent Letter & Reunion',
+        mood: 'Heartfelt Emotional • Family Ties',
+        characters: 'Lead Character, Elderly Postman Raghavan, Sister Devika',
+        situation1: 'As the initial shock fades, the figure turns out to be retired postman Raghavan carrying a torn envelope written by sister Devika years ago.',
+        situation2: 'Reading the confession sparks a tender emotional struggle over old family pride, financial hardship, and lost years apart.',
+        climaxEnding: 'Tears give way to forgiveness as both siblings reunite warmly on the porch in soft golden light.',
+      },
+      {
+        titleTag: 'A Promise in the Rain',
+        mood: 'Touching Drama • Quiet Sacrifice',
+        characters: 'Lead Character, Mother Lakshmi, Childhood Friend Rohan',
+        situation1: 'Following the tense encounter, urgent news about mother Lakshmi’s hospital bill collides with childhood friend Rohan arriving with an unexpected offer.',
+        situation2: 'Choosing between a dream job departure and staying behind creates an agonizing turning point at the railway junction.',
+        climaxEnding: 'A courageous compromise heals both worlds and ends with mother Lakshmi smiling proudly at the doorstep.',
+      },
+    ],
+    action: [
+      {
+        titleTag: 'Midnight High-Speed Escape',
+        mood: 'High-Octane Action • Adrenaline Chase',
+        characters: 'Lead Character, Undercover Agent Vikram, Tech Hacker Priya',
+        situation1: 'Seconds later, injured agent Vikram slips a micro-drive into the protagonist’s bag as ruthless bikers roar down the lane in pursuit.',
+        situation2: 'Guided over earbuds by hacker Priya, a breathless chase weaves across narrow rooftops, market stalls, and a stalled railway crossing.',
+        climaxEnding: 'A daring leap disables the lead pursuer and hands the encrypted drive safely to the extraction team.',
+      },
+      {
+        titleTag: 'Stand at the Old Checkpost',
+        mood: 'Mass Action • Heroic Defense',
+        characters: 'Lead Character, Ranger Shankar, Smuggler Crew',
+        situation1: 'Standing ground, veteran forest ranger Shankar locks the checkpost gate and points to an approaching convoy of smugglers.',
+        situation2: 'With communications jammed and an injured bystander to protect, everyday tools become clever weapons in the mist.',
+        climaxEnding: 'By dawn, the convoy is neutralized and reinforcements arrive to applaud the fearless stand.',
+      },
+    ],
+    folk: [
+      {
+        titleTag: 'Lantern of the Sacred Grove',
+        mood: 'Atmospheric Folk • Eerie Mystery',
+        characters: 'Lead Character, Temple Keeper Kelu, Researcher Ananya',
+        situation1: 'Swinging an ancient brass lantern through the fog, keeper Kelu warns them never to step past the banyan stone after midnight.',
+        situation2: 'Alongside researcher Ananya, strange whispered chants lead them to hidden carvings revealing an old ancestral pact.',
+        climaxEnding: 'Returning the sacred bell to the altar lifts the eerie fog and leaves a chilling final mystery.',
+      },
+      {
+        titleTag: 'Footsteps in the Manor',
+        mood: 'Supernatural Mystery • Midnight Chills',
+        characters: 'Lead Character, Caretaker Kuttan, Photographer Nandan',
+        situation1: 'An upstairs shutter bangs open by itself while frightened caretaker Kuttan points toward muddy footprints leading nowhere.',
+        situation2: 'Photographer Nandan’s camera flash captures a ghostly silhouette holding an old brass key in the mirror reflection.',
+        climaxEnding: 'Opening the sealed attic chest reveals an emotional family secret nobody expected.',
+      },
+    ],
+    scifi: [
+      {
+        titleTag: 'The 10-Minute Time Loop',
+        mood: 'Mind-Bending Sci-Fi • Time Paradox',
+        characters: 'Lead Character, Physicist Dr. Tara, Neighbor Sanjay',
+        situation1: 'Physicist Dr. Tara rushes up showing a flickering chronometer counting backwards, proving this exact street encounter has looped 12 times.',
+        situation2: 'A malfunctioning antenna in Sanjay’s garage tears a glowing blue rift across the evening sky, threatening to trap the town forever.',
+        climaxEnding: 'Syncing their wrist beacons with three seconds left shatters the time loop into a peaceful sunrise.',
+      },
+      {
+        titleTag: 'Signal from Tomorrow',
+        mood: 'Futuristic Mystery • Parallel World',
+        characters: 'Lead Character, Radio Engineer Kiran, AI Companion Nova',
+        situation1: 'Radio engineer Kiran intercepts an urgent distress voice from tomorrow coming through a static-filled phone call.',
+        situation2: 'Following AI Nova’s holographic coordinates leads them through a shimmering energy barrier hovering over the intersection.',
+        climaxEnding: 'Flipping the master relay prevents a city-wide blackout before the portal vanishes.',
+      },
+    ],
+    comedy: [
+      {
+        titleTag: 'The Runaway Groom Mix-Up',
+        mood: 'Laugh-Out-Loud Comedy • Situational Chaos',
+        characters: 'Lead Character, Panicked Groom Suku, Strict Uncle Madhavan, Tea Seller Babu',
+        situation1: 'Turns out the terrifying figure is actually panicked groom Suku tripping over his mundu after losing the wedding hall address.',
+        situation2: 'Strict uncle Madhavan arrives carrying a towering tray of laddoos while tea seller Babu accidentally swaps everyone onto the wrong scooter.',
+        climaxEnding: 'A hilarious chase through puddles lands the whole crew at the wedding stage just in time for laughs all around.',
+      },
+      {
+        titleTag: 'Neighborhood Cover-Up Chaos',
+        mood: 'Playful Family Fun • Visual Gags',
+        characters: 'Lead Character, Nosy Uncle Varghese, Mischievous Kid Chinnu',
+        situation1: 'Startled into spilling groceries, kid Chinnu accidentally sends Uncle Varghese’s prized umbrella rolling into a freshly painted bench.',
+        situation2: 'Every frantic attempt to hide the smudge makes the mess funnier as neighbors keep ringing the doorbell.',
+        climaxEnding: 'Uncle Varghese spots the paint-stained hat, bursts out laughing, and turns the disaster into an afternoon snack party.',
+      },
+    ],
+    ad: [
+      {
+        titleTag: 'Brighter Together Moments',
+        mood: 'Warm Commercial • Everyday Hero',
+        characters: 'Lead Character, Caring Father, Smiling Family',
+        situation1: 'Just when darkness and worry freeze the moment, clicking on the sleek smart device floods the scene with crisp reassuring light.',
+        situation2: 'A tricky everyday hurdle transforms effortlessly into warmth, confidence, and safety within seconds.',
+        climaxEnding: 'The family shares relieved smiles beside a clean, memorable brand tagline finish.',
+      },
+      {
+        titleTag: 'Signature Taste Surprise',
+        mood: 'Energetic Promo • Feel-Good Connect',
+        characters: 'Lead Character, Grandmother Kalyani, Neighborhood Kids',
+        situation1: 'Grandmother Kalyani steps out with a steaming signature treat whose rich aroma melts all tension instantly.',
+        situation2: 'Busy neighbors and playful kids gather around as a tense evening becomes an impromptu neighborhood celebration.',
+        climaxEnding: 'Closes on a crisp slow-motion taste reveal and cheerful brand punchline.',
+      },
+    ],
+  },
+  hi: {
+    thriller: [
+      {
+        titleTag: 'रहस्यमयी डायरी की दौड़',
+        mood: 'Suspenseful Mystery • Clues & Tension',
+        characters: 'मुख्य पात्र, अजनबी यात्री कार्तिक, सब-इंस्पेक्टर अर्जुन',
+        situation1: 'घबराहट के बीच सामने खड़ा अजनबी कार्तिक अचानक एक बंद डायरी ज़मीन पर गिराकर अंधेरे में गायब हो जाता है।',
+        situation2: 'इंस्पेक्टर अर्जुन से संपर्क करने पर पता चलता है कि काली वैन में कुछ खतरनाक लोग उसी डायरी की तलाश में हैं।',
+        climaxEnding: 'पुराने पुल के पास जाल बिछाकर पुलिस को सबूत सौंपने के साथ पूरे गिरोह का पर्दाफाश होता है।',
+      },
+      {
+        titleTag: 'अधूरी रात का सुराग',
+        mood: 'Psychological Thriller • Hidden Truth',
+        characters: 'मुख्य पात्र, पड़ोसी लता, डॉ. मेनन',
+        situation1: 'पड़ोसी लता की अचानक चेतावनी बताती है कि घर के आसपास कोई पिछले कई दिनों से नज़र रख रहा था।',
+        situation2: 'बिजली गुल होने और डॉ. मेनन के गायब संदूक से तहखाने का छुपा दरवाज़ा सामने आता है।',
+        climaxEnding: 'टॉर्च की रोशनी में असली अपराधी बेनकाब होता है और वर्षों पुराना रहस्य सुलझ जाता है।',
+      },
+    ],
+    drama: [
+      {
+        titleTag: 'अनकही चिट्ठी और मिलन',
+        mood: 'Heartfelt Emotional • Family Ties',
+        characters: 'मुख्य पात्र, बुजुर्ग डाकिया राघव, बहन देविका',
+        situation1: 'डर हटने पर सामने बुजुर्ग डाकिया राघव दिखते हैं जिनके हाथ में बहन देविका की वर्षों पुरानी चिट्ठी है।',
+        situation2: 'चिट्ठी पढ़ते ही पुराने पारिवारिक मतभेद और अनकहे दर्द का भावुक सच सामने आता है।',
+        climaxEnding: 'आँसुओं के साथ सारी गलतफहमियाँ मिटती हैं और टूटा परिवार फिर से गले मिल जाता है।',
+      },
+      {
+        titleTag: 'बारिश में निभाया वादा',
+        mood: 'Touching Drama • Quiet Sacrifice',
+        characters: 'मुख्य पात्र, माँ लक्ष्मी, बचपन का दोस्त रोहन',
+        situation1: 'अचानक माँ की तबीयत और दोस्त रोहन के आए मौके के बीच कठिन चुनाव की घड़ी आ जाती है।',
+        situation2: 'सपनों और जिम्मेदारी के बीच दिल को छू लेने वाला संघर्ष कहानी को गहराई देता है।',
+        climaxEnding: 'साहस भरे फैसले से दोनों राहें संवरती हैं और माँ की मुस्कान के साथ कहानी पूरी होती है।',
+      },
+    ],
+    action: [
+      {
+        titleTag: 'आधी रात का मिशन',
+        mood: 'High-Octane Action • Chase',
+        characters: 'मुख्य पात्र, एजेंट विक्रम, हैकर प्रिया',
+        situation1: 'घायल एजेंट विक्रम एक गुप्त चिप थमाकर मदद मांगता है जबकि बाइक सवार गुंडे पीछे पड़ जाते हैं।',
+        situation2: 'प्रिया के निर्देशों पर बाज़ार और तंग गलियों से होते हुए ज़बरदस्त पीछा और मुकाबला चलता है।',
+        climaxEnding: 'आखिरी छलांग के साथ दुश्मनों को मात देकर मिशन सुरक्षित पूरा होता है।',
+      },
+      {
+        titleTag: 'चेकपोस्ट पर टक्कर',
+        mood: 'Mass Action • Defense',
+        characters: 'मुख्य पात्र, रेंजर शंकर, तस्कर गिरोह',
+        situation1: 'रेंजर शंकर रास्ते का फाटक बंद कर खतरे का सामना करने के लिए तैयार हो जाते हैं।',
+        situation2: 'नेटवर्क जाम होने के बीच सूझबूझ और फुर्ती से हमलावरों को रोका जाता है।',
+        climaxEnding: 'सुबह की रोशनी में पूरा गिरोह पकड़ा जाता है और गाँव राहत की सांस लेता है।',
+      },
+    ],
+    folk: [
+      {
+        titleTag: 'पीपल के पेड़ का रहस्य',
+        mood: 'Atmospheric Folk • Eerie',
+        characters: 'मुख्य पात्र, पुजारी केलु, शोधकर्ता अनन्या',
+        situation1: 'पीतल की लालटेन लिए केलु काका चेतावनी देते हैं कि आधी रात के बाद पुराने पत्थर के पार मत जाना।',
+        situation2: 'अनन्या के साथ प्राचीन शिलालेख देखने पर सदियों पुराने रहस्य की परतें खुलती हैं।',
+        climaxEnding: 'पवित्र घंटी लौटते ही धुंध छंटती है और रहस्यमयी शांति लौट आती है।',
+      },
+      {
+        titleTag: 'पुरानी हवेली की परछाई',
+        mood: 'Supernatural Mystery',
+        characters: 'मुख्य पात्र, केयरटेकर कुट्टन, फोटोग्राफर नंदन',
+        situation1: 'ऊपरी कमरे का बंद दरवाज़ा अचानक खुलता है और गीले पैरों के निशान दिखाई देते हैं।',
+        situation2: 'नंदन के कैमरे की तस्वीर में शीशे के भीतर एक पुरानी चाबी थामे परछाई दिखती है।',
+        climaxEnding: 'ताला खुलने पर हवेली का अनसुना सच सबको चौंका देता है।',
+      },
+    ],
+    scifi: [
+      {
+        titleTag: 'दस मिनट का टाइम लूप',
+        mood: 'Mind-Bending Sci-Fi',
+        characters: 'मुख्य पात्र, वैज्ञानिक डॉ. तारा, संजय',
+        situation1: 'डॉ. तारा की उल्टी चलती घड़ी बताती है कि यह exact मुलाकात पहले भी कई बार दोहराई जा चुकी है।',
+        situation2: 'संजय की लैब के सिग्नल से आसमान में नीला टाइम-र‍िफ्ट खुलने लगता है।',
+        climaxEnding: 'अंतिम तीन सेकंड में फ्रीक्वेंसी जोड़कर टाइम लूप हमेशा के लिए टूट जाता है।',
+      },
+      {
+        titleTag: 'भविष्य से आई कॉल',
+        mood: 'Futuristic Mystery',
+        characters: 'मुख्य पात्र, इंजीनियर किरण, एआई नोवा',
+        situation1: 'फोन पर कल से आई चेतावनी भरी आवाज़ सुनकर किरण तुरंत मदद के लिए पहुँचते हैं।',
+        situation2: 'एआई नोवा के नक्शे की मदद से अदृश्य ऊर्जा दीवार पार करने की दौड़ शुरू होती है।',
+        climaxEnding: 'मुख्य स्विच पलटते ही बड़ा हादसा टल जाता है।',
+      },
+    ],
+    comedy: [
+      {
+        titleTag: 'शादी मंडप की भागदौड़',
+        mood: 'Laugh-Out-Loud Comedy',
+        characters: 'मुख्य पात्र, घबराया दूल्हा सुकू, सख्त मामा माधवन, चायवाला बाबू',
+        situation1: 'डर के पीछे असली वजह निकला दूल्हा सुकू जो शादी हॉल का रास्ता भूलकर धोती संभालते दौड़ रहा था।',
+        situation2: 'मामा माधवन लड्डू का थाल लेकर और बाबू गलत स्कूटर पर बैठकर पूरा मोहल्ला सिर पर उठा लेते हैं।',
+        climaxEnding: 'कीचड़ में फिसलने के बाद ठहाकों के बीच सब समय पर मंडप पहुँच जाते हैं।',
+      },
+      {
+        titleTag: 'पड़ोसी की मज़ेदार आफत',
+        mood: 'Playful Family Fun',
+        characters: 'मुख्य पात्र, वर्गीस अंकल, नटखट बच्चा चिन्नू',
+        situation1: 'अचानक हुए धक्के से वर्गीस अंकल का छाता ताज़ा पेंट की बेंच पर जा गिरता है।',
+        situation2: 'निशान छुपाने के चक्कर में चिन्नू और दोस्त मिलकर घर में और मज़ेदार रायता फैला देते हैं।',
+        climaxEnding: 'अंकल सब देखकर खुद हंस पड़ते हैं और गरम चाय के साथ मामला शांत होता है।',
+      },
+    ],
+    ad: [
+      {
+        titleTag: 'भरोसे की नई रोशनी',
+        mood: 'Warm Commercial',
+        characters: 'मुख्य पात्र, पिता, मुस्कुराता परिवार',
+        situation1: 'अंधेरे और उलझन के पल में स्मार्ट प्रोडक्ट ऑन होते ही पूरा रास्ता दिन की तरह चमक उठता है।',
+        situation2: 'मुश्किल काम पल भर में आसान और सुरक्षित हो जाता है।',
+        climaxEnding: 'परिवार की मुस्कान और दमदार ब्रांड टैगलाइन के साथ यादगार समापन।',
+      },
+      {
+        titleTag: 'स्वाद का सरप्राइज़',
+        mood: 'Energetic Promo',
+        characters: 'मुख्य पात्र, दादी कल्याणी, मोहल्ले के बच्चे',
+        situation1: 'दादी की रसोई से उठती खुशबू सारा तनाव पल भर में खुशी में बदल देती है।',
+        situation2: 'सब मिलकर स्वाद का आनंद लेते हुए शाम को जश्न में बदल देते हैं।',
+        climaxEnding: 'ताज़ा टैगलाइन के साथ खुशनुमा फिनिश।',
+      },
+    ],
+  },
+  ta: {
+    thriller: [
+      { titleTag: 'ரகசிய டைரியின் மர்மம்', mood: 'Suspense Thriller', characters: 'முதன்மை பாத்திரம், கார்த்திக், இன்ஸ்பெக்டர் அர்ஜுன்', situation1: 'பதற்றத்தில் நின்ற கார்த்திக் ஒரு பூட்டிய டைரியை நழுவவிட்டு இருட்டில் மறைகிறார்.', situation2: 'இன்ஸ்பெக்டர் அர்ஜுன் எச்சரித்த கருப்பு வேன் கும்பல் அதே டைரியைத் தேடித் துரத்துகிறது.', climaxEnding: 'பழைய பாலத்தில் தந்திரமாக சிக்கவைத்து உண்மையை போலீசிடம் ஒப்படைப்பதோடு கதை முடிகிறது.' },
+      { titleTag: 'கடைசி பேருந்து நிறுத்த மர்மம்', mood: 'Psychological Thriller', characters: 'முதன்மை பாத்திரம், லதா, டாக்டர் மேனன்', situation1: 'அண்டை வீட்டு லதா யாரோ வீட்டைக் கண்காணிப்பதாக எச்சரிக்கிறார்.', situation2: 'மின்சாரத் துண்டிப்புக்கு நடுவே நிலவறையில் பழைய தடயங்கள் தெரிகின்றன.', climaxEnding: 'உண்மையான குற்றவாளி சிக்கி பல ஆண்டு மர்மம் விலகுகிறது.' },
+    ],
+    drama: [
+      { titleTag: 'மறந்த கடிதமும் சந்திப்பும்', mood: 'Emotional Drama', characters: 'முதன்மை பாத்திரம், தபால்காரர் ராகவன், சகோதரி தேவிகா', situation1: 'முன்னால் நின்றவர் பழைய கடிதத்தைக் கொண்டு வந்த தபால்காரர் ராகவன் எனத் தெரிகிறது.', situation2: 'பழைய குடும்பப் பிரிவுக்கான உண்மை வெளியாகி உணர்ச்சிப் போராட்டம் உருவாகிறது.', climaxEnding: 'மன்னிப்பும் கண்ணீரும் சேர்ந்து குடும்பம் மீண்டும் இணைகிறது.' },
+      { titleTag: 'மழைக்கால வாக்குறுதி', mood: 'Touching Drama', characters: 'முதன்மை பாத்திரம், அம்மா லட்சுமி, நண்பன் ரோகன்', situation1: 'அம்மாவின் மருத்துவச் செலவும் ரோகனின் திடீர் உதவியும் நெருக்கடி தருகின்றன.', situation2: 'கனவுக்கும் கடமைக்கும் இடையிலான போராட்டம் தீவிரமாகிறது.', climaxEnding: 'துணிச்சலான முடிவால் குடும்பம் புன்னகையுடன் மீண்டு வருகிறது.' },
+    ],
+    action: [
+      { titleTag: 'நள்ளிரவுத் துரத்தல்', mood: 'High Action', characters: 'முதன்மை பாத்திரம், ஏஜென்ட் விக்ரம், ஹேக்கர் பிரியா', situation1: 'காயமடைந்த விக்ரம் ரகசிய சிப்பைக் கொடுத்து தப்பிக்க உதவுமாறு கேட்கிறார்.', situation2: 'பிரியாவின் வழிகாட்டுதலில் சந்தை வழியாக வேகமான சேஸிங் நடக்கிறது.', climaxEnding: 'எதிரிகளை வீழ்த்தி ரகசியம் பாதுகாக்கப்படுகிறது.' },
+      { titleTag: 'சோதனைச் சாவடிப் போர்', mood: 'Mass Action', characters: 'முதன்மை பாத்திரம், ரேஞ்சர் சங்கர், கடத்தல் கும்பல்', situation1: 'ரேஞ்சர் சங்கர் கதவைப் பூட்டி கும்பலை எதிர்கொள்ளத் தயாராகிறார்.', situation2: 'சிக்னல் இல்லாத இடத்தில் சுற்றியிருந்த பொருட்களால் சண்டை நடக்கிறது.', climaxEnding: 'விடியற்காலையில் கும்பல் கைது செய்யப்படுகிறது.' },
+    ],
+    folk: [
+      { titleTag: 'காவலின் விளக்கு ரகசியம்', mood: 'Folk Mystery', characters: 'முதன்மை பாத்திரம், காவலர் கேளு, ஆராய்ச்சியாளர் அனன்யா', situation1: 'பழைய விளக்குடன் வந்த கேளு ஆலமரத்தைத் தாண்ட வேண்டாம் என்கிறார்.', situation2: 'அனன்யாவுடன் பழைய கல்வெட்டில் மறைந்த உண்மையைப் படிக்கிறார்கள்.', climaxEnding: 'பழைய சாபம் நீங்கி அமைதி திரும்புகிறது.' },
+      { titleTag: 'பழைய மாளிகை நிழல்', mood: 'Supernatural Mystery', characters: 'முதன்மை பாத்திரம், குட்டன், நந்தன்', situation1: 'மேல் மாடி கதவு தானாகத் திறந்து ஈர காலடித் தடங்கள் தெரிகின்றன.', situation2: 'நந்தன் எடுத்த புகைப்படத்தில் கண்ணாடியில் ஒரு உருவம் தெரிகிறது.', climaxEnding: 'பழைய பெட்டியைத் திறக்கும்போது அதிர்ச்சி உண்மை வெளிவருகிறது.' },
+    ],
+    scifi: [
+      { titleTag: '10 நிமிட டைம் லூப்', mood: 'Sci-Fi Paradox', characters: 'முதன்மை பாத்திரம், டாக்டர் தாரா, சஞ்சய்', situation1: 'டாக்டர் தாராவின் பின்னோக்கி ஓடும் கடிகாரம் இந்தச் சம்பவம் திரும்பத் திரும்ப நடப்பதைக் காட்டுகிறது.', situation2: 'சஞ்சயின் லேப் சிக்னலால் வானில் நீலப் பிளவு உருவாகிறது.', climaxEnding: 'கடைசி நொடியில் டைம் லூப் உடைக்கப்படுகிறது.' },
+      { titleTag: 'எதிர்கால அழைப்பு', mood: 'Futuristic Mystery', characters: 'முதன்மை பாத்திரம், கிரண், ஏஐ நோவா', situation1: 'நாளையிலிருந்து வரும் எச்சரிக்கை அழைப்பை கிரண் பிடிக்கிறார்.', situation2: 'ஏஐ நோவா உதவியுடன் ஆற்றல் சுவரைத் தாண்டுகிறார்கள்.', climaxEnding: 'பெரிய விபத்து தவிர்க்கப்படுகிறது.' },
+    ],
+    comedy: [
+      { titleTag: 'கல்யாண மண்டபக் கலாட்டா', mood: 'Laugh-Out Comedy', characters: 'முதன்மை பாத்திரம், மணமகன் சுகு, மாமா மாதவன், பாபு', situation1: 'பயந்ததற்குக் காரணம் வழிதவறி ஓடிவந்த மணமகன் சுகு என்பது தெரிகிறது.', situation2: 'மாதவன் மாமாவும் பாபுவும் தவறான ஸ்கூட்டரில் ஏறி குழப்பத்தைக் கூட்டுகிறார்கள்.', climaxEnding: 'எல்லோரும் சிரித்துக்கொண்டே மண்டபம் சேர்கிறார்கள்.' },
+      { titleTag: 'அண்டை வீட்டுக் குழப்பம்', mood: 'Family Fun', characters: 'முதன்மை பாத்திரம், வர்கீஸ் அங்கிள், சின்னு', situation1: 'அங்கிளின் குடை புதிய பெயிண்ட் பெஞ்சில் விழுந்து கலாட்டா தொடங்குகிறது.', situation2: 'மறைக்கச் செய்த தந்திரங்கள் எல்லாம் தலைகீழாக மாறுகின்றன.', climaxEnding: 'அங்கிளும் சிரித்து தேநீர் விருந்து வைக்கிறார்.' },
+    ],
+    ad: [
+      { titleTag: 'நம்பிக்கையின் வெளிச்சம்', mood: 'Warm Commercial', characters: 'முதன்மை பாத்திரம், தந்தை, குடும்பம்', situation1: 'இருளும் குழப்பமும் விலகி ஸ்மார்ட் சாதனம் ஒளிர்கிறது.', situation2: 'சிக்கலான நேரம் நொடியில் எளிதாகிறது.', climaxEnding: 'குடும்பப் புன்னகையுடன் பிராண்ட் முடிவு.' },
+      { titleTag: 'பாரம்பரிய சுவை', mood: 'Energetic Promo', characters: 'முதன்மை பாத்திரம், பாட்டி கல்யாணி, குழந்தைகள்', situation1: 'பாட்டியின் சமையல் வாசனை எல்லோரையும் ஈர்க்கிறது.', situation2: 'குழந்தைகளும் பெரியவர்களும் மகிழ்ச்சியுடன் பகிர்கிறார்கள்.', climaxEnding: 'சுவையான விளம்பர முடிவு.' },
+    ],
+  },
+  kn: {
+    thriller: [
+      { titleTag: 'ರಹಸ್ಯ ಡೈರಿಯ ಬೆನ್ನಟ್ಟುವಿಕೆ', mood: 'Suspense Thriller', characters: 'ಮುಖ್ಯ ಪಾತ್ರ, ಕಾರ್ತಿಕ್, ಇನ್‌ಸ್ಪೆಕ್ಟರ್ ಅರ್ಜುನ್', situation1: 'ಗಾಬರಿಯಲ್ಲಿದ್ದ ಕಾರ್ತಿಕ್ ಲಾಕ್ ಮಾಡಿದ ಡೈರಿಯನ್ನು ಬೀಳಿಸಿ ಕತ್ತಲೆಯಲ್ಲಿ ಕಣ್ಮರೆಯಾಗುತ್ತಾನೆ.', situation2: 'ಕಪ್ಪು ವ್ಯಾನ್ ಗ್ಯಾಂಗ್ ಅದೇ ಡೈರಿಗಾಗಿ ಹುಡುಕುತ್ತಿರುವುದಾಗಿ ಅರ್ಜುನ್ ಎಚ್ಚರಿಸುತ್ತಾರೆ.', climaxEnding: 'ಸೇತುವೆಯ ಬಳಿ ಗ್ಯಾಂಗ್ ಅನ್ನು ಹಿಡಿದು ಸತ್ಯವನ್ನು ಹೊರತರಲಾಗುತ್ತದೆ.' },
+      { titleTag: 'ಕೊನೆಯ ಬಸ್ ನಿಲ್ದಾಣದ ರಹಸ್ಯ', mood: 'Psychological Thriller', characters: 'ಮುಖ್ಯ ಪಾತ್ರ, ನೆರೆಯ ಲತಾ, ಡಾ. ಮೆನನ್', situation1: 'ಲತಾ ಮನೆಯ ಸುತ್ತ ಯಾರೋ ಗಮನಿಸುತ್ತಿದ್ದಾರೆ ಎಂದು ಎಚ್ಚರಿಸುತ್ತಾರೆ.', situation2: 'ವಿದ್ಯುತ್ ಕಡಿತದ ನಡುವೆ ನೆಲಮಾಳಿಗೆಯ ಹೆಜ್ಜೆ ಗುರುತುಗಳು ಕಾಣುತ್ತವೆ.', climaxEnding: 'ಅಸಲಿ ದೋಷಿ ಸಿಕ್ಕಿ ಹಳೆಯ ರಹಸ್ಯ ಬಗೆಹರಿಯುತ್ತದೆ.' },
+    ],
+    drama: [
+      { titleTag: 'ಮರೆತ ಪತ್ರ ಮತ್ತು ಮಿಲನ', mood: 'Emotional Drama', characters: 'ಮುಖ್ಯ ಪಾತ್ರ, ಪೋಸ್ಟ್‌ಮ್ಯಾನ್ ರಾಘವ್, ಸಹೋದರಿ ದೇವಿಕಾ', situation1: 'ಮುಂದೆ ನಿಂತಿದ್ದವರು ಹಳೆಯ ಪತ್ರ ತಂದ ಪೋಸ್ಟ್‌ಮ್ಯಾನ್ ರಾಘವ್ ಎಂದು ತಿಳಿಯುತ್ತದೆ.', situation2: 'ಹಳೆಯ ಕುಟುಂಬದ ನೋವು ಮತ್ತು ಸತ್ಯ ಭಾವನಾತ್ಮಕವಾಗಿ ಹೊರಬರುತ್ತದೆ.', climaxEnding: 'ಕ್ಷಮೆಯೊಂದಿಗೆ ಕುಟುಂಬ ಮತ್ತೆ ಒಂದಾಗುತ್ತದೆ.' },
+      { titleTag: 'ಮಳೆಯಲ್ಲಿ ನೀಡಿದ ಮಾತು', mood: 'Touching Drama', characters: 'ಮುಖ್ಯ ಪಾತ್ರ, ತಾಯಿ ಲಕ್ಷ್ಮಿ, ಗೆಳೆಯ ರೋಹನ್', situation1: 'ತಾಯಿಯ ಚಿಕಿತ್ಸೆ ಮತ್ತು ರೋಹನ್ ತಂದ ಅವಕಾಶದ ನಡುವೆ ಗೊಂದಲ ಮೂಡುತ್ತದೆ.', situation2: 'ಕನಸು ಮತ್ತು ಜವಾಬ್ದಾರಿಯ ನಡುವೆ ದೊಡ್ಡ ನಿರ್ಧಾರ ತೆಗೆದುಕೊಳ್ಳಬೇಕಾಗುತ್ತದೆ.', climaxEnding: 'ಧೈರ್ಯದ ಹೆಜ್ಜೆಯಿಂದ ತಾಯಿಯ ಮುಖದಲ್ಲಿ ನಗು ಮೂಡುತ್ತದೆ.' },
+    ],
+    action: [
+      { titleTag: 'ಮಧ್ಯರಾತ್ರಿಯ ರೋಚಕ ಪಾರು', mood: 'High Action', characters: 'ಮುಖ್ಯ ಪಾತ್ರ, ಏಜೆಂಟ್ ವಿಕ್ರಮ್, ಹ್ಯಾಕರ್ ಪ್ರಿಯಾ', situation1: 'ಗಾಯಗೊಂಡ ವಿಕ್ರಮ್ ರಹಸ್ಯ ಚಿಪ್ ನೀಡಿ ಬೈಕ್ ಗ್ಯಾಂಗ್‌ನಿಂದ ತಪ್ಪಿಸಿಕೊಳ್ಳಲು ಕೇಳುತ್ತಾರೆ.', situation2: 'ಪ್ರಿಯಾ ಮಾರ್ಗದರ್ಶನದಲ್ಲಿ ಮಾರುಕಟ್ಟೆಯ ಮೂಲಕ ಸಾಹಸಮಯ ಚೇಸ್ ನಡೆಯುತ್ತದೆ.', climaxEnding: 'ಶತ್ರುಗಳನ್ನು ಸೋಲಿಸಿ ಮಾಹಿತಿ ಸುರಕ್ಷಿತವಾಗಿ ತಲುಪುತ್ತದೆ.' },
+      { titleTag: 'ಚೆಕ್‌ಪೋಸ್ಟ್ ಹೋರಾಟ', mood: 'Mass Action', characters: 'ಮುಖ್ಯ ಪಾತ್ರ, ರೇಂಜರ್ ಶಂಕರ್, ಕಳ್ಳಸಾಗಣೆ ಗ್ಯಾಂಗ್', situation1: 'ಶಂಕರ್ ಗೇಟ್ ಮುಚ್ಚಿ ಗ್ಯಾಂಗ್ ತಡೆಯಲು ಸಜ್ಜಾಗುತ್ತಾರೆ.', situation2: 'ಸಿಗ್ನಲ್ ಇಲ್ಲದ ಜಾಗದಲ್ಲಿ ಸುತ್ತಮುತ್ತಲ ವಸ್ತುಗಳಿಂದ ಎದುರಿಸುತ್ತಾರೆ.', climaxEnding: 'ಬೆಳಗಿನ ಜಾವ ಗ್ಯಾಂಗ್ ಸೆರೆಯಾಗುತ್ತದೆ.' },
+    ],
+    folk: [
+      { titleTag: 'ಪವಿತ್ರ ವನದ ದೀಪದ ರಹಸ್ಯ', mood: 'Folk Mystery', characters: 'ಮುಖ್ಯ ಪಾತ್ರ, ಕಾವಲುಗಾರ ಕೇಲು, ಸಂಶೋಧಕಿ ಅನನ್ಯಾ', situation1: 'ಕೇಲು ಅಜ್ಜ ಆಲದ ಮರದ ಆಚೆ ಹೋಗದಂತೆ ಎಚ್ಚರಿಕೆ ನೀಡುತ್ತಾರೆ.', situation2: 'ಅನನ್ಯಾ ಜೊತೆ ಹಳೆಯ ಶಾಸನದ ಅರ್ಥ ಬಿಡಿಸುತ್ತಾರೆ.', climaxEnding: 'ಹಳೆಯ ಭಯ ದೂರವಾಗಿ ಶಾಂತಿ ನೆಲೆಸುತ್ತದೆ.' },
+      { titleTag: 'ಹಳೆಯ ಮನೆಯ ನೆರಳು', mood: 'Supernatural Mystery', characters: 'ಮುಖ್ಯ ಪಾತ್ರ, ಕುಟ್ಟನ್, ಫೋಟೋಗ್ರಾಫರ್ ನಂದನ್', situation1: 'ಮೇಲಿನ ಬಾಗಿಲು ತಾನಾಗಿಯೇ ತೆರೆದು ಒದ್ದೆ ಹೆಜ್ಜೆಗಳು ಕಾಣುತ್ತವೆ.', situation2: 'ನಂದನ್ ಕ್ಯಾಮೆರಾದಲ್ಲಿ ಕನ್ನಡಿಯೊಳಗಿನ ನೆರಳು ಕಾಣಿಸುತ್ತದೆ.', climaxEnding: 'ಪೆಟ್ಟಿಗೆ ತೆರೆದಾಗ ಅಚ್ಚರಿಯ ಸತ್ಯ ಹೊರಬರುತ್ತದೆ.' },
+    ],
+    scifi: [
+      { titleTag: '10 ನಿಮಿಷಗಳ ಟೈಮ್ ಲೂಪ್', mood: 'Sci-Fi Paradox', characters: 'ಮುಖ್ಯ ಪಾತ್ರ, ಡಾ. ತಾರಾ, ಸಂಜಯ್', situation1: 'ಡಾ. ತಾರಾ ಅವರ ಗಡಿಯಾರ ಹಿಂದಕ್ಕೆ ತಿರುಗುತ್ತಾ ಟೈಮ್ ಲೂಪ್ ತೋರಿಸುತ್ತದೆ.', situation2: 'ಸಂಜಯ್ ಲ್ಯಾಬ್‌ನ ಸಿಗ್ನಲ್‌ನಿಂದ ಆಕಾಶದಲ್ಲಿ ನೀಲಿ ಬಿರುಕು ಮೂಡುತ್ತದೆ.', climaxEnding: 'ಕೊನೆಯ ಕ್ಷಣದಲ್ಲಿ ಟೈಮ್ ಲೂಪ್ ಮುರಿಯುತ್ತದೆ.' },
+      { titleTag: 'ಭವಿಷ್ಯದ ಕರೆ', mood: 'Futuristic Mystery', characters: 'ಮುಖ್ಯ ಪಾತ್ರ, ಕಿರಣ್, ಎಐ ನೋವಾ', situation1: 'ನಾಳೆಯಿಂದ ಬಂದ ಎಚ್ಚರಿಕೆ ಕರೆಯನ್ನು ಕಿರಣ್ ಪತ್ತೆಹಚ್ಚುತ್ತಾರೆ.', situation2: 'ಎಐ ನೋವಾ ಸಹಾಯದಿಂದ ಎನರ್ಜಿ ಗೋಡೆ ದಾಟುತ್ತಾರೆ.', climaxEnding: 'ದೊಡ್ಡ ಅಪಾಯ ತಪ್ಪುತ್ತದೆ.' },
+    ],
+    comedy: [
+      { titleTag: 'ಮದುವೆ ಮನೆಯ ಗೊಂದಲ', mood: 'Laugh-Out Comedy', characters: 'ಮುಖ್ಯ ಪಾತ್ರ, ವರ ಸುಕು, ಮಾವ ಮಾಧವನ್, ಬಾಬು', situation1: 'ಓಡಿಬಂದಿದ್ದು ದಾರಿ ತಪ್ಪಿದ ವರ ಸುಕು ಎಂದು ತಿಳಿದು ಅಚ್ಚರಿಯಾಗುತ್ತದೆ.', situation2: 'ಮಾಧವನ್ ಮಾವ ಮತ್ತು ಬಾಬು ತಪ್ಪು ಸ್ಕೂಟರ್ ಏರಿ ಹಾಸ್ಯದ ಗದ್ದಲ ಸೃಷ್ಟಿಸುತ್ತಾರೆ.', climaxEnding: 'ನಗುವಿನೊಂದಿಗೆ ಎಲ್ಲರೂ ಮದುವೆ ಮಂಟಪ ತಲುಪುತ್ತಾರೆ.' },
+      { titleTag: 'ನೆರೆಯವರ ತಮಾಷೆ ತೊಂದರೆ', mood: 'Family Fun', characters: 'ಮುಖ್ಯ ಪಾತ್ರ, ವರ್ಗೀಸ್ ಅಂಕಲ್, ಚಿನ್ನು', situation1: 'ಅಂಕಲ್ ಕೊಡೆ ಹೊಸ ಪೇಂಟ್ ಬೆಂಚ್ ಮೇಲೆ ಬಿದ್ದು ಗಲಾಟೆ ಶುರುವಾಗುತ್ತದೆ.', situation2: 'ಮುಚ್ಚಿಡಲು ಮಾಡಿದ ಉಪಾಯವೆಲ್ಲಾ ಇನ್ನಷ್ಟು ತಮಾಷೆಯಾಗುತ್ತದೆ.', climaxEnding: 'ಅಂಕಲ್ ನಕ್ಕು ಎಲ್ಲರಿಗೂ ಚಹಾ ಕೊಡಿಸುತ್ತಾರೆ.' },
+    ],
+    ad: [
+      { titleTag: 'ನಂಬಿಕೆಯ ಹೊಸ ಬೆಳಕು', mood: 'Warm Commercial', characters: 'ಮುಖ್ಯ ಪಾತ್ರ, ತಂದೆ, ಕುಟುಂಬ', situation1: 'ಕತ್ತಲೆ ಮತ್ತು ಗೊಂದಲದ ನಡುವೆ ಸ್ಮಾರ್ಟ್ ಸಾಧನ ಬೆಳಕು ಚೆಲ್ಲುತ್ತದೆ.', situation2: 'ಕಷ್ಟದ ಕೆಲಸ ಕ್ಷಣದಲ್ಲಿ ಸುಲಭವಾಗುತ್ತದೆ.', climaxEnding: 'ನಗುವಿನೊಂದಿಗೆ ಬ್ರ್ಯಾಂಡ್ ಸಂದೇಶ.' },
+      { titleTag: 'ಮನೆಯ ರುಚಿಯ ಸಂಭ್ರಮ', mood: 'Energetic Promo', characters: 'ಮುಖ್ಯ ಪಾತ್ರ, ಅಜ್ಜಿ ಕಲ್ಯಾಣಿ, ಮಕ್ಕಳು', situation1: 'ಅಜ್ಜಿಯ ಅಡುಗೆ ಸುವಾಸನೆ ಎಲ್ಲರನ್ನೂ ಆಕರ್ಷಿಸುತ್ತದೆ.', situation2: 'ಎಲ್ಲರೂ ಒಟ್ಟಿಗೆ ರುಚಿ ಸವಿಯುತ್ತಾರೆ.', climaxEnding: 'ಸಂತೋಷದ ಜಾಹೀರಾತು ಮುಕ್ತಾಯ.' },
+    ],
+  },
+  te: {
+    thriller: [
+      { titleTag: 'రహస్య డైరీ వేట', mood: 'Suspense Thriller', characters: 'ప్రధాన పాత్ర, కార్తీక్, ఇన్‌స్పెక్టర్ అర్జున్', situation1: 'కంగారులో ఉన్న కార్తీక్ ఒక లాక్ చేసిన డైరీని కింద పడేసి చీకటిలో మాయమవుతాడు.', situation2: 'నల్ల వ్యాన్ ముఠా అదే డైరీ కోసం వెతుకుతోందని అర్జున్ హెచ్చరిస్తారు.', climaxEnding: 'పాత వంతెన వద్ద ముఠాను పట్టించి నిజం బయటపెట్టడంతో కథ ముగుస్తుంది.' },
+      { titleTag: 'చివరి బస్టాప్ రహస్యం', mood: 'Psychological Thriller', characters: 'ప్రధాన పాత్ర, పొరుగింటి లత, డా. మీనన్', situation1: 'లత ఎవరో ఇంటిని గమనిస్తున్నారని హెచ్చరిస్తుంది.', situation2: 'కరెంట్ పోయిన సమయంలో నేలమాళిగలో కొత్త ఆధారాలు దొరుకుతాయి.', climaxEnding: 'నిజమైన దోషి దొరికి పాత మిస్టరీ వీడుతుంది.' },
+    ],
+    drama: [
+      { titleTag: 'మరచిపోయిన ఉత్తరం', mood: 'Emotional Drama', characters: 'ప్రధాన పాత్ర, పోస్ట్‌మ్యాన్ రాఘవన్, సోదరి దేవిక', situation1: 'ఎదురుగా ఉన్నది పాత ఉత్తరం తెచ్చిన రాఘవన్ అని తెలుస్తుంది.', situation2: 'పాత కుటుంబ బాధలు, నిజాలు బయటకు వచ్చి భావోద్వేగం పెరుగుతుంది.', climaxEnding: 'క్షమాపణతో కుటుంబం మళ్ళీ కలుస్తుంది.' },
+      { titleTag: 'వానలో ఇచ్చిన మాట', mood: 'Touching Drama', characters: 'ప్రధాన పాత్ర, అమ్మ లక్ష్మి, స్నేహితుడు రోహన్', situation1: 'అమ్మ ఆరోగ్యం మరియు రోహన్ తెచ్చిన అవకాశం మధ్య సంఘర్షణ మొదలవుతుంది.', situation2: 'బాధ్యతకు, కలకు మధ్య కీలక నిర్ణయం తీసుకోవాల్సి వస్తుంది.', climaxEnding: 'ధైర్యవంతమైన అడుగుతో అమ్మ కళ్ళలో ఆనందం వెలుగుతుంది.' },
+    ],
+    action: [
+      { titleTag: 'అర్ధరాత్రి ఛేజ్', mood: 'High Action', characters: 'ప్రధాన పాత్ర, ఏజెంట్ విక్రమ్, హ్యాకర్ ప్రియ', situation1: 'గాయపడిన విక్రమ్ సీక్రెట్ చిప్ ఇచ్చి బైక్ ముఠా నుండి తప్పించుకోవాలని కోరతాడు.', situation2: 'ప్రియ సూచనలతో మార్కెట్ గుండా ఉత్కంఠభరిత ఛేజ్ సాగుతుంది.', climaxEnding: 'శత్రువులను ఓడించి మిషన్ విజయవంతమవుతుంది.' },
+      { titleTag: 'చెక్‌పోస్ట్ పోరాటం', mood: 'Mass Action', characters: 'ప్రధాన పాత్ర, రేంజర్ శంకర్, స్మగ్లర్ ముఠా', situation1: 'శంకర్ గేటు మూసి ముఠాను అడ్డుకోవడానికి సిద్ధమవుతారు.', situation2: 'సిగ్నల్ లేని చోట చుట్టుపక్కల వస్తువులతో పోరాటం జరుగుతుంది.', climaxEnding: 'తెల్లవారేసరికి ముఠా పట్టుబడుతుంది.' },
+    ],
+    folk: [
+      { titleTag: 'అడవి దీపం రహస్యం', mood: 'Folk Mystery', characters: 'ప్రధాన పాత్ర, కాపలాదారు కేలు, పరిశోధకురాలు అనన్య', situation1: 'కేలు తాత మర్రి చెట్టు దాటి వెళ్ళవద్దని హెచ్చరిస్తారు.', situation2: 'అనన్యతో కలిసి పురాతన శాసనంలోని రహస్యాన్ని చదువుతారు.', climaxEnding: 'భయం తొలగి గ్రామానికి శాంతి తిరిగి వస్తుంది.' },
+      { titleTag: 'పాత బంగ్లా నీడ', mood: 'Supernatural Mystery', characters: 'ప్రధాన పాత్ర, కుట్టన్, ఫోటోగ్రాఫర్ నందన్', situation1: 'పై గది తలుపు తనంతట తాను తెరుచుకుని తడి అడుగులు కనిపిస్తాయి.', situation2: 'నందన్ కెమెరా ఫోటోలో అద్దంలో ఒక నీడ కనిపిస్తుంది.', climaxEnding: 'పాత పెట్టె తెరవగానే ఊహించని నిజం బయటపడుతుంది.' },
+    ],
+    scifi: [
+      { titleTag: '10 నిమిషాల టైమ్ లూప్', mood: 'Sci-Fi Paradox', characters: 'ప్రధాన పాత్ర, డా. తార, సంజయ్', situation1: 'డా. తార చేతిలోని గడియారం వెనక్కి తిరుగుతూ టైమ్ లూప్‌ను చూపిస్తుంది.', situation2: 'సంజయ్ ల్యాబ్ సిగ్నల్ వల్ల ఆకాశంలో నీలి చీలిక ఏర్పడుతుంది.', climaxEnding: 'చివరి క్షణంలో టైమ్ లూప్ బద్దలవుతుంది.' },
+      { titleTag: 'భవిష్యత్తు నుండి కాల్', mood: 'Futuristic Mystery', characters: 'ప్రధాన పాత్ర, కిరణ్, ఏఐ నోవా', situation1: 'రేపటి నుండి వచ్చిన హెచ్చరిక కాల్‌ను కిరణ్ పట్టుకుంటారు.', situation2: 'ఏఐ నోవా సహాయంతో ఎనర్జీ గోడను దాటుతారు.', climaxEnding: 'పెద్ద ప్రమాదం తప్పుతుంది.' },
+    ],
+    comedy: [
+      { titleTag: 'పెళ్ళి మండపం గందరగోళం', mood: 'Laugh-Out Comedy', characters: 'ప్రధాన పాత్ర, పెళ్ళికొడుకు సుకు, మామ మాధవన్, బాబు', situation1: 'దారి తప్పి పరుగెత్తుతూ వచ్చిన పెళ్ళికొడుకు సుకు అని తెలిసి నవ్వు వస్తుంది.', situation2: 'మాధవన్ మామ, బాబు తప్పు స్కూటర్ ఎక్కి కొత్త అయోమయం సృష్టిస్తారు.', climaxEnding: 'నవ్వులతో అందరూ సమయానికి మండపానికి చేరుకుంటారు.' },
+      { titleTag: 'పొరుగింటి సరదా తంటా', mood: 'Family Fun', characters: 'ప్రధాన పాత్ర, వర్గీస్ అంకుల్, చిన్నూ', situation1: 'అంకుల్ గొడుగు కొత్త పెయింట్ బెంచ్‌పై పడి గొడవ మొదలవుతుంది.', situation2: 'దాచడానికి చేసిన ప్రయత్నాలన్నీ మరింత నవ్వు తెప్పిస్తాయి.', climaxEnding: 'అంకుల్ నవ్వేసి అందరికీ టీ ఇస్తారు.' },
+    ],
+    ad: [
+      { titleTag: 'నమ్మకమైన కొత్త వెలుగు', mood: 'Warm Commercial', characters: 'ప్రధాన పాత్ర, తండ్రి, కుటుంబం', situation1: 'చీకటిలో స్మార్ట్ ఉత్పత్తి ఆన్ అవ్వగానే అంతా వెలుగుతో నిండిపోతుంది.', situation2: 'కష్టం క్షణంలో సులభంగా మారుతుంది.', climaxEnding: 'నవ్వులతో బ్రాండ్ సందేశం.' },
+      { titleTag: 'అసలైన రుచి ఆనందం', mood: 'Energetic Promo', characters: 'ప్రధాన పాత్ర, నానమ్మ కళ్యాణి, పిల్లలు', situation1: 'నానమ్మ వంట వాసన అందరినీ కట్టిపడేస్తుంది.', situation2: 'అందరూ కలిసి ఆనందంగా పంచుకుంటారు.', climaxEnding: 'ఆకర్షణీయమైన ప్రకటన ముగింపు.' },
+    ],
+  },
+};
+
+export function generateStoryAnglesLocal(
+  premise: string,
+  lang: AppLang = 'ml',
+  targetShotCount: number = 8
+): StoryAngle[] {
+  const baseText = premise.trim().replace(/\s+/g, ' ');
   const pack = DYNAMIC_STORY_PACKS[lang] || DYNAMIC_STORY_PACKS.ml;
+  const expansionPack = STORY_EXPANSION_BLUEPRINTS[lang] || STORY_EXPANSION_BLUEPRINTS.ml;
   const sentences = splitStorySentences(baseText);
 
-  const lead = sentences[0] || baseText;
-  const mid = sentences.length >= 3 ? sentences.slice(1, -1).join('. ') : sentences[1] || lead;
-  const end = sentences.length >= 2 ? sentences[sentences.length - 1] : lead;
-
-  const shortTitleCore = lead.length > 36 ? `${lead.slice(0, 36).trim()}...` : lead;
-  const derivedCharacters = deriveSubjectLabel(baseText, lang);
+  // Extract ONLY a concise 1-sentence opening seed and NEVER repeat it in Middle or Ending
+  const rawSeed = sentences[0] || baseText;
+  const seedOpening =
+    rawSeed.length > 160 ? `${rawSeed.slice(0, 157).trim()}...` : rawSeed.replace(/[.।!?]+$/g, '').trim();
 
   const bgmByGenre: Record<GenreKey, Record<AppLang, string>> = {
     thriller: {
@@ -617,39 +1108,85 @@ export function generateStoryAnglesLocal(premise: string, lang: AppLang = 'ml'):
 
   const continuityNote =
     lang === 'ml'
-      ? `നിങ്ങളുടെ കഥയിലെ യഥാർത്ഥ കഥാപാത്രങ്ങൾ, വേഷവിധാനം, ചുറ്റുപാടുകൾ, പ്രകാശം എന്നിവ എല്ലാ ഷോട്ടിലും മാറ്റമില്ലാതെ നിലനിർത്തുന്നു ("${lead.slice(0, 48)}...").`
-      : `Lock exact character faces, wardrobe, props, lighting, and location atmosphere directly from your story across all sequential clips.`;
+      ? `തുടക്കം മുതൽ ഒടുക്കം വരെ എല്ലാ കഥാപാത്രങ്ങളുടെയും വേഷവും പശ്ചാത്തലവും എല്ലാ ${targetShotCount} ഷോട്ടിലും ഒരേപോലെ തുടരുന്നു.`
+      : `Lock exact character faces, added supporting cast wardrobe, key props & atmosphere seamlessly across all ${targetShotCount} clips.`;
 
   const allAngles: StoryAngle[] = [];
   let counter = 1;
 
-  // Use 2 unique lenses per category rotating across all 10 lenses (14 varied cards total across 7 genres)
-  pack.categories.forEach((cat, catIdx) => {
-    for (let lensIdx = 0; lensIdx < 2; lensIdx++) {
-      const rotatedLens = pack.lenses[(catIdx * 2 + lensIdx) % pack.lenses.length];
-      const built = rotatedLens.twistBuilder({ lead, mid, end }, cat.styleTag, counter - 1);
+  pack.categories.forEach((cat) => {
+    const pair = expansionPack[cat.catKey];
+    pair.forEach((arc, lensIdx) => {
       const bgmText = (bgmByGenre[cat.catKey] && bgmByGenre[cat.catKey][lang]) || bgmByGenre[cat.catKey].en;
+      // Clean 4-part flowing story where the user's seed appears ONCE at the beginning and NEVER repeats
+      const storySummary = `${seedOpening}. ${arc.situation1} ${arc.situation2} ${arc.climaxEnding}`;
+
       allAngles.push({
         id: `angle-${counter}`,
         catKey: cat.catKey,
         genre: `${cat.label} (${lensIdx + 1})`,
-        title: `${cat.styleTag}: ${rotatedLens.lensTitle(shortTitleCore)}`,
-        mood: rotatedLens.mood,
+        title: `${cat.styleTag}: ${arc.titleTag}`,
+        mood: arc.mood,
         bgm: bgmText,
         continuity: continuityNote,
-        characters: derivedCharacters,
-        storySummary: built.summary,
-        beginning: built.beginning,
-        middle: built.middle,
-        ending: built.ending,
+        characters: arc.characters,
+        storySummary,
+        beginning: seedOpening,
+        middle: `${arc.situation1} ${arc.situation2}`,
+        ending: arc.climaxEnding,
         synopsis: pack.variationLabel(cat.label, lensIdx + 1),
-        scriptText: `${baseText}\n\n${built.summary}\n\n[BGM STYLE: ${bgmText}]`,
+        scriptText: `${seedOpening}.\n${arc.situation1}\n${arc.situation2}\n${arc.climaxEnding}\n\n[CHARACTERS: ${arc.characters}]\n[BGM STYLE: ${bgmText}]`,
       });
       counter++;
-    }
+    });
   });
 
   return allAngles;
+}
+
+const ORDERED_GENRE_KEYS: GenreKey[] = ['thriller', 'drama', 'action', 'folk', 'scifi', 'comedy', 'ad'];
+
+function inferGenreKey(rawCat: string = '', rawGenre: string = ''): GenreKey | undefined {
+  const combined = `${rawCat} ${rawGenre}`.toLowerCase();
+  if (/(thriller|ത്രില്ലർ|थ्रिलर|திரில்லர்|ಥ್ರಿಲ್ಲರ್|థ్రిల్లర్|mystery)/.test(combined)) return 'thriller';
+  if (/(drama|ഡ്രാമ|ड्रामा|டிராமா|ಡ್ರಾಮಾ|డ్రామా)/.test(combined)) return 'drama';
+  if (/(action|ആക്ഷൻ|एक्शन|ஆக்ஷன்|ಆಕ್ಷನ್|యాక్షన్)/.test(combined)) return 'action';
+  if (/(folk|ഫോക്ക്|लोक|நாட்டுப்புற|ಜಾನಪದ|జానపద)/.test(combined)) return 'folk';
+  if (/(sci[- ]?fi|സയൻസ്|साइंस|சயின்ஸ்|ಸೈನ್ಸ್|సైన్స్)/.test(combined)) return 'scifi';
+  if (/(comedy|കോമഡി|कॉमेडी|காமெடி|ಕಾಮಿಡಿ|కామెడీ|fun)/.test(combined)) return 'comedy';
+  if (/(\bad\b|commercial|promo|കൊമേഴ്സ്യൽ|പരസ്യം|विज्ञापन|விளம்பரம்|ಜಾಹೀರಾತು|ప్రకటన)/.test(combined)) return 'ad';
+  return undefined;
+}
+
+export function mergeAnglesEnsuringAllCategories(
+  aiAngles: StoryAngle[],
+  fallbackAngles: StoryAngle[]
+): StoryAngle[] {
+  const grouped = new Map<GenreKey, StoryAngle[]>();
+  ORDERED_GENRE_KEYS.forEach((k) => grouped.set(k, []));
+
+  for (const angle of aiAngles) {
+    const resolvedKey =
+      (angle.catKey && ORDERED_GENRE_KEYS.includes(angle.catKey) ? angle.catKey : undefined) ||
+      inferGenreKey(String(angle.catKey || ''), String(angle.genre || ''));
+    if (resolvedKey) {
+      grouped.get(resolvedKey)!.push({ ...angle, catKey: resolvedKey });
+    }
+  }
+
+  const merged: StoryAngle[] = [];
+  let idx = 1;
+  for (const catKey of ORDERED_GENRE_KEYS) {
+    const existing = (grouped.get(catKey) || []).slice(0, 2);
+    const localForCat = fallbackAngles.filter((a) => a.catKey === catKey);
+    const needed = Math.max(0, 2 - existing.length);
+    const completedForCat = [...existing, ...localForCat.slice(0, needed)];
+    for (const item of completedForCat) {
+      merged.push({ ...item, id: `angle-${idx++}` });
+    }
+  }
+
+  return merged;
 }
 
 function buildShotBgmCue(beatText: string, shotIndex: number, totalShots: number): string {
@@ -865,46 +1402,46 @@ const EIGHT_PART_ARC_BEATS: Record<AppLang, ArcBeatBlueprint[]> = {
       visualMotion: 'Crisp pan between faces showing instant confusion and rising disagreement',
     },
     {
-      stageTag: 'ഭാഗം 3 — നിശബ്ദ വിഷ്വൽ കോമഡി (No-Dialogue Visual Comedy)',
+      stageTag: 'ഭാഗം 3 — നിശബ്ദ വിഷ്വൽ നിമിഷം (Visual Beat)',
       sceneType: 'visual-comedy',
-      situationLine: () => `സംഭാഷണങ്ങളില്ലാതെ പൂർണ്ണമായും മുഖഭാവങ്ങളും ശരീരചലനങ്ങളും കൊണ്ട് രസകരമായ കുഴപ്പങ്ങൾ സംഭവിക്കുന്നു — വീഴാൻ പോകുന്ന സാധനം പിടിക്കാനുള്ള തത്രപ്പാട്`,
-      cameraHint: 'Dynamic medium-low physical comedy frame capturing exaggerated wide eyes, balance slip & prop motion',
-      visualMotion: 'Whip-pan slapstick camera rhythm catching awkward leaps, slipping objects, and frozen reaction',
+      situationLine: (b) => `${b} — സംഭാഷണങ്ങളില്ലാതെ മുഖഭാവങ്ങളും സൂക്ഷ്മ ചലനങ്ങളും കൊണ്ട് ഈ സാഹചര്യത്തിന്റെ തീവ്രത പൂർണ്ണമായും ദൃശ്യവൽക്കരിക്കുന്നു`,
+      cameraHint: 'Dynamic medium-low visual frame capturing expressive wide eyes, sudden movement & prop detail',
+      visualMotion: 'Whip-pan camera rhythm catching sudden reaction, swift movement, and tense stillness',
     },
     {
-      stageTag: 'ഭാഗം 4 — പുറത്തുനിന്നുള്ള പുതിയ പ്രതിസന്ധി (Escalating Obstacle)',
+      stageTag: 'ഭാഗം 4 — പുതിയ വഴിത്തിരിവ് (Escalating Obstacle)',
       sceneType: 'dialogue',
-      situationLine: () => `പ്രശ്നം പരിഹരിക്കുന്നതിനിടയിൽ അയൽക്കാരനോ വീട്ടിലെ മറ്റൊരാളോ അപ്രതീക്ഷിതമായി എത്തി സ്ഥിതി കൂടുതൽ വഷളാക്കുന്നു`,
-      cameraHint: 'Over-the-shoulder doorway framing with nervous side-glances and hidden mess behind back',
-      visualMotion: 'Steadicam push-in as character tries desperately to hide chaos while talking politely',
+      situationLine: (b) => `${b} — പുതിയ കഥാപാത്രത്തിന്റെയോ അപ്രതീക്ഷിത സാഹചര്യത്തിന്റെയോ വരവോടെ കഥ കൂടുതൽ സങ്കീർണ്ണമാകുന്നു`,
+      cameraHint: 'Over-the-shoulder framing with sharp foreground focus and tense background arrival',
+      visualMotion: 'Steadicam push-in as characters confront the sudden turning point face-to-face',
     },
     {
-      stageTag: 'ഭാഗം 5 — തന്ത്രം പാളിപ്പോകുന്ന വഴിത്തിരിവ് (Backfired Plan / Visual Gag)',
+      stageTag: 'ഭാഗം 5 — പ്രതിസന്ധിയുടെ നിർണ്ണായക ഘട്ടം (Visual Twist)',
       sceneType: 'visual-comedy',
-      situationLine: () => `കുഴപ്പം മറയ്ക്കാൻ നടത്തിയ ബുദ്ധിപരമായ ശ്രമം വിപരീതഫലം നൽകുന്നു — മറ്റൊരു സാധനം തട്ടിമറിഞ്ഞ് രഹസ്യം പുറത്താകാൻ തുടങ്ങുന്നു`,
-      cameraHint: 'Tight close-up insert cut on spilling prop followed by shocked deadpan reaction still',
-      visualMotion: 'Fast rack-focus from tumbling object to silent jaw-drop close-up expression',
+      situationLine: (b) => `${b} — പ്രധാന വിവരമോ തെളിവോ അപ്രതീക്ഷിതമായി വെളിപ്പെടുന്ന നിശബ്ദ വിഷ്വൽ വഴിത്തിരിവ്`,
+      cameraHint: 'Tight close-up insert cut on crucial prop followed by stunned reaction still',
+      visualMotion: 'Fast rack-focus from key clue directly to silent wide-eyed close-up expression',
     },
     {
-      stageTag: 'ഭാഗം 6 — ഏറ്റവും രസകരമായ ഉച്ചസ്ഥായി (Peak Comedic Chaos)',
+      stageTag: 'ഭാഗം 6 — ഉച്ചസ്ഥായിയിലെ സംഘർഷം (Peak Climax)',
       sceneType: 'dialogue',
-      situationLine: () => `എല്ലാവരുടെയും തെറ്റിദ്ധാരണകൾ ഒന്നിച്ചു കൂട്ടിയിടിച്ച് വലിയ കോലാഹലവും വേഗതയേറിയ മറുപടികളും നിറഞ്ഞ ക്ലൈമാക്സ് നിമിഷം`,
-      cameraHint: 'Energetic wide interior shot with multiple characters reacting in completely different directions',
-      visualMotion: 'Rapid handheld tracking circling characters mid-argument with animated comedic timing',
+      situationLine: (b) => `${b} — എല്ലാ സംഭവങ്ങളും ഒന്നിച്ച് കൂട്ടിയിടിച്ച് വേഗതയേറിയ മറുപടികളും ആവേശവും നിറഞ്ഞ ക്ലൈമാക്സ് നിമിഷം`,
+      cameraHint: 'Energetic wide shot with multiple characters reacting dynamically across the scene',
+      visualMotion: 'Rapid handheld tracking circling characters through the peak dramatic/comedic clash',
     },
     {
       stageTag: 'ഭാഗം 7 — ഹൃദ്യമായ മാറ്റവും തിരിച്ചറിവും (Unexpected Turning Point)',
       sceneType: 'visual-comedy',
-      situationLine: () => `ബഹളത്തിനിടയിൽ നിശബ്ദമായി സംഭവിക്കുന്നൊരു ചെറിയ നല്ല പ്രവൃത്തി അല്ലെങ്കിൽ അപ്രതീക്ഷിത തെളിവ് എല്ലാവരുടെയും മനസ്സ് മാറ്റുന്നു`,
-      cameraHint: 'Soft golden close-up capturing gentle eye contact, small helpful gesture & warm atmospheric light',
-      visualMotion: 'Slow gentle push-in dissolving tension into silent warmth and genuine smile',
+      situationLine: (b) => `${b} — നിർണ്ണായക നിമിഷത്തിൽ സത്യം തെളിയുകയും എല്ലാവരുടെയും ഭാവം മാറുകയും ചെയ്യുന്നു`,
+      cameraHint: 'Soft golden close-up capturing sincere eye contact, decisive gesture & warm atmospheric light',
+      visualMotion: 'Slow gentle push-in dissolving high tension into quiet clarity and relief',
     },
     {
-      stageTag: 'ഭാഗം 8 — സന്തോഷകരമായ അന്ത്യം (Satisfying Conclusion)',
+      stageTag: 'ഭാഗം 8 — പൂർണ്ണമായ അന്ത്യം (Satisfying Conclusion)',
       sceneType: 'dialogue',
-      situationLine: () => `എല്ലാ പ്രശ്നങ്ങളും ചിരിയോടും സ്നേഹത്തോടും കൂടി ഒത്തുതീർപ്പാകുന്നു — പുതിയ തുടക്കത്തോടെ മനോഹരമായ ഫൈനൽ പഞ്ച്‌ലൈൻ`,
-      cameraHint: 'Warm wide pull-back framing everyone together comfortably in golden closing light',
-      visualMotion: 'Smooth crane pull-out leaving the characters smiling warmly in harmonious closure',
+      situationLine: (b) => `${b} — തുടക്കത്തിലെ പ്രശ്നങ്ങളെല്ലാം മനോഹരമായി പരിഹരിക്കപ്പെട്ട് വ്യക്തമായ ഫൈനൽ അന്ത്യത്തിലെത്തുന്നു`,
+      cameraHint: 'Warm wide pull-back framing all key characters together cleanly in golden closing light',
+      visualMotion: 'Smooth crane pull-out leaving the characters together in harmonious story closure',
     },
   ],
   en: [
@@ -923,46 +1460,46 @@ const EIGHT_PART_ARC_BEATS: Record<AppLang, ArcBeatBlueprint[]> = {
       visualMotion: 'Quick responsive pan between speakers highlighting comic disbelief',
     },
     {
-      stageTag: 'Part 3 — Pure Visual Comedy Beat (Silent Gag)',
+      stageTag: 'Part 3 — Pure Visual Beat (No Dialogue)',
       sceneType: 'visual-comedy',
-      situationLine: () => `Pure physical comedy with zero spoken words — a clumsy attempt to manage the situation turns into hilarious silent chaos`,
-      cameraHint: 'Wide-angle physical comedy keyframe showing mid-air prop slip, awkward crouch & frozen panic',
-      visualMotion: 'Zippy Steadicam follow with comic whip-pan catching silent pratfalls and wide-eyed glances',
+      situationLine: (b) => `${b} — Told purely through expressive faces, prop details, and physical motion without spoken words`,
+      cameraHint: 'Wide-angle visual storytelling keyframe highlighting sudden movement, prop focus & sharp reaction',
+      visualMotion: 'Zippy Steadicam follow with whip-pan catching physical reaction and wide-eyed glances',
     },
     {
-      stageTag: 'Part 4 — Second Escalating Problem (Outsider Arrives)',
+      stageTag: 'Part 4 — Escalating Twist & New Character Entry',
       sceneType: 'dialogue',
-      situationLine: () => `Right as things look manageable, a neighbor, elder, or unexpected guest knocks at the worst possible second`,
-      cameraHint: 'Over-the-shoulder doorway framing contrasting polite smile in front with hidden mess behind',
-      visualMotion: 'Subtle push-in as protagonist nervously blocks view while improvising an excuse',
+      situationLine: (b) => `${b} — The newly introduced character raises the stakes with a fresh obstacle`,
+      cameraHint: 'Over-the-shoulder two-character framing contrasting tension and unfolding conflict',
+      visualMotion: 'Controlled push-in as characters confront the unexpected new situation directly',
     },
     {
-      stageTag: 'Part 5 — Clever Fix Backfires (Visual Twist)',
+      stageTag: 'Part 5 — Crucial Turning Reveal (Visual Twist)',
       sceneType: 'visual-comedy',
-      situationLine: () => `A sneaky quick-fix backfires silently in front of everyone — a hidden detail or spilled object exposes the cover-up`,
-      cameraHint: 'Macro close-up insert frame on collapsing prop shifting smoothly to deadpan reaction',
-      visualMotion: 'Crisp rack-focus from falling prop directly to stunned silent facial close-up',
+      situationLine: (b) => `${b} — Silent visual reveal spotlights a hidden clue or sudden reversal`,
+      cameraHint: 'Macro close-up insert frame on key object shifting smoothly to stunned reaction',
+      visualMotion: 'Crisp rack-focus from decisive detail straight into close-up expression',
     },
     {
-      stageTag: 'Part 6 — Peak Chaos & Cross-Talk Climax',
+      stageTag: 'Part 6 — Peak Confrontation / Climax Action',
       sceneType: 'dialogue',
-      situationLine: () => `Every misunderstanding collides at once into rapid-fire banter, mistaken assumptions, and peak comedic mayhem`,
-      cameraHint: 'Dynamic ensemble wide frame capturing overlapping reactions across the room',
-      visualMotion: 'Energetic handheld tracking weaving rapidly between gesturing characters',
+      situationLine: (b) => `${b} — All story threads collide in high-stakes rapid exchanges and peak energy`,
+      cameraHint: 'Dynamic ensemble wide frame capturing colliding reactions across the scene',
+      visualMotion: 'Energetic handheld tracking weaving rapidly between central and supporting characters',
     },
     {
-      stageTag: 'Part 7 — Unexpected Heartwarming Turn (Silent Emotion)',
+      stageTag: 'Part 7 — Unexpected Heart & Resolution Shift',
       sceneType: 'visual-comedy',
-      situationLine: () => `In the quiet pause after the storm, a genuinely sweet or clever silent gesture wins everyone over completely`,
-      cameraHint: 'Intimate warm close-up illuminated by soft side key light highlighting sincere expression',
-      visualMotion: 'Slow emotional dolly-in melting tension into quiet tenderness and laughter',
+      situationLine: (b) => `${b} — A quiet decisive action shifts momentum toward the climax outcome`,
+      cameraHint: 'Intimate warm close-up illuminated by balanced key light highlighting sincere emotion',
+      visualMotion: 'Slow emotional dolly-in dissolving high tension into quiet clarity',
     },
     {
-      stageTag: 'Part 8 — Warm Resolution & Closing Punchline',
+      stageTag: 'Part 8 — Warm Resolution & Closing Beat',
       sceneType: 'dialogue',
-      situationLine: () => `All problems resolve happily with a charming final twist and memorable closing smile that ties back to Part 1`,
-      cameraHint: 'Balanced wide closing keyframe uniting every character cleanly inside warm ambient light',
-      visualMotion: 'Graceful pull-back tracking out as laughter settles into a satisfying ending beat',
+      situationLine: (b) => `${b} — Closing moment wraps up every character arc back to the opening hook cleanly`,
+      cameraHint: 'Balanced wide closing keyframe uniting key characters cleanly in warm ambient light',
+      visualMotion: 'Graceful pull-back tracking out as music resolves into a memorable ending beat',
     },
   ],
   hi: [
@@ -981,77 +1518,77 @@ const EIGHT_PART_ARC_BEATS: Record<AppLang, ArcBeatBlueprint[]> = {
       visualMotion: 'Crisp pan capturing confused dialogue exchange',
     },
     {
-      stageTag: 'भाग 3 — बिना डायलॉग विज़ुअल कॉमेडी',
+      stageTag: 'भाग 3 — बिना डायलॉग विज़ुअल मोड़',
       sceneType: 'visual-comedy',
-      situationLine: () => `बिना एक शब्द बोले चेहरे के भाव और हरकतों से मज़ेदार भागदौड़ और चीज़ें गिरने का सिलसिला`,
-      cameraHint: 'Dynamic physical comedy wide frame',
-      visualMotion: 'Lively Steadicam chase catching slapstick reactions',
+      situationLine: (b) => `${b} — बिना शब्दों के चेहरे के भाव और हरकतों से इस स्थिति को प्रभावशाली रूप से दिखाया जाता है`,
+      cameraHint: 'Dynamic visual frame capturing sudden reaction and prop movement',
+      visualMotion: 'Lively Steadicam chase catching expressive reactions',
     },
     {
-      stageTag: 'भाग 4 — नई मुसीबत और मेहमान की एंट्री',
+      stageTag: 'भाग 4 — नई मुसीबत और नया पात्र',
       sceneType: 'dialogue',
-      situationLine: () => `मुसीबत संभालते ही अचानक पड़ोसी या घर के किसी बड़े के आने से स्थिति और बिगड़ जाती है`,
-      cameraHint: 'Doorway over-the-shoulder tense comic framing',
-      visualMotion: 'Push-in while hiding chaos behind back politely',
+      situationLine: (b) => `${b} — नए पात्र के आने से कहानी में नया मोड़ और संघर्ष जुड़ता है`,
+      cameraHint: 'Over-the-shoulder two-character framing highlighting tension',
+      visualMotion: 'Push-in while characters confront the unexpected situation',
     },
     {
-      stageTag: 'भाग 5 — तरकीब उल्टी पड़ने वाला ट्विस्ट',
+      stageTag: 'भाग 5 — निर्णायक मोड़ (विज़ुअल ट्विस्ट)',
       sceneType: 'visual-comedy',
-      situationLine: () => `हालात छुपाने की चालाकी चुपचाप उल्टी पड़ जाती है और राज़ सामने आने लगता है`,
-      cameraHint: 'Tight close-up on falling prop and stunned reaction',
-      visualMotion: 'Rack-focus from accident to silent wide-eyed shock',
+      situationLine: (b) => `${b} — एक अहम सुराग या अचानक पलटाव चुपचाप सामने आता है`,
+      cameraHint: 'Tight close-up on key prop followed by stunned reaction',
+      visualMotion: 'Rack-focus from crucial detail to silent wide-eyed expression',
     },
     {
-      stageTag: 'भाग 6 — कॉमेडी का चरम और हंगामा',
+      stageTag: 'भाग 6 — कहानी का चरम (क्लाइमेक्स)',
       sceneType: 'dialogue',
-      situationLine: () => `सारी गलतफहमियाँ एक साथ टकराती हैं और ज़ोरदार कॉमेडी हंगामा खड़ा होता है`,
-      cameraHint: 'Energetic group wide frame with animated poses',
-      visualMotion: 'Handheld tracking circling chaotic reactions',
+      situationLine: (b) => `${b} — सभी घटनाएँ और पात्र एक साथ टकराकर क्लाइमेक्स रचते हैं`,
+      cameraHint: 'Energetic group wide frame with dynamic poses',
+      visualMotion: 'Handheld tracking circling dramatic/comedic reactions',
     },
     {
-      stageTag: 'भाग 7 — दिल छू लेने वाला मोड़',
+      stageTag: 'भाग 7 — दिल छू लेने वाला बदलाव',
       sceneType: 'visual-comedy',
-      situationLine: () => `शोर थमते ही एक प्यारी और चुपचाप की गई अच्छी हरकत सबका दिल जीत लेती है`,
-      cameraHint: 'Warm close-up in golden light showing gentle smile',
-      visualMotion: 'Slow heartfelt push-in turning chaos to warmth',
+      situationLine: (b) => `${b} — अंतिम सच सामने आते ही पूरा माहौल बदल जाता है`,
+      cameraHint: 'Warm close-up in golden light showing genuine emotion',
+      visualMotion: 'Slow heartfelt push-in shifting tension to clarity',
     },
     {
-      stageTag: 'भाग 8 — खुशनुमा अंत और पंचलाइन',
+      stageTag: 'भाग 8 — पूर्ण और यादगार अंत',
       sceneType: 'dialogue',
-      situationLine: () => `सारी मुश्किलें हल होकर हंसी-खुशी के साथ कहानी मज़ेदार अंदाज़ में समाप्त होती है`,
+      situationLine: (b) => `${b} — सारी उलझनें सुलझकर कहानी सार्थक और संतोषजनक अंत पर पहुँचती है`,
       cameraHint: 'Warm closing wide shot together',
-      visualMotion: 'Smooth pull-back ending on smiling faces',
+      visualMotion: 'Smooth pull-back ending on resolved expressions',
     },
   ],
   ta: [
     { stageTag: 'பகுதி 1 — அறிமுகம் & திடீர் வருகை', sceneType: 'dialogue', situationLine: (b) => `${b} — கதை அமைதியான சூழலில் சுவாரஸ்யமாகத் தொடங்குகிறது`, cameraHint: 'Wide 35mm establishing still', visualMotion: 'Smooth slow dolly-in' },
-    { stageTag: 'பகுதி 2 — முதல் குழப்பம்', sceneType: 'dialogue', situationLine: (b) => `"${b}" காரணமாக எதிர்பாராத சிறு வாக்குவாதமும் குழப்பமும் ஏற்படுகிறது`, cameraHint: 'Two-shot reaction framing', visualMotion: 'Responsive pan between faces' },
-    { stageTag: 'பகுதி 3 — வசனமில்லா விஷுவல் காமெடி', sceneType: 'visual-comedy', situationLine: () => `வசனம் இன்றி முகபாவங்களும் உடல் அசைவுகளும் நிறைந்த நகைச்சுவை கலாட்டா`, cameraHint: 'Physical comedy wide still', visualMotion: 'Whip-pan slapstick tracking' },
-    { stageTag: 'பகுதி 4 — புதிய சிக்கல் & விருந்தினர் வருகை', sceneType: 'dialogue', situationLine: () => `நிலைமையை சமாளிக்கும் நேரத்தில் அண்டை வீட்டாரின் திடீர் வருகையால் புதிய சிக்கல்`, cameraHint: 'Doorway over-the-shoulder frame', visualMotion: 'Tense comic push-in' },
-    { stageTag: 'பகுதி 5 — திட்டம் சொதப்பும் திருப்பம்', sceneType: 'visual-comedy', situationLine: () => `ரகசியத்தை மறைக்க செய்த தந்திரம் அமைதியாக சொதப்பி மாட்டிக்கொள்ளும் தருணம்`, cameraHint: 'Tight macro detail + shock close-up', visualMotion: 'Rack-focus comedic reveal' },
-    { stageTag: 'பகுதி 6 — உச்சகட்ட நகைச்சுவை குழப்பம்', sceneType: 'dialogue', situationLine: () => `அனைத்து குழப்பங்களும் ஒன்றாக மோதி உச்சகட்ட நகைச்சுவை கலாட்டா வெடிக்கிறது`, cameraHint: 'Ensemble room-wide reaction shot', visualMotion: 'Energetic handheld tracking' },
-    { stageTag: 'பகுதி 7 — மனதை மாற்றும் நெகிழ்ச்சித் திருப்பம்', sceneType: 'visual-comedy', situationLine: () => `குழப்பத்திற்கு நடுவே நடக்கும் ஒரு அழகான செயலால் அனைவரின் மனமும் மாறுகிறது`, cameraHint: 'Warm close-up keyframe', visualMotion: 'Slow emotional dolly-in' },
-    { stageTag: 'பகுதி 8 — இனிமையான முடிவு', sceneType: 'dialogue', situationLine: () => `சிக்கல்கள் எல்லாம் தீர்ந்து சிரிப்பும் மகிழ்ச்சியுமாக கதை நிறைவடைகிறது`, cameraHint: 'Warm wide pull-back closing shot', visualMotion: 'Graceful crane pull-out' },
+    { stageTag: 'பகுதி 2 — முதல் சிக்கல்', sceneType: 'dialogue', situationLine: (b) => `${b} — புதிய திருப்பத்தால் முதல் சவாலும் குழப்பமும் ஏற்படுகிறது`, cameraHint: 'Two-shot reaction framing', visualMotion: 'Responsive pan between faces' },
+    { stageTag: 'பகுதி 3 — வசனமில்லா விஷுவல் காட்சி', sceneType: 'visual-comedy', situationLine: (b) => `${b} — வசனம் இன்றி முகபாவங்களும் உடல் அசைவுகளும் கதையை நகர்த்துகின்றன`, cameraHint: 'Dynamic visual wide still', visualMotion: 'Whip-pan expressive tracking' },
+    { stageTag: 'பகுதி 4 — புதிய கதாபாத்திரத்தின் வருகை', sceneType: 'dialogue', situationLine: (b) => `${b} — புதிய கதாபாத்திரத்தின் வருகையால் நிலைமை மேலும் தீவிரமாகிறது`, cameraHint: 'Over-the-shoulder two-shot frame', visualMotion: 'Tense push-in' },
+    { stageTag: 'பகுதி 5 — முக்கியத் திருப்பம்', sceneType: 'visual-comedy', situationLine: (b) => `${b} — மறைந்திருந்த உண்மை அல்லது முக்கியத் தடயம் வெளிப்படும் தருணம்`, cameraHint: 'Tight macro detail + shock close-up', visualMotion: 'Rack-focus reveal' },
+    { stageTag: 'பகுதி 6 — உச்சகட்ட கிளைமேக்ஸ்', sceneType: 'dialogue', situationLine: (b) => `${b} — அனைத்துச் சூழல்களும் ஒன்றிணைந்து உச்சகட்டக் காட்சி நடக்கிறது`, cameraHint: 'Ensemble room-wide reaction shot', visualMotion: 'Energetic handheld tracking' },
+    { stageTag: 'பகுதி 7 — மனதை மாற்றும் நெகிழ்ச்சி', sceneType: 'visual-comedy', situationLine: (b) => `${b} — தீர்மானமான செயலால் அனைவரின் நிலையும் மாறுகிறது`, cameraHint: 'Warm close-up keyframe', visualMotion: 'Slow emotional dolly-in' },
+    { stageTag: 'பகுதி 8 — இனிமையான முடிவு', sceneType: 'dialogue', situationLine: (b) => `${b} — சிக்கல்கள் எல்லாம் தீர்ந்து கதை முழுமையாக நிறைவடைகிறது`, cameraHint: 'Warm wide pull-back closing shot', visualMotion: 'Graceful crane pull-out' },
   ],
   kn: [
     { stageTag: 'ಭಾಗ 1 — ಆರಂಭ ಮತ್ತು ಪ್ರವೇಶ', sceneType: 'dialogue', situationLine: (b) => `${b} — ಕಥೆಯ ಸ್ಪಷ್ಟ ಆರಂಭ ಮತ್ತು ಸನ್ನಿವೇಶದ ಪರಿಚಯ`, cameraHint: 'Wide 35mm establishing frame', visualMotion: 'Smooth dolly-in' },
-    { stageTag: 'ಭಾಗ 2 — ಮೊದಲ ಗೊಂದಲ', sceneType: 'dialogue', situationLine: (b) => `"${b}" ಸುತ್ತ ಅನಿರೀಕ್ಷಿತ ಗೊಂದಲ ಮತ್ತು ತಮಾಷೆಯ ವಾದ ಶುರುವಾಗುತ್ತದೆ`, cameraHint: 'Medium two-shot reaction', visualMotion: 'Crisp face-to-face pan' },
-    { stageTag: 'ಭಾಗ 3 — ಡೈಲಾಗ್ ಇಲ್ಲದ ವಿಷುಯಲ್ ಕಾಮಿಡಿ', sceneType: 'visual-comedy', situationLine: () => `ಮಾತಿಲ್ಲದೆ ಕೇವಲ ಮುಖಭಾವ ಮತ್ತು ದೇಹದ ಚಲನೆಯಿಂದ ನಡೆಯುವ ಹಾಸ್ಯಮಯ ಗಡಿಬಿಡಿ`, cameraHint: 'Dynamic slapstick wide shot', visualMotion: 'Zippy Steadicam tracking' },
-    { stageTag: 'ಭಾಗ 4 — ಹೊಸ ತೊಂದರೆ ಮತ್ತು ಅತಿಥಿ', sceneType: 'dialogue', situationLine: () => `ಸಮಸ್ಯೆ ಬಗೆಹರಿಸುವಷ್ಟರಲ್ಲಿ ನೆರೆಯವರ ಅನಿರೀಕ್ಷಿತ ಆಗಮನದಿಂದ ಪರಿಸ್ಥಿತಿ ಇನ್ನಷ್ಟು ಜಟಿಲವಾಗುತ್ತದೆ`, cameraHint: 'Over-the-shoulder doorway shot', visualMotion: 'Subtle comic push-in' },
-    { stageTag: 'ಭಾಗ 5 — ಉಪಾಯ ಉಲ್ಟಾ ಆಗುವ ತಿರುವು', sceneType: 'visual-comedy', situationLine: () => `ವಿಷಯ ಮರೆಮಾಚಲು ಮಾಡಿದ ಉಪಾಯ ಸದ್ದಿಲ್ಲದೆ ಉಲ್ಟಾ ಹೊಡೆದು ಹೊಸ ಕಿರಿಕಿರಿ ತರುತ್ತದೆ`, cameraHint: 'Close-up spilling prop + shock', visualMotion: 'Quick rack-focus reaction' },
-    { stageTag: 'ಭಾಗ 6 — ಪೀಕ್ ಕಾಮಿಡಿ ಗದ್ದಲ', sceneType: 'dialogue', situationLine: () => `ಎಲ್ಲಾ ತಪ್ಪುಗ್ರಹಿಕೆಗಳು ಒಟ್ಟಿಗೆ ಸೇರಿ ದೊಡ್ಡ ಹಾಸ್ಯಮಯ ಗೊಂದಲ ಸೃಷ್ಟಿಯಾಗುತ್ತದೆ`, cameraHint: 'Ensemble room reaction wide frame', visualMotion: 'Handheld circling camera' },
-    { stageTag: 'ಭಾಗ 7 — ಹೃದಯ ಸ್ಪರ್ಶಿಸುವ ತಿರುವು', sceneType: 'visual-comedy', situationLine: () => `ಗದ್ದಲದ ನಡುವೆ ನಡೆದ ಒಂದು ಸಿಹಿ ಘಟನೆ ಎಲ್ಲರ ಮನಸ್ಸನ್ನು ಗೆಲ್ಲುತ್ತದೆ`, cameraHint: 'Soft warm close-up portrait', visualMotion: 'Slow gentle dolly-in' },
-    { stageTag: 'ಭಾಗ 8 — ಸಂತೋಷದ ಅಂತ್ಯ', sceneType: 'dialogue', situationLine: () => `ಎಲ್ಲಾ ಸಮಸ್ಯೆಗಳು ನಗುವಿನೊಂದಿಗೆ ಬಗೆಹರಿದು ಕಥೆ ಸುಂದರವಾಗಿ ಮುಕ್ತಾಯವಾಗುತ್ತದೆ`, cameraHint: 'Balanced warm wide finale', visualMotion: 'Smooth pull-back closing shot' },
+    { stageTag: 'ಭಾಗ 2 — ಮೊದಲ ಗೊಂದಲ', sceneType: 'dialogue', situationLine: (b) => `${b} — ಅನಿರೀಕ್ಷಿತ ತಿರುವಿನಿಂದ ಮೊದಲ ಸಮಸ್ಯೆ ಶುರುವಾಗುತ್ತದೆ`, cameraHint: 'Medium two-shot reaction', visualMotion: 'Crisp face-to-face pan' },
+    { stageTag: 'ಭಾಗ 3 — ಡೈಲಾಗ್ ಇಲ್ಲದ ವಿಷುಯಲ್ ಕ್ಷಣ', sceneType: 'visual-comedy', situationLine: (b) => `${b} — ಮಾತಿಲ್ಲದೆ ಕೇವಲ ಮುಖಭಾವ ಮತ್ತು ಚಲನೆಯಿಂದ ಸನ್ನಿವೇಶ ತೆರೆದುಕೊಳ್ಳುತ್ತದೆ`, cameraHint: 'Dynamic expressive wide shot', visualMotion: 'Zippy Steadicam tracking' },
+    { stageTag: 'ಭಾಗ 4 — ಹೊಸ ಪಾತ್ರ ಮತ್ತು ತಿರುವು', sceneType: 'dialogue', situationLine: (b) => `${b} — ಹೊಸ ಪಾತ್ರದ ಪ್ರವೇಶದಿಂದ ಪರಿಸ್ಥಿತಿ ಇನ್ನಷ್ಟು ಕುತೂಹಲಕಾರಿಯಾಗುತ್ತದೆ`, cameraHint: 'Over-the-shoulder doorway shot', visualMotion: 'Subtle push-in' },
+    { stageTag: 'ಭಾಗ 5 — ರಹಸ್ಯ ಬಯಲಾಗುವ ತಿರುವು', sceneType: 'visual-comedy', situationLine: (b) => `${b} — ಮುಖ್ಯ ಸುಳಿವು ಸದ್ದಿಲ್ಲದೆ ಬಯಲಾಗುವ ನಿರ್ಣಾಯಕ ಕ್ಷಣ`, cameraHint: 'Close-up key prop + shock', visualMotion: 'Quick rack-focus reaction' },
+    { stageTag: 'ಭಾಗ 6 — ಕ್ಲೈಮ್ಯಾಕ್ಸ್ ಹಂತ', sceneType: 'dialogue', situationLine: (b) => `${b} — ಎಲ್ಲಾ ಘಟನೆಗಳು ಒಟ್ಟಾಗಿ ಸೇರಿ ಕ್ಲೈಮ್ಯಾಕ್ಸ್ ತಲುಪುತ್ತದೆ`, cameraHint: 'Ensemble reaction wide frame', visualMotion: 'Handheld circling camera' },
+    { stageTag: 'ಭಾಗ 7 — ಹೃದಯ ಸ್ಪರ್ಶಿಸುವ ಬದಲಾವಣೆ', sceneType: 'visual-comedy', situationLine: (b) => `${b} — ನಿರ್ಣಾಯಕ ಘಟನೆ ಎಲ್ಲರ ಮನಸ್ಸನ್ನು ಗೆಲ್ಲುತ್ತದೆ`, cameraHint: 'Soft warm close-up portrait', visualMotion: 'Slow gentle dolly-in' },
+    { stageTag: 'ಭಾಗ 8 — ಸಂತೋಷದ ಅಂತ್ಯ', sceneType: 'dialogue', situationLine: (b) => `${b} — ಎಲ್ಲಾ ಸಮಸ್ಯೆಗಳು ಬಗೆಹರಿದು ಕಥೆ ಸುಂದರವಾಗಿ ಮುಕ್ತಾಯವಾಗುತ್ತದೆ`, cameraHint: 'Balanced warm wide finale', visualMotion: 'Smooth pull-back closing shot' },
   ],
   te: [
     { stageTag: 'భాగం 1 — పరిచయం & ఆకస్మిక ప్రవేశం', sceneType: 'dialogue', situationLine: (b) => `${b} — కథ స్పష్టమైన ప్రారంభంతో సహజ వాతావరణంలో మొదలవుతుంది`, cameraHint: 'Wide 35mm establishing frame', visualMotion: 'Smooth dolly-in' },
-    { stageTag: 'భాగం 2 — మొదటి అపార్థం', sceneType: 'dialogue', situationLine: (b) => `"${b}" విషయంలో అనుకోని చిన్న అపార్థం తలెత్తి మొదటి గందరగోళం మొదలవుతుంది`, cameraHint: 'Medium two-shot frame', visualMotion: 'Quick pan between expressions' },
-    { stageTag: 'భాగం 3 — డైలాగ్ లేని విజువల్ కామెడీ', sceneType: 'visual-comedy', situationLine: () => `మాటలు లేకుండా పూర్తిగా హావభావాలు, శరీర కదలికలతో నవ్వు తెప్పించే గందరగోళ సన్నివేశం`, cameraHint: 'Physical comedy wide angle', visualMotion: 'Whip-pan slapstick motion' },
-    { stageTag: 'భాగం 4 — కొత్త చిక్కు & బయటి వ్యక్తి రాక', sceneType: 'dialogue', situationLine: () => `పరిస్థితి చక్కదిద్దేలోపే పొరుగింటి వారు అకస్మాత్తుగా రావడంతో సమస్య మరింత పెరుగుతుంది`, cameraHint: 'Doorway over-the-shoulder frame', visualMotion: 'Nervous push-in' },
-    { stageTag: 'భాగం 5 — ప్లాన్ బెడిసికొట్టిన మలుపు', sceneType: 'visual-comedy', situationLine: () => `దాచడానికి చేసిన తెలివైన ప్రయత్నం నిశ్శబ్దంగా బెడిసికొట్టి అసలు విషయం బయటపడబోతుంది`, cameraHint: 'Tight close-up prop + shock still', visualMotion: 'Crisp rack-focus reveal' },
-    { stageTag: 'భాగం 6 — క్లైమాక్స్ కామెడీ హంగామా', sceneType: 'dialogue', situationLine: () => `అన్ని అపార్థాలు ఒక్కసారిగా కలిసి సరదా గందరగోళం తారాస్థాయికి చేరుతుంది`, cameraHint: 'Ensemble wide room reaction', visualMotion: 'Energetic handheld tracking' },
-    { stageTag: 'భాగం 7 — మనసు మార్చే మధురమైన మలుపు', sceneType: 'visual-comedy', situationLine: () => `అల్లరి మధ్యలో జరిగిన ఒక మంచి పని అందరి మనసులను హత్తుకుని నవ్వు తెప్పిస్తుంది`, cameraHint: 'Warm close-up keyframe', visualMotion: 'Slow tender dolly-in' },
-    { stageTag: 'భాగం 8 — సంతోషకరమైన ముగింపు', sceneType: 'dialogue', situationLine: () => `సమస్యలన్నీ పరిష్కారమై అందరూ కలిసి నవ్వుతూ కథ ఆనందంగా ముగుస్తుంది`, cameraHint: 'Warm wide pull-back finale', visualMotion: 'Graceful closing pull-out' },
+    { stageTag: 'భాగం 2 — మొదటి మలుపు', sceneType: 'dialogue', situationLine: (b) => `${b} — అనుకోని సంఘటనతో మొదటి సమస్య మొదలవుతుంది`, cameraHint: 'Medium two-shot frame', visualMotion: 'Quick pan between expressions' },
+    { stageTag: 'భాగం 3 — డైలాగ్ లేని విజువల్ సన్నివేశం', sceneType: 'visual-comedy', situationLine: (b) => `${b} — మాటలు లేకుండా హావభావాలు, శరీర కదలికలతో కథ ముందుకు సాగుతుంది`, cameraHint: 'Expressive wide angle frame', visualMotion: 'Whip-pan expressive motion' },
+    { stageTag: 'భాగం 4 — కొత్త పాత్ర రాక & చిక్కు', sceneType: 'dialogue', situationLine: (b) => `${b} — కొత్త పాత్ర రాకతో కథ మరింత ఉత్కంఠభరితంగా మారుతుంది`, cameraHint: 'Over-the-shoulder character frame', visualMotion: 'Nervous push-in' },
+    { stageTag: 'భాగం 5 — కీలక మలుపు', sceneType: 'visual-comedy', situationLine: (b) => `${b} — ముఖ్యమైన ఆధారం నిశ్శబ్దంగా బయటపడే కీలక క్షణం`, cameraHint: 'Tight close-up prop + shock still', visualMotion: 'Crisp rack-focus reveal' },
+    { stageTag: 'భాగం 6 — క్లైమాక్స్ ఘట్టం', sceneType: 'dialogue', situationLine: (b) => `${b} — అన్ని సంఘటనలు ఒక్కసారిగా కలిసి క్లైమాక్స్ తారాస్థాయికి చేరుతుంది`, cameraHint: 'Ensemble wide reaction frame', visualMotion: 'Energetic handheld tracking' },
+    { stageTag: 'భాగం 7 — మనసు మార్చే మలుపు', sceneType: 'visual-comedy', situationLine: (b) => `${b} — కీలక నిర్ణయం అందరి మనసులను హత్తుకుంటుంది`, cameraHint: 'Warm close-up keyframe', visualMotion: 'Slow tender dolly-in' },
+    { stageTag: 'భాగం 8 — సంతోషకరమైన ముగింపు', sceneType: 'dialogue', situationLine: (b) => `${b} — సమస్యలన్నీ పరిష్కారమై కథ ఆనందంగా ముగుస్తుంది`, cameraHint: 'Warm wide pull-back finale', visualMotion: 'Graceful closing pull-out' },
   ],
 };
 
@@ -1134,15 +1671,29 @@ export function generateBreakdownLocal(
   const pack = DYNAMIC_STORY_PACKS[lang] || DYNAMIC_STORY_PACKS.ml;
   const phasePool = SUB_BEAT_PHASES[lang] || SUB_BEAT_PHASES.ml;
   const arcBlueprints = EIGHT_PART_ARC_BEATS[lang] || EIGHT_PART_ARC_BEATS.ml;
-  const cleanScript = (script || '').trim();
+  const rawScript = (script || '').trim();
+  const charMatch = rawScript.match(/\[CHARACTERS:\s*([^\]]+)\]/i);
+  const bgmMetaMatch = rawScript.match(/\[BGM STYLE:\s*([^\]]+)\]/i);
+  const parsedCast = charMatch?.[1]
+    ? charMatch[1]
+        .split(',')
+        .map((c) => c.trim())
+        .filter(Boolean)
+    : [];
+  const cleanScript = rawScript
+    .replace(/\[CHARACTERS:[^\]]*\]/gi, '')
+    .replace(/\[BGM STYLE:[^\]]*\]/gi, '')
+    .replace(/\[CONTINUITY:[^\]]*\]/gi, '')
+    .trim();
   const storyBeats = splitStorySentences(cleanScript);
-  const effectiveBeats = storyBeats.length > 0 ? storyBeats : [cleanScript];
+  const effectiveBeats = storyBeats.length > 0 ? storyBeats : [cleanScript || rawScript];
 
   const effectiveMode: DialogueMode = isExplicitlySilent(cleanScript) ? 'silent' : dialogueMode;
   const hasPhotos = Array.isArray(characterPhotos) && characterPhotos.length > 0;
+  const castContinuitySuffix = parsedCast.length > 0 ? ` (${parsedCast.join(', ')})` : '';
   const continuityTag = hasPhotos
-    ? 'Strict Character Face ID, Clothing, Prop & Lighting Continuity Locked to Reference Photo'
-    : 'Exact Subject Face, Clothing, Key Props & Location Atmosphere Continuous From Shot 01';
+    ? `Strict Character Face ID, Clothing, Prop & Lighting Continuity Locked to Reference Photo${castContinuitySuffix}`
+    : `Exact Subject Face, Clothing, Key Props & Location Atmosphere Continuous From Shot 01${castContinuitySuffix}`;
 
   const lightingPhases = [
     'soft morning-warm directional key light with natural ambient depth',
@@ -1167,7 +1718,9 @@ export function generateBreakdownLocal(
     const subPhase = phasePool[idx % phasePool.length];
     const cameraStyle = pack.shotCameraFocus[idx % pack.shotCameraFocus.length];
     const lightStyle = lightingPhases[idx % lightingPhases.length];
-    const bgmCue = buildShotBgmCue(beatText, idx, numShots);
+    const bgmCue = bgmMetaMatch?.[1]
+      ? `${bgmMetaMatch[1]} — ${buildShotBgmCue(beatText, idx, numShots)}`
+      : buildShotBgmCue(beatText, idx, numShots);
 
     let dialogueLine = '';
     if (effectiveMode === 'dialogue') {
@@ -1202,7 +1755,7 @@ export function generateBreakdownLocal(
           }
         }
       } else {
-        // Explicit No-Dialogue / Visual Comedy scene!
+        // Explicit No-Dialogue / Visual scene!
         dialogueLine = '';
       }
     }
@@ -1211,22 +1764,29 @@ export function generateBreakdownLocal(
       idx >= arcBlueprints.length ? ` (${subPhase.actionSuffix(shotNum, numShots)})` : ''
     }`;
 
-    const imagePrompt = `[PHOTO KEYFRAME PROMPT — SHOT ${shotNum.toString().padStart(2, '0')}]: Photorealistic 35mm static film frame (${arc.stageTag}). Framing: ${arc.cameraHint} (${cameraStyle}). Continuity Lock: ${continuityTag}. Lighting: ${lightStyle}, 8k crisp detail, no text overlays.`;
+    const activeCharacters =
+      parsedCast.length > 0
+        ? idx === 0
+          ? [parsedCast[0]]
+          : parsedCast.slice(0, Math.min(parsedCast.length, 2 + (idx % 2)))
+        : [deriveSubjectLabel(beatText, lang)];
+
+    const imagePrompt = `[PHOTO KEYFRAME PROMPT — SHOT ${shotNum.toString().padStart(2, '0')}]: Photorealistic 35mm static film frame (${arc.stageTag}). Scene: ${beatText}. Characters: ${activeCharacters.join(', ')}. Framing: ${arc.cameraHint} (${cameraStyle}). Continuity Lock: ${continuityTag}. Lighting: ${lightStyle}, 8k crisp detail, no text overlays.`;
 
     const audioInstruction = dialogueLine
       ? `Spoken Dialogue (${lang.toUpperCase()}): "${dialogueLine}". Background Music & SFX: ${bgmCue}`
-      : `NO DIALOGUE / VISUAL COMEDY BEAT: Express story purely through physical action, facial timing, and ambient SFX. Background Music & SFX: ${bgmCue}`;
+      : `NO DIALOGUE / VISUAL BEAT: Express story purely through physical action, facial timing, and ambient SFX. Background Music & SFX: ${bgmCue}`;
 
     const videoPrompt = `[VIDEO MOTION PROMPT — SHOT ${shotNum.toString().padStart(2, '0')}]: Continuous 24fps sequence${
       shotNum > 1 ? ` seamlessly following Shot ${(shotNum - 1).toString().padStart(2, '0')}` : ''
-    }. Visual Beat: ${arc.situationLine(beatText)}. Motion & Camera: ${arc.visualMotion}. Continuity Lock: ${continuityTag}. ${audioInstruction} Duration: ${preferredShotDuration}s.`;
+    }. Visual Beat: ${arc.situationLine(beatText)}. Active Characters: ${activeCharacters.join(', ')}. Motion & Camera: ${arc.visualMotion}. Continuity Lock: ${continuityTag}. ${audioInstruction} Duration: ${preferredShotDuration}s.`;
 
     return {
       shotNumber: shotNum,
       durationSeconds: preferredShotDuration,
       timing: `Shot ${shotNum.toString().padStart(2, '0')} — ${preferredShotDuration}s`,
       action: distinctAction,
-      characters: [deriveSubjectLabel(beatText, lang)],
+      characters: activeCharacters,
       bgm: bgmCue,
       continuity: continuityTag,
       malayalamDialogue: dialogueLine,

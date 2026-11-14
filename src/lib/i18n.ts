@@ -195,6 +195,13 @@ export interface UiStrings {
   masterCopied: string;
   masterCopyBoth: string;
   loadMorePrompts: (shown: number, total: number) => string;
+  editShotBtn: string;
+  doneEditingBtn: string;
+  viewAllShotsBtn: string;
+  viewSingleShotBtn: string;
+  prevShotBtn: string;
+  nextShotBtn: string;
+  shotOfTotal: (curr: number, total: number) => string;
   angleErrorFallback: string;
   breakdownErrorFallback: string;
 }
@@ -276,6 +283,13 @@ export const UI_TRANSLATIONS: Record<AppLang, UiStrings> = {
     masterCopied: 'മൊത്തം കോപ്പി ചെയ്തു!',
     masterCopyBoth: 'രണ്ടും ഒന്നിച്ച് കോപ്പി ചെയ്യുക',
     loadMorePrompts: (shown, total) => `കൂടുതൽ പ്രോംപ്റ്റുകൾ കാണുക (${shown} / ${total} - അടുത്ത 25 എണ്ണം)`,
+    editShotBtn: '✏️ എഡിറ്റ്',
+    doneEditingBtn: '✓ സേവ് / പൂർത്തിയായി',
+    viewAllShotsBtn: '📜 എല്ലാം സ്ക്രോൾ ചെയ്ത് കാണുക',
+    viewSingleShotBtn: '📖 ഓരോന്നായി ഫുൾ സ്ക്രീനിൽ കാണുക',
+    prevShotBtn: '← മുൻ ഷോട്ട്',
+    nextShotBtn: 'അടുത്ത ഷോട്ട് →',
+    shotOfTotal: (curr, total) => `ഷോട്ട് ${curr} / ${total}`,
     angleErrorFallback: 'കഥയുടെ വേരിയേഷനുകൾ നിർമ്മിക്കുന്നതിൽ പിഴവ് സംഭവിച്ചു.',
     breakdownErrorFallback: 'പ്രോംപ്റ്റുകൾ തരംതിരിക്കുന്നതിൽ പിഴവ് സംഭവിച്ചു.',
   },
@@ -355,6 +369,13 @@ export const UI_TRANSLATIONS: Record<AppLang, UiStrings> = {
     masterCopied: 'Master Block Copied!',
     masterCopyBoth: '1-Click Master Copy Both',
     loadMorePrompts: (shown, total) => `Load More Prompts (${shown} of ${total} Shown - Load 25 More)`,
+    editShotBtn: '✏️ Edit',
+    doneEditingBtn: '✓ Done',
+    viewAllShotsBtn: '📜 Scroll All Shots',
+    viewSingleShotBtn: '📖 One-by-One Full View',
+    prevShotBtn: '← Prev Shot',
+    nextShotBtn: 'Next Shot →',
+    shotOfTotal: (curr, total) => `Shot ${curr} of ${total}`,
     angleErrorFallback: 'Failed to generate story angles.',
     breakdownErrorFallback: 'Failed to generate shot prompts.',
   },
@@ -434,6 +455,13 @@ export const UI_TRANSLATIONS: Record<AppLang, UiStrings> = {
     masterCopied: 'मास्टर ब्लॉक कॉपी हो गया!',
     masterCopyBoth: 'दोनों एक साथ कॉपी करें',
     loadMorePrompts: (shown, total) => `और प्रॉम्प्ट्स देखें (${shown} / ${total} - अगले 25 लोड करें)`,
+    editShotBtn: '✏️ एडिट',
+    doneEditingBtn: '✓ सेव करें',
+    viewAllShotsBtn: '📜 सभी शॉट्स स्क्रॉल करें',
+    viewSingleShotBtn: '📖 एक-एक करके फुल स्क्रीन देखें',
+    prevShotBtn: '← पिछला शॉट',
+    nextShotBtn: 'अगला शॉट →',
+    shotOfTotal: (curr, total) => `शॉट ${curr} / ${total}`,
     angleErrorFallback: 'कहानियाँ बनाने में समस्या आई।',
     breakdownErrorFallback: 'शॉट प्रॉम्प्ट्स बनाने में समस्या आई।',
   },
@@ -513,6 +541,13 @@ export const UI_TRANSLATIONS: Record<AppLang, UiStrings> = {
     masterCopied: 'முழுவதும் நகலெடுக்கப்பட்டது!',
     masterCopyBoth: 'இரண்டையும் ஒன்றாக நகலெடு',
     loadMorePrompts: (shown, total) => `மேலும் பார்க்க (${shown} / ${total} - அடுத்த 25 கிளிப்புகள்)`,
+    editShotBtn: '✏️ திருத்து',
+    doneEditingBtn: '✓ முடிந்தது',
+    viewAllShotsBtn: '📜 அனைத்தையும் ஸ்க்ரோல் செய்',
+    viewSingleShotBtn: '📖 ஒன்றன்பின் ஒன்றாக முழுத் திரையில் பார்',
+    prevShotBtn: '← முந்தைய ஷாட்',
+    nextShotBtn: 'அடுத்த ஷாட் →',
+    shotOfTotal: (curr, total) => `ஷாட் ${curr} / ${total}`,
     angleErrorFallback: 'கதைகளை உருவாக்குவதில் பிழை ஏற்பட்டது.',
     breakdownErrorFallback: 'காட்சி ப்ராம்ப்ட்களை உருவாக்குவதில் பிழை ஏற்பட்டது.',
   },
@@ -592,6 +627,13 @@ export const UI_TRANSLATIONS: Record<AppLang, UiStrings> = {
     masterCopied: 'ಪೂರ್ಣ ಕಾಪಿ ಆಗಿದೆ!',
     masterCopyBoth: 'ಎರಡನ್ನೂ ಒಟ್ಟಿಗೆ ಕಾಪಿ ಮಾಡಿ',
     loadMorePrompts: (shown, total) => `ಹೆಚ್ಚು ಪ್ರಾಂಪ್ಟ್‌ಗಳನ್ನು ನೋಡಿ (${shown} / ${total} - ಮುಂದಿನ 25)`,
+    editShotBtn: '✏️ ಎಡಿಟ್',
+    doneEditingBtn: '✓ ಮುಗಿದಿದೆ',
+    viewAllShotsBtn: '📜 ಎಲ್ಲವನ್ನೂ ಸ್ಕ್ರೋಲ್ ಮಾಡಿ',
+    viewSingleShotBtn: '📖 ಒಂದೊಂದಾಗಿ ಪೂರ್ಣ ಪರದೆಯಲ್ಲಿ ನೋಡಿ',
+    prevShotBtn: '← ಹಿಂದಿನ ಶಾಟ್',
+    nextShotBtn: 'ಮುಂದಿನ ಶಾಟ್ →',
+    shotOfTotal: (curr, total) => `ಶಾಟ್ ${curr} / ${total}`,
     angleErrorFallback: 'ಕಥೆಗಳನ್ನು ರಚಿಸುವಲ್ಲಿ ದೋಷ ಉಂಟಾಗಿದೆ.',
     breakdownErrorFallback: 'ಪ್ರಾಂಪ್ಟ್‌ಗಳನ್ನು ರಚಿಸುವಲ್ಲಿ ದೋಷ ಉಂಟಾಗಿದೆ.',
   },
@@ -671,6 +713,13 @@ export const UI_TRANSLATIONS: Record<AppLang, UiStrings> = {
     masterCopied: 'మొత్తం కాపీ అయింది!',
     masterCopyBoth: 'రెండూ కలిపి కాపీ చేయండి',
     loadMorePrompts: (shown, total) => `మరిన్ని ప్రాంప్ట్‌లు చూడండి (${shown} / ${total} - తదుపరి 25)`,
+    editShotBtn: '✏️ ఎడిట్',
+    doneEditingBtn: '✓ పూర్తయింది',
+    viewAllShotsBtn: '📜 అన్నీ స్క్రోల్ చేయండి',
+    viewSingleShotBtn: '📖 ఒక్కొక్కటిగా పూర్తి స్క్రీన్‌లో చూడండి',
+    prevShotBtn: '← మునుపటి షాట్',
+    nextShotBtn: 'తదుపరి షాట్ →',
+    shotOfTotal: (curr, total) => `షాట్ ${curr} / ${total}`,
     angleErrorFallback: 'కథలను సృష్టించడంలో లోపం జరిగింది.',
     breakdownErrorFallback: 'ప్రాంప్ట్‌లను సృష్టించడంలో లోపం జరిగింది.',
   },
