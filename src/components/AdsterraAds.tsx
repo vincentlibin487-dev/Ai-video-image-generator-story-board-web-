@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { SkipForward, Play, Volume2, VolumeX, RefreshCw, X } from 'lucide-react';
+import { SkipForward, Play, Volume2, VolumeX, X } from 'lucide-react';
 
 // --- Adsterra Configuration (Network A) ---
 const ADSTERRA_MOBILE = {
@@ -39,7 +39,6 @@ const HILLTOP_BANNER_300X250 = {
 const HILLTOP_VIDEO_SLIDER_SRC =
   'https://unfoldedtrade.com/bXX.VIsSdJG/lL0PYZWWce/uehmR9zuVZ/UTlsk/P_Tgcj2/M/j/YJ0BO/DeUgttN/zdYzyyNQjxQq4zOFQh';
 
-// Contained in-frame reference URLs (isolated inside sandboxed iframes so root buttons never jump externally)
 const CONTAINED_POPUNDER_URLS = [
   'https://pleased-report.com/be3.Vg0/PD3spPv/bXm-VkJUZwD/0/3lNAjuIp2hNXDNIL1sLvTGco2gMxjPY/0vMKj/kC',
   'https://abscloud.org/1/258bc21406c0c2080700daaefc38766c',
@@ -51,9 +50,6 @@ type BannerVariant =
   | 'hilltop-300x250'
   | 'hilltop-slider';
 
-/**
- * Checks whether a sandboxed same-origin iframe rendered any visible ad creative.
- */
 function hasVisibleAdContent(doc: Document | null | undefined): boolean {
   if (!doc || !doc.body) return false;
   if (doc.body.scrollHeight >= 24 && doc.body.innerHTML.trim().length > 80) {
@@ -68,9 +64,9 @@ function hasVisibleAdContent(doc: Document | null | undefined): boolean {
 
 /**
  * Dual-Network Sandboxed Banner Renderer (Adsterra <-> HilltopAds / UnfoldedTrade).
- * - Runs strictly inside an isolated sandboxed iframe (`allow-scripts allow-same-origin allow-forms`)
- *   WITHOUT `allow-top-navigation` or `allow-popups`, so clicking/hovering NEVER navigates outside the app.
- * - Automatically fails over to the alternate network if one network doesn't populate within ~3.2s.
+ * - Renders permanently in-place (NO skip button for static/image ads).
+ * - Automatically fails over silently to the alternate network if one network doesn't populate within 3s.
+ * - Isolated inside sandbox="allow-scripts allow-same-origin allow-forms" so clicking never hijacks outside the site.
  */
 export const DualNetworkBannerFrame: React.FC<{
   slotId: string;
@@ -127,7 +123,7 @@ export const DualNetworkBannerFrame: React.FC<{
             io?.disconnect();
           }
         },
-        { rootMargin: '350px 0px' }
+        { rootMargin: '400px 0px' }
       );
       io.observe(el);
     } else {
@@ -201,7 +197,6 @@ export const DualNetworkBannerFrame: React.FC<{
 </script>`;
       }
 
-      // Contained fallback ping script only inside the isolated sandboxed iframe (cannot escape frame)
       const containedRefSrc = CONTAINED_POPUNDER_URLS[variantIdx % CONTAINED_POPUNDER_URLS.length];
 
       doc.open();
@@ -231,10 +226,10 @@ export const DualNetworkBannerFrame: React.FC<{
 </html>`);
       doc.close();
     } catch {
-      // Safe catch if frame write is restricted
+      // Safe fallback
     }
 
-    // Automatic Dual-Network Failover: if active slot shows empty after 3.2s, switch to alternate network
+    // Silent automatic failover between Adsterra and HilltopAds if slot doesn't fill within 3s
     const timer = window.setTimeout(() => {
       try {
         const ok = hasVisibleAdContent(iframeRef.current?.contentWindow?.document);
@@ -245,13 +240,13 @@ export const DualNetworkBannerFrame: React.FC<{
       } catch {
         // Ignore cross-frame checks
       }
-    }, 3200);
+    }, 3000);
 
     return () => window.clearTimeout(timer);
   }, [inView, currentVariant, isDesktop, dimensions.width, dimensions.height, slotId, attemptsCount, rotationOrder.length, variantIdx]);
 
   return (
-    <div ref={wrapperRef} className="w-full max-w-full flex flex-col items-center justify-center gap-1.5">
+    <div ref={wrapperRef} className="w-full max-w-full flex items-center justify-center">
       <div
         className="relative overflow-hidden mx-auto flex items-center justify-center"
         style={{
@@ -281,27 +276,10 @@ export const DualNetworkBannerFrame: React.FC<{
           />
         )}
       </div>
-
-      <button
-        type="button"
-        onClick={(e) => {
-          e.stopPropagation();
-          setAttemptsCount(0);
-          setVariantIdx((v) => (v + 1) % rotationOrder.length);
-        }}
-        className="text-[10px] font-mono text-zinc-500 hover:text-amber-400 flex items-center gap-1 cursor-pointer transition-colors"
-      >
-        <RefreshCw className="w-2.5 h-2.5" />
-        <span>Next Ad</span>
-      </button>
     </div>
   );
 };
 
-/**
- * Fetches HilltopAds VAST XML in-browser and extracts playable MP4/WebM MediaFile URLs
- * so real video ads play strictly inside the website without external page redirects.
- */
 async function fetchVastMediaUrl(vastUrl: string): Promise<string | null> {
   try {
     const res = await fetch(vastUrl, { referrerPolicy: 'no-referrer-when-downgrade' });
@@ -327,10 +305,8 @@ async function fetchVastMediaUrl(vastUrl: string): Promise<string | null> {
 }
 
 /**
- * In-Page 2-Second Skippable Video Ad Card.
- * - Tries HilltopAds VAST Video (<video> inline player)
- * - Alternates cleanly with HilltopAds MultiTag Video Slider, Banner 300x250, and Adsterra
- * - Unlocks 2-second Skip button & auto-advances smoothly INSIDE the website (never redirects outside)
+ * In-Page Video Ad Unit (2-Second Skip for Videos).
+ * Plays strictly inside the website with VAST <video> <-> MultiTag Video Slider <-> 300x250/Adsterra fallback.
  */
 export const SkippableVideoAdUnit: React.FC<{
   slotId: string;
@@ -357,7 +333,6 @@ export const SkippableVideoAdUnit: React.FC<{
     };
   }, [slotId]);
 
-  // 2-Second Skip Countdown per video/ad cycle
   useEffect(() => {
     setSkipSecondsLeft(2);
     const t1 = window.setTimeout(() => setSkipSecondsLeft(1), 1000);
@@ -392,7 +367,7 @@ export const SkippableVideoAdUnit: React.FC<{
   return (
     <div
       className={`rounded-xl bg-[#0b0d17] border border-amber-500/30 overflow-hidden shadow-lg ${
-        compact ? 'p-2 space-y-1.5' : 'p-3 space-y-2'
+        compact ? 'p-2.5 space-y-1.5' : 'p-3.5 space-y-2'
       }`}
     >
       <div className="flex items-center justify-between gap-2">
@@ -445,7 +420,7 @@ export const SkippableVideoAdUnit: React.FC<{
 
       <div
         className={`w-full rounded-lg bg-[#06070d] border border-zinc-800/80 overflow-hidden flex items-center justify-center ${
-          compact ? 'min-h-[110px]' : 'min-h-[130px]'
+          compact ? 'min-h-[115px]' : 'min-h-[160px]'
         }`}
       >
         {showVastPlayer && vastVideoUrl ? (
@@ -457,7 +432,7 @@ export const SkippableVideoAdUnit: React.FC<{
             playsInline
             loop
             onClick={toggleMute}
-            className={`w-full ${compact ? 'max-h-[140px]' : 'max-h-[210px]'} object-contain cursor-pointer`}
+            className={`w-full ${compact ? 'max-h-[150px]' : 'max-h-[240px]'} object-contain cursor-pointer`}
           />
         ) : (
           <DualNetworkBannerFrame
@@ -474,12 +449,13 @@ export const SkippableVideoAdUnit: React.FC<{
 /**
  * Top In-Flow Banner placed cleanly BELOW Language Bar & Header
  * so top buttons and language switcher are NEVER covered or obscured.
+ * Permanent static image/banner (NO Skip button).
  */
 export const TopBannerAd: React.FC = () => {
   return (
     <aside
       aria-label="Top Sponsored Banner"
-      className="w-full max-w-4xl mx-auto mb-5 rounded-2xl bg-[#0e101c] border border-zinc-800/90 px-3 py-2.5 flex flex-col items-center justify-center gap-1.5 shadow-lg"
+      className="w-full max-w-5xl mx-auto mb-5 rounded-2xl bg-[#0e101c] border border-zinc-800/90 px-3 py-2.5 flex flex-col items-center justify-center gap-1.5 shadow-lg"
     >
       <span className="text-[10px] font-mono uppercase tracking-widest text-zinc-500">
         Sponsored
@@ -496,14 +472,13 @@ export const TopBannerAd: React.FC = () => {
 };
 
 /**
- * Always-present Pair of Compact In-Page Video Ads (2s Skippable) cleanly inside the page grid.
- * Plays strictly inside the website with zero button hijacking.
+ * 1-2 Compact Video Ads on screen (2s Skip inside website).
  */
 export const InlineVideoAdPair: React.FC<{ sectionId: string }> = ({ sectionId }) => {
   return (
     <section
       aria-label="Featured Video Ads"
-      className="w-full max-w-5xl mx-auto my-4 grid grid-cols-1 md:grid-cols-2 gap-3"
+      className="w-full max-w-5xl mx-auto my-4 grid grid-cols-1 md:grid-cols-2 gap-3.5"
     >
       <SkippableVideoAdUnit slotId={`${sectionId}-vid-1`} compact startIndex={0} />
       <SkippableVideoAdUnit slotId={`${sectionId}-vid-2`} compact startIndex={1} />
@@ -512,32 +487,74 @@ export const InlineVideoAdPair: React.FC<{ sectionId: string }> = ({ sectionId }
 };
 
 /**
- * Centered Wide Card-Style Banner placed cleanly BETWEEN every 2-3 cards.
- * Alternates automatically between Adsterra Wide (728x90 / 320x50) and HilltopAds (300x100 / 300x250 / Video Slider)
- * with built-in automatic failover if one network fails to render.
+ * Large Full-Width Center Showcase Image Banner (mixed between small & large ads across pages).
+ * Stays cleanly visible without any Skip button.
  */
-export const InFeedBannerAd: React.FC<{ slotId: string; slotIndex?: number }> = ({
-  slotId,
-  slotIndex = 0,
-}) => {
+export const FullWidthShowcaseAd: React.FC<{ slotId: string }> = ({ slotId }) => {
+  return (
+    <aside
+      aria-label="Full-Width Sponsored Showcase"
+      className="col-span-full w-full mx-auto my-3 rounded-2xl bg-gradient-to-b from-[#111528] to-[#0b0d17] border border-amber-500/25 p-4 sm:p-5 shadow-2xl flex flex-col items-center justify-center gap-3"
+    >
+      <span className="text-[10px] font-mono uppercase tracking-widest text-amber-400/80">
+        Featured Sponsor Spotlight
+      </span>
+      <div className="w-full grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
+        <div className="md:col-span-7 w-full flex items-center justify-center rounded-xl bg-[#07080f] border border-zinc-800/80 p-2 min-h-[100px] md:min-h-[120px]">
+          <DualNetworkBannerFrame
+            slotId={`${slotId}-wide`}
+            rotationOrder={['adsterra-wide', 'hilltop-300x100']}
+            title={`Full-Width Showcase Wide ${slotId}`}
+          />
+        </div>
+        <div className="md:col-span-5 w-full flex items-center justify-center rounded-xl bg-[#07080f] border border-zinc-800/80 p-2 min-h-[256px]">
+          <DualNetworkBannerFrame
+            slotId={`${slotId}-tall`}
+            rotationOrder={['hilltop-300x250', 'adsterra-wide']}
+            title={`Full-Width Showcase Feature ${slotId}`}
+          />
+        </div>
+      </div>
+    </aside>
+  );
+};
+
+/**
+ * Centered In-Feed Image/Banner Card placed cleanly between every 2-3 items/paragraphs.
+ * Mixes Large 300x250 Image Card with Wide 728x90 / 300x100 Banner Card (NO Skip button).
+ */
+export const InFeedBannerAd: React.FC<{
+  slotId: string;
+  slotIndex?: number;
+  size?: 'auto' | 'large' | 'wide';
+}> = ({ slotId, slotIndex = 0, size = 'auto' }) => {
+  const effectiveSize =
+    size === 'auto' ? (slotIndex % 2 === 0 ? 'wide' : 'large') : size;
+
   const rotationOrder: BannerVariant[] =
-    slotIndex % 2 === 0
-      ? ['adsterra-wide', 'hilltop-300x100', 'hilltop-300x250']
-      : ['hilltop-300x100', 'adsterra-wide', 'hilltop-300x250'];
+    effectiveSize === 'large'
+      ? ['hilltop-300x250', 'adsterra-wide', 'hilltop-300x100']
+      : ['adsterra-wide', 'hilltop-300x100', 'hilltop-300x250'];
 
   return (
     <aside
-      aria-label="In-Feed Sponsored Card"
-      className="col-span-full w-full max-w-4xl mx-auto my-2 rounded-2xl bg-[#0e101c] border border-zinc-800/90 p-3.5 sm:p-4 shadow-xl flex flex-col items-center justify-center gap-2"
+      aria-label="In-Feed Sponsored Image Card"
+      className={`col-span-full w-full ${
+        effectiveSize === 'large' ? 'max-w-3xl' : 'max-w-5xl'
+      } mx-auto my-2.5 rounded-2xl bg-[#0e101c] border border-zinc-800/90 p-3.5 sm:p-4 shadow-xl flex flex-col items-center justify-center gap-2`}
     >
       <span className="text-[10px] font-mono uppercase tracking-widest text-zinc-500">
         Sponsored
       </span>
-      <div className="w-full flex items-center justify-center rounded-xl bg-[#080910] border border-zinc-800/80 py-2 px-1 min-h-[60px] md:min-h-[100px]">
+      <div
+        className={`w-full flex items-center justify-center rounded-xl bg-[#080910] border border-zinc-800/80 py-2.5 px-2 ${
+          effectiveSize === 'large' ? 'min-h-[256px]' : 'min-h-[60px] md:min-h-[104px]'
+        }`}
+      >
         <DualNetworkBannerFrame
           slotId={slotId}
           rotationOrder={rotationOrder}
-          title={`Centered Wide Banner ${slotId}`}
+          title={`Sponsored Banner ${slotId}`}
         />
       </div>
     </aside>
@@ -545,12 +562,89 @@ export const InFeedBannerAd: React.FC<{ slotId: string; slotIndex?: number }> = 
 };
 
 /**
- * Unobtrusive Compact Floating Corner Mini Video Ad (Desktop & Above Mobile Bottom Nav)
- * Plays 2-second skippable in-page video ads continuously without ever covering app navigation buttons.
+ * Non-blocking 2-Second Auto-Cut In-Page Video Ad Overlay
+ * Triggered ONLY every 2-3 major option selections (plays strictly inside the website,
+ * auto-closes cleanly after 2.2 seconds, never covers or breaks navigation buttons permanently).
+ */
+export const TwoSecondVideoBreakOverlay: React.FC<{
+  open: boolean;
+  onClose: () => void;
+}> = ({ open, onClose }) => {
+  const [msLeft, setMsLeft] = useState<number>(2200);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
+  useEffect(() => {
+    if (!open) return;
+    setMsLeft(2200);
+    const start = performance.now();
+
+    const interval = window.setInterval(() => {
+      const elapsed = performance.now() - start;
+      const remaining = Math.max(0, 2200 - elapsed);
+      setMsLeft(remaining);
+      if (remaining <= 0) {
+        window.clearInterval(interval);
+        onCloseRef.current();
+      }
+    }, 80);
+
+    return () => window.clearInterval(interval);
+  }, [open]);
+
+  if (!open) return null;
+
+  const secondsLeft = Math.max(1, Math.ceil(msLeft / 1000));
+  const pct = Math.min(100, Math.max(0, ((2200 - msLeft) / 2200) * 100));
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="In-Page 2-Second Video Ad"
+      className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-md rounded-2xl bg-[#101321] border border-amber-500/40 p-4 shadow-2xl space-y-3"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-[11px] font-mono font-bold text-amber-400 flex items-center gap-1.5">
+            <Play className="w-3 h-3 fill-amber-400 text-amber-400" />
+            <span>VIDEO SPONSOR • AUTO-CLOSE {secondsLeft}s</span>
+          </span>
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-2.5 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 text-black text-xs font-extrabold flex items-center gap-1 cursor-pointer"
+          >
+            <SkipForward className="w-3.5 h-3.5" />
+            <span>Skip</span>
+          </button>
+        </div>
+
+        <div className="w-full h-1 rounded-full bg-zinc-800 overflow-hidden">
+          <div className="h-full bg-amber-400 transition-all duration-75" style={{ width: `${pct}%` }} />
+        </div>
+
+        <div className="w-full rounded-xl bg-[#06070d] border border-zinc-800 p-2 min-h-[256px] flex items-center justify-center">
+          <DualNetworkBannerFrame
+            slotId="modal-2s-video"
+            rotationOrder={['hilltop-300x250', 'hilltop-slider', 'adsterra-wide']}
+            title="2-Second Video Ad"
+          />
+        </div>
+      </div>
+    </div>
+  );
+};
+
+/**
+ * Unobtrusive Compact Floating Corner Mini Video Ad (Desktop)
  */
 export const FloatingMiniVideoAd: React.FC = () => {
   const [visible, setVisible] = useState<boolean>(true);
-
   if (!visible) return null;
 
   return (
@@ -571,12 +665,13 @@ export const FloatingMiniVideoAd: React.FC = () => {
 /**
  * Bottom In-Flow Banner placed at the bottom of main content above the mobile nav bar,
  * ensuring bottom navigation & action buttons remain 100% visible and effortless to tap.
+ * Permanent banner (NO Skip button).
  */
 export const BottomBannerAd: React.FC = () => {
   return (
     <aside
       aria-label="Bottom Sponsored Banner"
-      className="w-full max-w-4xl mx-auto mt-8 rounded-2xl bg-[#0e101c] border border-zinc-800/90 px-3 py-3 flex flex-col items-center justify-center gap-1.5 shadow-lg"
+      className="w-full max-w-5xl mx-auto mt-8 rounded-2xl bg-[#0e101c] border border-zinc-800/90 px-3 py-3 flex flex-col items-center justify-center gap-1.5 shadow-lg"
     >
       <span className="text-[10px] font-mono uppercase tracking-widest text-zinc-500">
         Sponsored

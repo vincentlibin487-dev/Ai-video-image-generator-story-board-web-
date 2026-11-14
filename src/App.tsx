@@ -40,8 +40,10 @@ import {
   TopBannerAd,
   BottomBannerAd,
   InFeedBannerAd,
+  FullWidthShowcaseAd,
   InlineVideoAdPair,
   FloatingMiniVideoAd,
+  TwoSecondVideoBreakOverlay,
 } from './components/AdsterraAds';
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/+$/, '');
@@ -125,11 +127,21 @@ export default function App() {
   const [promptViewMode, setPromptViewMode] = useState<'all' | 'single'>('all');
   const [focusedShotIndex, setFocusedShotIndex] = useState<number>(0);
   const [editingShots, setEditingShots] = useState<Record<number, boolean>>({});
+  const [show2sVideoBreak, setShow2sVideoBreak] = useState<boolean>(false);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const ttsAbortRef = useRef<AbortController | null>(null);
   const ttsCacheRef = useRef<Map<string, string>>(new Map());
   const speechSessionRef = useRef<number>(0);
+  const optionClickCountRef = useRef<number>(0);
+
+  // Brief 2-second auto-closing video ad inside the page on every 3rd option pick
+  const triggerOptionVideoBreak = () => {
+    optionClickCountRef.current += 1;
+    if (optionClickCountRef.current >= 3 && optionClickCountRef.current % 3 === 0) {
+      setShow2sVideoBreak(true);
+    }
+  };
 
   const stopAllSpeech = () => {
     speechSessionRef.current += 1;
@@ -272,6 +284,7 @@ export default function App() {
     setDurationValue(val);
     setDurationUnit(unit);
     setCustomInputValue(val.toString());
+    triggerOptionVideoBreak();
   };
 
   const handleCustomInputChange = (val: string) => {
@@ -423,6 +436,7 @@ export default function App() {
 
   // Step 1 -> Step 2: Generate Story Angle Variations in Selected Language
   const handleGenerateStoryAngles = async () => {
+    triggerOptionVideoBreak();
     const trimmedPremise = premise.trim();
     if (!trimmedPremise) {
       setError(t.premiseRequiredError);
@@ -471,6 +485,7 @@ export default function App() {
     modeOverride?: DialogueMode
   ) => {
     const activeMode = modeOverride ?? dialogueMode;
+    triggerOptionVideoBreak();
     stopAllSpeech();
     setSelectedAngle(angle);
     setFocusedShotIndex(0);
@@ -797,7 +812,10 @@ export default function App() {
                         <button
                           key={modeOpt.id}
                           type="button"
-                          onClick={() => setDialogueMode(modeOpt.id)}
+                          onClick={() => {
+                            setDialogueMode(modeOpt.id);
+                            triggerOptionVideoBreak();
+                          }}
                           className={`px-2.5 py-2 rounded-lg text-[11px] font-bold transition-all cursor-pointer text-center leading-tight ${
                             dialogueMode === modeOpt.id
                               ? 'bg-amber-500 text-black font-extrabold shadow-sm shadow-amber-500/20'
@@ -839,10 +857,10 @@ export default function App() {
               </button>
             </div>
 
-            {/* Wide Centered Ad Card + 2-Second Skippable Video Ads on Page 1 */}
+            {/* Wide Centered + Full-Width Showcase + 1-2 Compact Video Ads on Page 1 */}
             <div className="lg:col-span-12 space-y-4">
               <InlineVideoAdPair sectionId="page1-video-pair" />
-              <InFeedBannerAd slotId="page1-center" slotIndex={0} />
+              <FullWidthShowcaseAd slotId="page1-showcase" />
             </div>
           </div>
         )}
@@ -939,7 +957,10 @@ export default function App() {
                     <button
                       key={filter.id}
                       type="button"
-                      onClick={() => setSelectedGenreFilter(filter.id)}
+                      onClick={() => {
+                        setSelectedGenreFilter(filter.id);
+                        triggerOptionVideoBreak();
+                      }}
                       className={`px-3 py-2 sm:py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer shrink-0 ${
                         selectedGenreFilter === filter.id
                           ? 'bg-amber-500 text-black font-extrabold shadow-sm'
@@ -951,7 +972,7 @@ export default function App() {
                   ))}
                 </div>
 
-                {/* Story Option Cards Grid (1 col Mobile, 2 col Tablet/Desktop so banner cards sit cleanly between every 2 cards) */}
+                {/* Story Option Cards Grid (1 col Mobile, 2 col Tablet/Desktop so banner cards sit cleanly between cards) */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
                   {storyAngles
                     .filter((angle) => {
@@ -968,10 +989,14 @@ export default function App() {
                       return true;
                     })
                     .map((angle, angleIdx, visibleAngles) => {
+                      const showShowcaseAfter = visibleAngles.length > 4 && angleIdx === 3;
                       const showAdAfter =
-                        visibleAngles.length > 2 &&
-                        (angleIdx + 1) % 2 === 0 &&
-                        angleIdx < visibleAngles.length - 1;
+                        !showShowcaseAfter &&
+                        (visibleAngles.length === 2
+                          ? angleIdx === 0
+                          : visibleAngles.length > 2 &&
+                            (angleIdx + 1) % 2 === 0 &&
+                            angleIdx < visibleAngles.length - 1);
 
                       return (
                         <React.Fragment key={angle.id}>
@@ -1098,7 +1123,14 @@ export default function App() {
                             </div>
                           </div>
 
-                          {showAdAfter && <InFeedBannerAd slotId={`angle-slot-${angleIdx}`} slotIndex={angleIdx} />}
+                          {showShowcaseAfter && <FullWidthShowcaseAd slotId={`angle-showcase-${angleIdx}`} />}
+                          {showAdAfter && (
+                            <InFeedBannerAd
+                              slotId={`angle-slot-${angleIdx}`}
+                              slotIndex={angleIdx}
+                              size={angleIdx % 4 === 1 ? 'large' : 'wide'}
+                            />
+                          )}
                         </React.Fragment>
                       );
                     })}
@@ -1604,7 +1636,19 @@ ${imgPromptText}`;
                       </div>
                     </div>
 
-                      {showShotAdAfter && <InFeedBannerAd slotId={`shot-slot-${idx}`} slotIndex={idx} />}
+                      {promptViewMode === 'all' && displayedEntries.length > 4 && idx === 3 && (
+                        <FullWidthShowcaseAd slotId={`shot-showcase-${idx}`} />
+                      )}
+                      {showShotAdAfter && !(promptViewMode === 'all' && displayedEntries.length > 4 && idx === 3) && (
+                        <InFeedBannerAd
+                          slotId={`shot-slot-${idx}`}
+                          slotIndex={idx}
+                          size={idx % 4 === 1 ? 'large' : 'wide'}
+                        />
+                      )}
+                      {promptViewMode === 'single' && (
+                        <InFeedBannerAd slotId={`shot-single-${safeFocusedIdx}`} slotIndex={safeFocusedIdx} size="large" />
+                      )}
                     </React.Fragment>
                   );
                 })}
@@ -1655,6 +1699,12 @@ ${imgPromptText}`;
 
       {/* Non-blocking Corner Mini Skippable Video Ad (Desktop) */}
       <FloatingMiniVideoAd />
+
+      {/* Brief 2-Second In-Page Video Ad Break (only every 3rd option tap, auto-closes after 2s) */}
+      <TwoSecondVideoBreakOverlay
+        open={show2sVideoBreak}
+        onClose={() => setShow2sVideoBreak(false)}
+      />
 
       {/* Mobile Bottom App Navigation Bar (Positioned cleanly at bottom-0 with 100% direct button visibility) */}
       <nav className="sm:hidden fixed bottom-0 inset-x-0 z-40 bg-[#0d0f17]/95 backdrop-blur-lg border-t border-zinc-800 px-2 py-2 grid grid-cols-3 gap-1.5 shadow-[0_-8px_30px_rgba(0,0,0,0.65)]">
