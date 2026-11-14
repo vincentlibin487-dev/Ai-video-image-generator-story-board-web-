@@ -1,0 +1,218 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // =========================================================================
+    // 1. Global Safety Net (Default-Deny Catch-All)
+    // =========================================================================
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // =========================================================================
+    // 2. Hardened Global Helper Functions
+    // =========================================================================
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidId(id) {
+      return id is string
+        && id.size() >= 4
+        && id.size() <= 128
+        && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedUser() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    // Pure token-based bootstrapped admin check (zero DB lookups — safe for `list`)
+    function isBootstrappedAdmin() {
+      return isVerifiedUser()
+        && request.auth.token.email == 'amalj7767@gmail.com';
+    }
+
+    // Full admin check including delegated /admins/{uid} registry (for single-doc ops)
+    function isAdmin() {
+      return isBootstrappedAdmin()
+        || (isVerifiedUser()
+          && exists(/databases/$(database)/documents/admins/$(request.auth.uid)));
+    }
+
+    // =========================================================================
+    // 3. Entity Validation Blueprints (Matched verbatim to firebase-blueprint.json)
+    // =========================================================================
+    function isValidVisitorSession(data, sessionId) {
+      return data.keys().hasAll([
+          'sessionId',
+          'visitorId',
+          'visitNumber',
+          'isReturning',
+          'language',
+          'deviceType',
+          'screenCategory',
+          'referrerSource',
+          'currentStep',
+          'anglesGeneratedCount',
+          'breakdownsGeneratedCount',
+          'ttsPlaysCount',
+          'activeDurationSec',
+          'dayKey',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'sessionId',
+          'visitorId',
+          'visitNumber',
+          'isReturning',
+          'language',
+          'deviceType',
+          'screenCategory',
+          'referrerSource',
+          'currentStep',
+          'anglesGeneratedCount',
+          'breakdownsGeneratedCount',
+          'ttsPlaysCount',
+          'activeDurationSec',
+          'dayKey',
+          'createdAt',
+          'updatedAt'
+        ])
+        && isValidId(data.sessionId)
+        && data.sessionId == sessionId
+        && isValidId(data.visitorId)
+        && data.visitNumber is int
+        && data.visitNumber >= 1
+        && data.visitNumber <= 100000
+        && data.isReturning is bool
+        && data.language is string
+        && data.language.size() <= 5
+        && data.language in ['ml', 'en', 'hi', 'ta', 'kn', 'te']
+        && data.deviceType is string
+        && data.deviceType.size() <= 16
+        && data.deviceType in ['mobile', 'tablet', 'desktop']
+        && data.screenCategory is string
+        && data.screenCategory.size() >= 3
+        && data.screenCategory.size() <= 32
+        && data.referrerSource is string
+        && data.referrerSource.size() >= 1
+        && data.referrerSource.size() <= 64
+        && data.currentStep is string
+        && data.currentStep.size() <= 16
+        && data.currentStep in ['input', 'options', 'prompts', 'admin']
+        && data.anglesGeneratedCount is int
+        && data.anglesGeneratedCount >= 0
+        && data.anglesGeneratedCount <= 1000
+        && data.breakdownsGeneratedCount is int
+        && data.breakdownsGeneratedCount >= 0
+        && data.breakdownsGeneratedCount <= 1000
+        && data.ttsPlaysCount is int
+        && data.ttsPlaysCount >= 0
+        && data.ttsPlaysCount <= 1000
+        && data.activeDurationSec is int
+        && data.activeDurationSec >= 0
+        && data.activeDurationSec <= 86400
+        && data.dayKey is string
+        && data.dayKey.size() == 10
+        && data.dayKey.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidAdminUser(data, uid) {
+      return data.keys().hasAll(['uid', 'email', 'role', 'createdAt'])
+        && data.keys().hasOnly(['uid', 'email', 'role', 'createdAt'])
+        && isValidId(data.uid)
+        && data.uid == uid
+        && data.email is string
+        && data.email.size() >= 3
+        && data.email.size() <= 128
+        && data.role is string
+        && data.role.size() <= 16
+        && data.role == 'admin'
+        && data.createdAt is timestamp;
+    }
+
+    // =========================================================================
+    // 4. Collection Rules
+    // =========================================================================
+
+    // Anonymous guest visitor usage telemetry (zero PII stored):
+    // - Unauthenticated guests can ONLY create/update their own bounded session doc
+    // - Reading, listing, or deleting ANY session record is strictly Admin-only
+    match /visitor_sessions/{sessionId} {
+      allow get: if isValidId(sessionId) && isAdmin();
+      allow list: if isBootstrappedAdmin();
+      allow delete: if isValidId(sessionId) && isAdmin();
+
+      allow create: if isValidId(sessionId)
+        && isValidVisitorSession(incoming(), sessionId)
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time
+        && incoming().anglesGeneratedCount <= 10
+        && incoming().breakdownsGeneratedCount <= 10
+        && incoming().ttsPlaysCount <= 20;
+
+      allow update: if isValidId(sessionId)
+        && isValidVisitorSession(incoming(), sessionId)
+        && (
+          isAdmin()
+          || (
+            incoming().sessionId == existing().sessionId
+            && incoming().visitorId == existing().visitorId
+            && incoming().visitNumber == existing().visitNumber
+            && incoming().isReturning == existing().isReturning
+            && incoming().deviceType == existing().deviceType
+            && incoming().screenCategory == existing().screenCategory
+            && incoming().referrerSource == existing().referrerSource
+            && incoming().dayKey == existing().dayKey
+            && incoming().createdAt == existing().createdAt
+            && incoming().updatedAt == request.time
+            && incoming().anglesGeneratedCount >= existing().anglesGeneratedCount
+            && incoming().anglesGeneratedCount <= existing().anglesGeneratedCount + 10
+            && incoming().breakdownsGeneratedCount >= existing().breakdownsGeneratedCount
+            && incoming().breakdownsGeneratedCount <= existing().breakdownsGeneratedCount + 10
+            && incoming().ttsPlaysCount >= existing().ttsPlaysCount
+            && incoming().ttsPlaysCount <= existing().ttsPlaysCount + 20
+            && incoming().activeDurationSec >= existing().activeDurationSec
+            && incoming().diff(existing()).affectedKeys().hasOnly([
+              'language',
+              'currentStep',
+              'anglesGeneratedCount',
+              'breakdownsGeneratedCount',
+              'ttsPlaysCount',
+              'activeDurationSec',
+              'updatedAt'
+            ])
+          )
+        );
+    }
+
+    // Admin registry collection
+    match /admins/{uid} {
+      allow get: if isValidId(uid) && (isBootstrappedAdmin() || (isVerifiedUser() && request.auth.uid == uid));
+      allow list: if isBootstrappedAdmin();
+      allow create: if isBootstrappedAdmin()
+        && isValidId(uid)
+        && isValidAdminUser(incoming(), uid)
+        && incoming().createdAt == request.time;
+      allow update: if isBootstrappedAdmin()
+        && isValidId(uid)
+        && isValidAdminUser(incoming(), uid)
+        && incoming().uid == existing().uid
+        && incoming().createdAt == existing().createdAt
+        && incoming().diff(existing()).affectedKeys().hasOnly(['email', 'role']);
+      allow delete: if isBootstrappedAdmin() && isValidId(uid);
+    }
+  }
+}

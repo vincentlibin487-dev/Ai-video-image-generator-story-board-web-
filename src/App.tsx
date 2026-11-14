@@ -18,6 +18,10 @@ import {
   Volume2,
   Music,
   MessageSquare,
+  BarChart3,
+  FolderOpen,
+  PlusCircle,
+  Download,
 } from 'lucide-react';
 import {
   DialogueMode,
@@ -44,7 +48,18 @@ import {
   InlineVideoAdPair,
   FloatingMiniVideoAd,
   TwoSecondVideoBreakOverlay,
+  SkippableVideoAdUnit,
 } from './components/AdsterraAds';
+import { AdminDashboard } from './components/AdminDashboard';
+import { SavedStoriesModal, type SavedStoryItem } from './components/SavedStoriesModal';
+import {
+  initGuestSession,
+  trackAnglesGenerated,
+  trackBreakdownGenerated,
+  trackLanguageChange,
+  trackStepChange,
+  trackTtsPlayed,
+} from './lib/analytics';
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/+$/, '');
 
@@ -128,6 +143,24 @@ export default function App() {
   const [focusedShotIndex, setFocusedShotIndex] = useState<number>(0);
   const [editingShots, setEditingShots] = useState<Record<number, boolean>>({});
   const [show2sVideoBreak, setShow2sVideoBreak] = useState<boolean>(false);
+  const [showAdminPanel, setShowAdminPanel] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    const params = new URLSearchParams(window.location.search);
+    return window.location.hash === '#admin' || params.get('admin') === '1';
+  });
+
+  const [savedStories, setSavedStories] = useState<SavedStoryItem[]>(() => {
+    if (typeof window === 'undefined') return [];
+    try {
+      const raw = localStorage.getItem('cinematic_saved_stories');
+      return raw ? JSON.parse(raw) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [showSavedStoriesModal, setShowSavedStoriesModal] = useState<boolean>(false);
+  const [continuationBadge, setContinuationBadge] = useState<string | null>(null);
+  const [saveSuccessMessage, setSaveSuccessMessage] = useState<string | null>(null);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const ttsAbortRef = useRef<AbortController | null>(null);
@@ -164,13 +197,21 @@ export default function App() {
   };
 
   useEffect(() => {
+    initGuestSession(lang);
+    const onHashChange = () => {
+      const params = new URLSearchParams(window.location.search);
+      setShowAdminPanel(window.location.hash === '#admin' || params.get('admin') === '1');
+    };
+    window.addEventListener('hashchange', onHashChange);
     return () => {
+      window.removeEventListener('hashchange', onHashChange);
       stopAllSpeech();
     };
   }, []);
 
   useEffect(() => {
     stopAllSpeech();
+    trackStepChange(activeStep);
     if (typeof window !== 'undefined') {
       window.scrollTo({ top: 0, behavior: 'auto' });
     }
@@ -201,6 +242,7 @@ export default function App() {
     if (newLang === lang) return;
     stopAllSpeech();
     setLang(newLang);
+    trackLanguageChange(newLang);
     setError(null);
 
     const trimmedCurrent = premise.trim();
@@ -348,6 +390,7 @@ export default function App() {
       };
       setLoadingTtsId(null);
       setSpeakingAngleId(angleId);
+      trackTtsPlayed();
       audio.play().catch(() => {
         audioRef.current = null;
         setSpeakingAngleId(null);
@@ -402,6 +445,7 @@ export default function App() {
           .filter(Boolean);
 
         setSpeakingAngleId(angleId);
+        trackTtsPlayed();
 
         const speakChunk = (idx: number) => {
           if (speechSessionRef.current !== sessionId || idx >= chunks.length) {
@@ -461,6 +505,7 @@ export default function App() {
 
       if (result.angles && Array.isArray(result.angles) && result.angles.length > 0) {
         setStoryAngles(result.angles);
+        trackAnglesGenerated();
         setActiveStep('options');
         return;
       }
@@ -470,6 +515,7 @@ export default function App() {
       const localAngles = generateStoryAnglesLocal(trimmedPremise, lang, calculatedShotCount);
       if (localAngles.length > 0) {
         setStoryAngles(localAngles);
+        trackAnglesGenerated();
         setActiveStep('options');
       } else {
         setError(err?.message || t.angleErrorFallback);
@@ -513,6 +559,7 @@ export default function App() {
 
       if (result.shots && Array.isArray(result.shots)) {
         setShots(result.shots);
+        trackBreakdownGenerated();
         return;
       }
       throw new Error('Unexpected breakdown format.');
@@ -528,6 +575,7 @@ export default function App() {
       );
       if (localBreakdown.shots.length > 0) {
         setShots(localBreakdown.shots);
+        trackBreakdownGenerated();
       } else {
         setError(err?.message || t.breakdownErrorFallback);
       }
@@ -541,6 +589,110 @@ export default function App() {
     if (selectedAngle && activeStep === 'prompts' && !loadingShots) {
       handleSelectStoryAndOpenPromptPage(selectedAngle, newMode);
     }
+  };
+
+  const handleDownloadStoryTxt = (story: SavedStoryItem) => {
+    const textBlob = [
+      `TITLE: ${story.title}`,
+      `GENRE: ${story.genre || 'Cinematic'}`,
+      `DURATION: ${story.durationDisplay} (${story.durationSeconds}s)`,
+      `SHOTS: ${story.shotCount} shots`,
+      `SAVED DATE: ${new Date(story.savedAt).toLocaleString()}`,
+      `\nSYNOPSIS / LOGLINE:\n${story.storySummary}`,
+      `\n================================================================`,
+      `SEQUENTIAL SHOTS & PRODUCTION PROMPTS`,
+      `================================================================\n`,
+      ...story.shots.map(
+        (s, i) =>
+          `SHOT ${i + 1} (${s.durationSeconds || shotDurationSec}s) - ${s.timing || ''}\n` +
+          `ACTION: ${s.action}\n` +
+          `DIALOGUE: ${s.malayalamDialogue || 'None'}\n` +
+          (s.bgm ? `BGM / AUDIO: ${s.bgm}\n` : '') +
+          (s.imagePrompt ? `IMAGE PROMPT: ${s.imagePrompt}\n` : '') +
+          (s.videoPrompt ? `VIDEO PROMPT: ${s.videoPrompt}\n` : '')
+      ),
+    ].join('\n----------------------------------------------------------------\n');
+
+    const blob = new Blob([textBlob], { type: 'text/plain;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    const safeTitle = story.title.replace(/[^a-zA-Z0-9_\u0D00-\u0D7F-]/g, '_').slice(0, 30);
+    link.download = `${safeTitle || 'cinematic-story'}-${Date.now()}.txt`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleSaveCurrentStory = () => {
+    if (!selectedAngle || shots.length === 0) return;
+    const newStoryItem: SavedStoryItem = {
+      id: `story_${Date.now()}`,
+      title: selectedAngle.title || 'Untitled Cinematic Story',
+      storySummary: selectedAngle.storySummary || selectedAngle.synopsis,
+      genre: selectedAngle.genre,
+      durationDisplay: formatDurationDisplay(),
+      durationSeconds: totalSeconds,
+      shotCount: shots.length,
+      shots,
+      angle: selectedAngle,
+      savedAt: Date.now(),
+    };
+
+    const updated = [newStoryItem, ...savedStories.filter((s) => s.id !== newStoryItem.id)].slice(0, 50);
+    setSavedStories(updated);
+    try {
+      localStorage.setItem('cinematic_saved_stories', JSON.stringify(updated));
+    } catch (e) {
+      console.warn('Failed to save to localStorage', e);
+    }
+
+    handleDownloadStoryTxt(newStoryItem);
+
+    setSaveSuccessMessage(
+      lang === 'ml'
+        ? '✅ കഥയും എല്ലാ പ്രോംപ്റ്റുകളും സേവ് ചെയ്യുകയും ഫയൽ ഡൗൺലോഡ് ആവുകയും ചെയ്തിട്ടുണ്ട്! എപ്പോൾ വേണമെങ്കിലും ഇവിടെനിന്നും തുടരാം.'
+        : '✅ Story & prompts successfully saved to library and downloaded!'
+    );
+    setTimeout(() => setSaveSuccessMessage(null), 6000);
+  };
+
+  const handleContinueFromStory = (
+    storyTitle: string,
+    storySummary: string,
+    lastShotAction?: string
+  ) => {
+    const isMalayalam = lang === 'ml';
+    const continuationPrompt = isMalayalam
+      ? `കഥയുടെ മുൻഭാഗം / കഴിഞ്ഞ സീൻ (${storyTitle}):\n"${storySummary}"\n\nഒടുവിലത്തെ ക്ലൈമാക്സ് രംഗം:\n"${lastShotAction || ''}"\n\nഇതിന്റെ അടുത്ത ഭാഗം (Next Part / പുതിയ അധ്യായം) കൂടുതൽ ട്വിസ്റ്റുകളോടും നാടകീയതയോടും കൂടി തുടർന്ന് എഴുതുക.`
+      : `Story Part Continuation for "${storyTitle}":\nPrevious Summary: "${storySummary}"\nLast Climax Shot: "${lastShotAction || ''}"\n\nWrite the next exciting continuation chapter with escalating stakes and twists.`;
+
+    setPremise(continuationPrompt);
+    setContinuationBadge(storyTitle);
+    setShowSavedStoriesModal(false);
+    setActiveStep('input');
+    if (typeof window !== 'undefined') {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
+
+  const handleLoadSavedStory = (story: SavedStoryItem) => {
+    setSelectedAngle(story.angle);
+    setShots(story.shots);
+    setShowSavedStoriesModal(false);
+    setActiveStep('prompts');
+    if (typeof window !== 'undefined') {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
+
+  const handleDeleteSavedStory = (id: string) => {
+    const updated = savedStories.filter((s) => s.id !== id);
+    setSavedStories(updated);
+    try {
+      localStorage.setItem('cinematic_saved_stories', JSON.stringify(updated));
+    } catch {}
   };
 
   const presetDurations = [
@@ -608,56 +760,83 @@ export default function App() {
           </div>
 
           {/* Desktop / Tablet Breadcrumb Steps Navigation */}
-          <div className="hidden sm:flex items-center gap-1.5 text-xs font-mono shrink-0">
-            <button
-              type="button"
-              onClick={() => setActiveStep('input')}
-              className={`px-2.5 py-1 rounded-lg cursor-pointer transition-all ${
-                activeStep === 'input'
-                  ? 'bg-amber-500 text-black font-extrabold'
-                  : 'bg-zinc-900 text-zinc-400 hover:text-white border border-zinc-800'
-              }`}
-            >
-              {t.step1}
-            </button>
-            <ChevronRight className="w-3.5 h-3.5 text-zinc-600" />
-            <button
-              type="button"
-              disabled={storyAngles.length === 0}
-              onClick={() => storyAngles.length > 0 && setActiveStep('options')}
-              className={`px-2.5 py-1 rounded-lg transition-all ${
-                storyAngles.length === 0 ? 'opacity-40 cursor-not-allowed text-zinc-600' : 'cursor-pointer'
-              } ${
-                activeStep === 'options'
-                  ? 'bg-amber-500 text-black font-extrabold'
-                  : 'bg-zinc-900 text-zinc-400 hover:text-white border border-zinc-800'
-              }`}
-            >
-              {t.step2(storyAngles.length)}
-            </button>
-            <ChevronRight className="w-3.5 h-3.5 text-zinc-600" />
-            <button
-              type="button"
-              disabled={!selectedAngle || shots.length === 0}
-              onClick={() => selectedAngle && shots.length > 0 && setActiveStep('prompts')}
-              className={`px-2.5 py-1 rounded-lg transition-all ${
-                !selectedAngle ? 'opacity-40 cursor-not-allowed text-zinc-600' : 'cursor-pointer'
-              } ${
-                activeStep === 'prompts'
-                  ? 'bg-amber-500 text-black font-extrabold'
-                  : 'bg-zinc-900 text-zinc-400 hover:text-white border border-zinc-800'
-              }`}
-            >
-              {t.step3}
-            </button>
+          <div className="flex items-center gap-1.5 text-xs font-mono shrink-0">
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowAdminPanel(false);
+                  setActiveStep('input');
+                }}
+                className={`px-2.5 py-1 rounded-lg cursor-pointer transition-all ${
+                  !showAdminPanel && activeStep === 'input'
+                    ? 'bg-amber-500 text-black font-extrabold'
+                    : 'bg-zinc-900 text-zinc-400 hover:text-white border border-zinc-800'
+                }`}
+              >
+                {t.step1}
+              </button>
+              <ChevronRight className="w-3.5 h-3.5 text-zinc-600" />
+              <button
+                type="button"
+                disabled={storyAngles.length === 0}
+                onClick={() => {
+                  if (storyAngles.length > 0) {
+                    setShowAdminPanel(false);
+                    setActiveStep('options');
+                  }
+                }}
+                className={`px-2.5 py-1 rounded-lg transition-all ${
+                  storyAngles.length === 0 ? 'opacity-40 cursor-not-allowed text-zinc-600' : 'cursor-pointer'
+                } ${
+                  !showAdminPanel && activeStep === 'options'
+                    ? 'bg-amber-500 text-black font-extrabold'
+                    : 'bg-zinc-900 text-zinc-400 hover:text-white border border-zinc-800'
+                }`}
+              >
+                {t.step2(storyAngles.length)}
+              </button>
+              <ChevronRight className="w-3.5 h-3.5 text-zinc-600" />
+              <button
+                type="button"
+                disabled={!selectedAngle || shots.length === 0}
+                onClick={() => {
+                  if (selectedAngle && shots.length > 0) {
+                    setShowAdminPanel(false);
+                    setActiveStep('prompts');
+                  }
+                }}
+                className={`px-2.5 py-1 rounded-lg transition-all ${
+                  !selectedAngle ? 'opacity-40 cursor-not-allowed text-zinc-600' : 'cursor-pointer'
+                } ${
+                  !showAdminPanel && activeStep === 'prompts'
+                    ? 'bg-amber-500 text-black font-extrabold'
+                    : 'bg-zinc-900 text-zinc-400 hover:text-white border border-zinc-800'
+                }`}
+              >
+                {t.step3}
+              </button>
+            </div>
           </div>
         </div>
       </header>
 
-      {/* Main Container (Safe bottom clearance above mobile bottom nav so no buttons are covered) */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-6 pb-24 sm:pb-10 overflow-x-clip touch-pan-y">
-        {/* Top In-Flow Banner placed cleanly below Language Bar & Header */}
-        <TopBannerAd />
+      {showAdminPanel ? (
+        <AdminDashboard
+          lang={lang}
+          onClose={() => {
+            setShowAdminPanel(false);
+            if (typeof window !== 'undefined' && window.location.hash === '#admin') {
+              window.history.replaceState(null, '', window.location.pathname + window.location.search);
+            }
+          }}
+        />
+      ) : (
+        <>
+          {/* Main Container (Safe bottom clearance above mobile bottom nav so no buttons are covered) */}
+          <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-6 pb-24 sm:pb-10 overflow-x-clip touch-pan-y">
+            {/* Top In-Flow Banner placed cleanly below Language Bar & Header */}
+            <TopBannerAd />
 
         {/* Error notification */}
         {error && (
@@ -678,23 +857,57 @@ export default function App() {
                   <BookOpen className="w-4 h-4 shrink-0" />
                   <span>{t.premiseLabel}</span>
                 </label>
-                {premise.length > 0 && (
+                <div className="flex items-center gap-2 flex-wrap">
+                  {savedStories.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setShowSavedStoriesModal(true)}
+                      className="flex items-center gap-1.5 text-xs text-amber-400 hover:text-black hover:bg-amber-500 bg-zinc-900 border border-amber-500/30 px-2.5 py-1 rounded-lg transition-all cursor-pointer font-bold"
+                    >
+                      <FolderOpen className="w-3.5 h-3.5" />
+                      <span>{lang === 'ml' ? `സേവ് ചെയ്ത കഥകൾ (${savedStories.length})` : `Saved Stories (${savedStories.length})`}</span>
+                    </button>
+                  )}
+                  {premise.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPremise('');
+                        setStoryAngles([]);
+                        setSelectedAngle(null);
+                        setShots([]);
+                        setContinuationBadge(null);
+                      }}
+                      className="flex items-center gap-1 text-xs text-amber-400 hover:text-amber-300 bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 px-2.5 py-1 rounded-lg transition-colors cursor-pointer"
+                      title={t.clearBtn}
+                    >
+                      <X className="w-3.5 h-3.5" />
+                      <span>{t.clearBtn}</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {continuationBadge && (
+                <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl flex items-center justify-between gap-2 text-xs">
+                  <div className="flex items-center gap-2 text-amber-300 min-w-0">
+                    <Sparkles className="w-4 h-4 shrink-0 text-amber-400" />
+                    <span className="truncate">
+                      {lang === 'ml'
+                        ? `⚡ "${continuationBadge}" കഥയുടെ തുടർഭാഗമാണ് ഇപ്പോൾ തയ്യാറാക്കുന്നത്.`
+                        : `⚡ Continuing story: "${continuationBadge}"`}
+                    </span>
+                  </div>
                   <button
                     type="button"
-                    onClick={() => {
-                      setPremise('');
-                      setStoryAngles([]);
-                      setSelectedAngle(null);
-                      setShots([]);
-                    }}
-                    className="flex items-center gap-1 text-xs text-amber-400 hover:text-amber-300 bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 px-2.5 py-1 rounded-lg transition-colors cursor-pointer"
-                    title={t.clearBtn}
+                    onClick={() => setContinuationBadge(null)}
+                    className="text-zinc-400 hover:text-white px-2 py-0.5 rounded cursor-pointer shrink-0 font-bold"
+                    title="Dismiss"
                   >
-                    <X className="w-3.5 h-3.5" />
-                    <span>{t.clearBtn}</span>
+                    ✕
                   </button>
-                )}
-              </div>
+                </div>
+              )}
 
               <div className="relative">
                 <AutoResizeTextarea
@@ -1124,12 +1337,22 @@ export default function App() {
                           </div>
 
                           {showShowcaseAfter && <FullWidthShowcaseAd slotId={`angle-showcase-${angleIdx}`} />}
-                          {showAdAfter && (
-                            <InFeedBannerAd
-                              slotId={`angle-slot-${angleIdx}`}
-                              slotIndex={angleIdx}
-                              size={angleIdx % 4 === 1 ? 'large' : 'wide'}
-                            />
+                          {showAdAfter && !showShowcaseAfter && (
+                            angleIdx % 4 === 1 ? (
+                              <div className="col-span-full max-w-2xl mx-auto w-full my-3">
+                                <SkippableVideoAdUnit
+                                  slotId={`angle-video-${angleIdx}`}
+                                  compact
+                                  startIndex={Math.floor(angleIdx / 2)}
+                                />
+                              </div>
+                            ) : (
+                              <InFeedBannerAd
+                                slotId={`angle-slot-${angleIdx}`}
+                                slotIndex={angleIdx}
+                                size={angleIdx % 6 === 3 ? 'large' : 'wide'}
+                              />
+                            )
                           )}
                         </React.Fragment>
                       );
@@ -1640,14 +1863,29 @@ ${imgPromptText}`;
                         <FullWidthShowcaseAd slotId={`shot-showcase-${idx}`} />
                       )}
                       {showShotAdAfter && !(promptViewMode === 'all' && displayedEntries.length > 4 && idx === 3) && (
-                        <InFeedBannerAd
-                          slotId={`shot-slot-${idx}`}
-                          slotIndex={idx}
-                          size={idx % 4 === 1 ? 'large' : 'wide'}
-                        />
+                        idx % 4 === 1 ? (
+                          <div className="my-3 max-w-2xl mx-auto w-full">
+                            <SkippableVideoAdUnit
+                              slotId={`shot-video-${idx}`}
+                              compact
+                              startIndex={Math.floor(idx / 2)}
+                            />
+                          </div>
+                        ) : (
+                          <InFeedBannerAd
+                            slotId={`shot-slot-${idx}`}
+                            slotIndex={idx}
+                            size={idx % 4 === 3 ? 'large' : 'wide'}
+                          />
+                        )
                       )}
                       {promptViewMode === 'single' && (
-                        <InFeedBannerAd slotId={`shot-single-${safeFocusedIdx}`} slotIndex={safeFocusedIdx} size="large" />
+                        <div className="space-y-3">
+                          <InFeedBannerAd slotId={`shot-single-${safeFocusedIdx}`} slotIndex={safeFocusedIdx} size="large" />
+                          <div className="max-w-2xl mx-auto w-full">
+                            <SkippableVideoAdUnit slotId={`shot-single-vid-${safeFocusedIdx}`} compact startIndex={safeFocusedIdx} />
+                          </div>
+                        </div>
                       )}
                     </React.Fragment>
                   );
@@ -1687,6 +1925,72 @@ ${imgPromptText}`;
                     </button>
                   </div>
                 )}
+
+                {/* Save Confirmation Banner */}
+                {saveSuccessMessage && (
+                  <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs sm:text-sm rounded-xl flex items-center justify-between gap-2 shadow-lg">
+                    <span className="font-bold flex items-center gap-1.5">
+                      <Sparkles className="w-4 h-4 text-emerald-400 shrink-0" />
+                      {saveSuccessMessage}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setSaveSuccessMessage(null)}
+                      className="text-zinc-400 hover:text-white px-2 py-0.5 rounded cursor-pointer font-bold"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                )}
+
+                {/* Story Continuation & Save Action Bar */}
+                <div className="pt-6 border-t border-zinc-800 flex flex-col sm:flex-row items-center justify-between gap-3">
+                  <div className="flex flex-col sm:flex-row items-center gap-2.5 w-full sm:w-auto">
+                    {/* Continue story button */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!selectedAngle) return;
+                        const lastShot = shots[shots.length - 1];
+                        handleContinueFromStory(
+                          selectedAngle.title,
+                          selectedAngle.storySummary || selectedAngle.synopsis,
+                          lastShot?.action
+                        );
+                      }}
+                      className="w-full sm:w-auto px-6 py-3.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-extrabold text-xs uppercase tracking-wider transition-all cursor-pointer shadow-lg flex items-center justify-center gap-2"
+                    >
+                      <PlusCircle className="w-4 h-4" />
+                      <span>{lang === 'ml' ? '➕ ഈ കഥ തുടരുക (Continue Story)' : 'Continue Story (Next Part)'}</span>
+                    </button>
+
+                    {/* Save story & prompts button */}
+                    <button
+                      type="button"
+                      onClick={handleSaveCurrentStory}
+                      className="w-full sm:w-auto px-6 py-3.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-amber-500/30 text-amber-300 hover:text-white font-extrabold text-xs uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-2 shadow-md"
+                    >
+                      <Download className="w-4 h-4" />
+                      <span>{lang === 'ml' ? '💾 കഥയും പ്രോംപ്റ്റുകളും സേവ് ചെയ്യുക' : 'Save Story & Prompts'}</span>
+                    </button>
+                  </div>
+
+                  {/* Open Library Button */}
+                  {savedStories.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setShowSavedStoriesModal(true)}
+                      className="w-full sm:w-auto px-5 py-3 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-zinc-300 font-bold text-xs uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-2"
+                    >
+                      <FolderOpen className="w-4 h-4 text-amber-400" />
+                      <span>
+                        {lang === 'ml'
+                          ? `സേവ് ചെയ്തവ കാണുക (${savedStories.length})`
+                          : `Saved Stories (${savedStories.length})`}
+                      </span>
+                    </button>
+                  )}
+                </div>
               </div>
               );
             })()}
@@ -1705,14 +2009,19 @@ ${imgPromptText}`;
         open={show2sVideoBreak}
         onClose={() => setShow2sVideoBreak(false)}
       />
+        </>
+      )}
 
       {/* Mobile Bottom App Navigation Bar (Positioned cleanly at bottom-0 with 100% direct button visibility) */}
       <nav className="sm:hidden fixed bottom-0 inset-x-0 z-40 bg-[#0d0f17]/95 backdrop-blur-lg border-t border-zinc-800 px-2 py-2 grid grid-cols-3 gap-1.5 shadow-[0_-8px_30px_rgba(0,0,0,0.65)]">
         <button
           type="button"
-          onClick={() => setActiveStep('input')}
+          onClick={() => {
+            setShowAdminPanel(false);
+            setActiveStep('input');
+          }}
           className={`flex flex-col items-center justify-center gap-1 py-1.5 px-1 rounded-xl text-[11px] font-bold transition-all cursor-pointer ${
-            activeStep === 'input'
+            !showAdminPanel && activeStep === 'input'
               ? 'bg-amber-500 text-black font-extrabold shadow-sm'
               : 'text-zinc-400 hover:text-white bg-zinc-900/70'
           }`}
@@ -1724,11 +2033,16 @@ ${imgPromptText}`;
         <button
           type="button"
           disabled={storyAngles.length === 0}
-          onClick={() => storyAngles.length > 0 && setActiveStep('options')}
+          onClick={() => {
+            if (storyAngles.length > 0) {
+              setShowAdminPanel(false);
+              setActiveStep('options');
+            }
+          }}
           className={`flex flex-col items-center justify-center gap-1 py-1.5 px-1 rounded-xl text-[11px] font-bold transition-all ${
             storyAngles.length === 0 ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'
           } ${
-            activeStep === 'options'
+            !showAdminPanel && activeStep === 'options'
               ? 'bg-amber-500 text-black font-extrabold shadow-sm'
               : 'text-zinc-400 hover:text-white bg-zinc-900/70'
           }`}
@@ -1740,11 +2054,16 @@ ${imgPromptText}`;
         <button
           type="button"
           disabled={!selectedAngle || shots.length === 0}
-          onClick={() => selectedAngle && shots.length > 0 && setActiveStep('prompts')}
+          onClick={() => {
+            if (selectedAngle && shots.length > 0) {
+              setShowAdminPanel(false);
+              setActiveStep('prompts');
+            }
+          }}
           className={`flex flex-col items-center justify-center gap-1 py-1.5 px-1 rounded-xl text-[11px] font-bold transition-all ${
             !selectedAngle || shots.length === 0 ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'
           } ${
-            activeStep === 'prompts'
+            !showAdminPanel && activeStep === 'prompts'
               ? 'bg-amber-500 text-black font-extrabold shadow-sm'
               : 'text-zinc-400 hover:text-white bg-zinc-900/70'
           }`}
@@ -1753,6 +2072,25 @@ ${imgPromptText}`;
           <span className="truncate max-w-full">{t.step3}</span>
         </button>
       </nav>
+
+      {/* Saved Stories Library Modal */}
+      <SavedStoriesModal
+        isOpen={showSavedStoriesModal}
+        onClose={() => setShowSavedStoriesModal(false)}
+        savedStories={savedStories}
+        onDeleteStory={handleDeleteSavedStory}
+        onLoadStory={handleLoadSavedStory}
+        onContinueStory={(story) => {
+          const lastShot = story.shots[story.shots.length - 1];
+          handleContinueFromStory(
+            story.title,
+            story.storySummary,
+            lastShot?.action
+          );
+        }}
+        onDownloadStory={handleDownloadStoryTxt}
+        lang={lang}
+      />
     </div>
   );
 }
