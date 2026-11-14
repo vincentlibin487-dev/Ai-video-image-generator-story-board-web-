@@ -1,8 +1,9 @@
 import { GoogleGenAI, ThinkingLevel } from '@google/genai';
 import {
+  DialogueMode,
   expandShotsToTargetCount,
   generateBreakdownLocal,
-  hasExplicitDialogue,
+  isExplicitlySilent,
 } from '../src/lib/storyEngine';
 import { AppLang, getLangConfig } from '../src/lib/i18n';
 
@@ -46,7 +47,9 @@ export default async function handler(req: any, res: any) {
       preferredShotDuration = 8,
       targetShotCount = 20,
       characterPhotos = [],
+      fastMode = false,
       language = 'ml',
+      dialogueMode = 'dynamic',
     } = body;
 
     if (!script || typeof script !== 'string' || script.trim().length === 0) {
@@ -55,50 +58,102 @@ export default async function handler(req: any, res: any) {
 
     const langConfig = getLangConfig(language);
     const langCode = langConfig.code as AppLang;
-    const allowDialogue = hasExplicitDialogue(script);
-    const coreAiShotCount = Math.max(4, Math.min(Number(targetShotCount) || 8, 8));
+    const rawMode: DialogueMode =
+      dialogueMode === 'silent' || dialogueMode === 'dialogue' ? dialogueMode : 'dynamic';
+    const effectiveMode: DialogueMode = isExplicitlySilent(script) ? 'silent' : rawMode;
+    const allowDialogue = effectiveMode !== 'silent';
+    const totalRequested = Math.max(1, Number(targetShotCount) || 8);
+    const coreAiShotCount = Math.max(4, Math.min(totalRequested, 16));
 
     const ai = getGeminiClient();
-    if (ai) {
+    if (ai && !fastMode) {
       try {
-        const dialogueRule = allowDialogue
-          ? `The input story includes speech or dialogue. Include "malayalamDialogue" (in ${langConfig.geminiLangName}) and "dialogueEnglish" ONLY on shots where dialogue occurs. Leave "" on silent shots.`
-          : `NO-DIALOGUE RULE: The input story has NO spoken dialogue. Set "malayalamDialogue": "" and "dialogueEnglish": "" on EVERY shot. Never invent fake dialogue.`;
+        const dialogueRule =
+          effectiveMode === 'silent'
+            ? `STRICT NO-DIALOGUE / VISUAL COMEDY RULE: Set "malayalamDialogue": "" and "dialogueEnglish": "" on EVERY shot. Tell the story & humor 100% visually via expressive faces, slapstick timing, gestures, and ambient SFX.`
+            : effectiveMode === 'dialogue'
+            ? `DIALOGUE-DRIVEN RULE: Every conversational/dramatic shot MUST feature a completely fresh, non-repeated spoken dialogue line in "malayalamDialogue" (pure ${langConfig.geminiLangName}) and "dialogueEnglish". NEVER repeat or recycle the same dialogue sentence or phrase across shots.`
+            : `FLEXIBLE DIALOGUE & VISUAL COMEDY MIX RULE: Dynamically alternate between crisp dialogue-led shots ("malayalamDialogue" in pure ${langConfig.geminiLangName}) and pure silent/visual-comedy shots (leave "malayalamDialogue": "" and "dialogueEnglish": "" on physical gag / silent reaction beats!). STRICTLY ZERO repeated dialogue lines across the entire story.`;
 
-        const systemInstruction = `Cinematographer & AI Director: Break the user's exact story into ${coreAiShotCount} sequential chronological shots of ${preferredShotDuration}s each (Beginning -> Middle -> Ending).
-RULES:
-1. 100% STORY FIDELITY: Visualize ONLY actual characters, objects, and events from the script.
-2. DISTINCT SHOTS: Vary framing across shots (Wide, Medium Tracking, Close-Up, Over-the-Shoulder, Insert Detail) — never repeat identical prompts.
-3. Include "continuity" (visual face/wardrobe/prop/lighting lock) and "bgm" (unique music & SFX cue) in English, embedding them in "videoPrompt" and continuity in "imagePrompt".
-4. Write "action" in ${langConfig.geminiLangName}; write "bgm", "continuity", "imagePrompt", and "videoPrompt" in English.
-5. ${dialogueRule}
+        const arcMapGuide = `8-PART ESCALATING VARIETY ARC (ABSOLUTE ZERO REPETITION):
+- Part 1: Clear Introduction & Opening Setup (establishing characters & premise)
+- Part 2: First Situational Problem / Funny Misunderstanding
+- Part 3: Pure Visual / Physical Twist or Comedic Mishap (distinct situation!)
+- Part 4: Escalating Second Problem (neighbor/family/outsider arrives or new hurdle!)
+- Part 5: Clever Attempt Backfires (unexpected reversal & messy gag!)
+- Part 6: Peak Comedic/Dramatic Climax Chaos (all threads collide!)
+- Part 7: Heartwarming or Clever Turning Point (surprise clue/good deed shifts mood!)
+- Part 8: Satisfying Conclusion & Memorable Closing Punchline (wraps up Part 1)`;
 
-JSON only:
-{ "shots": [{ "shotNumber": 1, "durationSeconds": ${preferredShotDuration}, "timing": "Shot 01 — ${preferredShotDuration}s", "action": "...", "characters": [], "bgm": "...", "continuity": "...", "malayalamDialogue": "", "dialogueEnglish": "", "imagePrompt": "[IMAGE GENERATION PROMPT]: ...", "videoPrompt": "[VIDEO GENERATION PROMPT]: ..." }] }`;
+        const generateRange = async (startNum: number, endNum: number, arcPhase: string) => {
+          const count = endNum - startNum + 1;
+          const systemInstruction = `Master Cinematographer & Story Comedy/Drama Director: Generate shots ${startNum} to ${endNum} (${count} unique chronological scenes of ${preferredShotDuration}s each) for "${arcPhase}" of the user's story.
+${arcMapGuide}
 
-        const geminiPromise = ai.models.generateContent({
-          model: 'gemini-3.1-flash-lite',
-          contents: `Language: ${langConfig.geminiLangName}\nCore Shots: ${coreAiShotCount}\nDuration: ${preferredShotDuration}s\nStory:\n"""${script.trim()}"""`,
-          config: {
-            systemInstruction,
-            responseMimeType: 'application/json',
-            thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL },
-          },
-        });
+CRITICAL NO-REPETITION & CONTINUITY RULES:
+1. ABSOLUTE VARIETY — ZERO REPEATS: Every single shot from ${startNum} to ${endNum} MUST introduce a BRAND-NEW situational problem, twist, prop interaction, or comedic/story beat. NEVER repeat the same problem, same action, or same dialogue across parts!
+2. 100% STORY-ANCHORED PROGRESSION: Stay rooted in the exact characters, home/setting, and premise of the user's input while escalating smoothly from Introduction -> Escalating Problems -> Resolution.
+3. UNBROKEN VISUAL CONTINUITY: Maintain the EXACT same character face, wardrobe, props, and location continuity seamlessly from Shot ${Math.max(1, startNum - 1)} into Shot ${endNum}. Write this inside "continuity".
+4. SEPARATE STATIC PHOTO vs MOTION VIDEO PROMPTS:
+   - "imagePrompt": Must start with "[PHOTO KEYFRAME PROMPT — SHOT ${startNum.toString().padStart(2, '0')}]:" (matching each shotNumber) describing ONLY a static 35mm film still (framing, distinct pose/expression, wardrobe/prop continuity, lighting). NO motion verbs or audio!
+   - "videoPrompt": Must start with "[VIDEO MOTION PROMPT — SHOT ${startNum.toString().padStart(2, '0')}]:" (matching each shotNumber) describing continuous 24fps camera/subject motion continuing from Shot (N-1), Continuity Lock, Spoken Dialogue (ONLY if this shot has dialogue; otherwise explicitly state Visual Comedy / Ambient SFX Only), and distinct evolving BGM ("bgm").
+5. LANGUAGE: Write "action" and "malayalamDialogue" strictly in pure ${langConfig.geminiLangName}. Write "bgm", "continuity", "imagePrompt", and "videoPrompt" clearly in English (keeping quoted ${langConfig.geminiLangName} dialogue exact if present).
+6. ${dialogueRule}
 
-        const response = await withTimeout(geminiPromise, 14000);
-        if (response?.text) {
-          const parsed = JSON.parse(response.text);
-          if (parsed.shots && Array.isArray(parsed.shots) && parsed.shots.length > 0) {
-            const expandedShots = expandShotsToTargetCount(
-              parsed.shots,
-              targetShotCount,
-              preferredShotDuration,
-              allowDialogue,
-              langCode
-            );
-            return res.status(200).json({ shots: expandedShots });
-          }
+Return valid JSON only:
+{ "shots": [{ "shotNumber": ${startNum}, "durationSeconds": ${preferredShotDuration}, "timing": "Shot ${startNum.toString().padStart(2, '0')} — ${preferredShotDuration}s", "action": "...", "characters": [], "bgm": "...", "continuity": "...", "malayalamDialogue": "", "dialogueEnglish": "", "imagePrompt": "[PHOTO KEYFRAME PROMPT — SHOT ${startNum.toString().padStart(2, '0')}]: ...", "videoPrompt": "[VIDEO MOTION PROMPT — SHOT ${startNum.toString().padStart(2, '0')}]: ..." }] }`;
+
+          const resRange = await withTimeout(
+            ai.models.generateContent({
+              model: 'gemini-4-hydrogen',
+              contents: `Language: ${langConfig.geminiLangName}\nDialogue Mode: ${effectiveMode}\nShot Range: ${startNum} to ${endNum} (Total film shots: ${totalRequested})\nClip Duration: ${preferredShotDuration}s\nStory:\n"""${script.trim()}"""`,
+              config: {
+                systemInstruction,
+                responseMimeType: 'application/json',
+                thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
+              },
+            }),
+            24000
+          );
+          const parsed = JSON.parse(resRange.text || '{}');
+          return Array.isArray(parsed.shots) ? parsed.shots : [];
+        };
+
+        const ranges: { start: number; end: number; phase: string }[] = [];
+        const chunkSize = 4;
+        const arcLabels = [
+          'Parts 1-4: Clear Introduction, First Problem, Visual Comedy Beat & Outsider Complication',
+          'Parts 5-8: Backfired Plan Twist, Peak Climax Chaos, Turning Point & Satisfying Ending (ZERO overlap with Shots 1-4)',
+          'Escalation Wave 3: Fresh Sub-Plots & Comedic Turns',
+          'Final Resolution Wave: Closing Arc Beats',
+        ];
+        for (let s = 1, chunkIdx = 0; s <= coreAiShotCount; s += chunkSize, chunkIdx++) {
+          const e = Math.min(coreAiShotCount, s + chunkSize - 1);
+          ranges.push({
+            start: s,
+            end: e,
+            phase:
+              chunkIdx === 0 && e === coreAiShotCount
+                ? 'Full 8-Stage Beginning -> Escalating Unique Problems -> Ending Arc'
+                : `${arcLabels[chunkIdx % arcLabels.length]} (continuing seamlessly from Shot ${Math.max(1, s - 1)})`,
+          });
+        }
+
+        const chunkResults = await Promise.all(
+          ranges.map((r) => generateRange(r.start, r.end, r.phase))
+        );
+        const aiShots = chunkResults.flat();
+
+        if (aiShots.length > 0) {
+          const expandedShots = expandShotsToTargetCount(
+            aiShots,
+            totalRequested,
+            preferredShotDuration,
+            allowDialogue,
+            langCode,
+            effectiveMode
+          );
+          return res.status(200).json({ shots: expandedShots });
         }
       } catch (geminiError: any) {
         console.warn('Gemini fast breakdown notice, using fallback:', geminiError?.message);
@@ -110,7 +165,8 @@ JSON only:
       preferredShotDuration,
       characterPhotos,
       targetShotCount,
-      langCode
+      langCode,
+      effectiveMode
     );
     return res.status(200).json(fallbackBreakdown);
   } catch (error: any) {

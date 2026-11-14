@@ -1,6 +1,7 @@
 import type { AppLang } from './i18n';
 
 export type GenreKey = 'thriller' | 'drama' | 'action' | 'folk' | 'scifi' | 'comedy' | 'ad';
+export type DialogueMode = 'dynamic' | 'dialogue' | 'silent';
 
 export interface StoryAngle {
   id: string;
@@ -42,17 +43,23 @@ export function hasExplicitDialogue(text: string): boolean {
   if (!text) return false;
   const trimmed = text.trim();
 
-  // Quoted speech anywhere in the text
   if (/["“”'‘’«»]/.test(trimmed)) return true;
-
-  // Script dialogue format e.g. "Character: Hello" (ignore URLs or timestamps like 10:30)
   if (/(^|\n)\s*[^\d:\n]{2,24}\s*:\s*\S+/m.test(trimmed)) return true;
 
-  // Explicit speech/dialogue/conversation verbs & keywords across supported languages
   const dialogueKeywords =
     /\b(dialogue|dialogues|says|said|asks|asked|speaks|spoke|talks|talking|conversation|whispers|shouts|replies|monologue|voiceover|narrates)\b|(ഡയലോഗ്|സംഭാഷണം|പറയുന്നു|പറഞ്ഞു|ചോദിക്കുന്നു|ചോദിച്ചു|സംസാരിക്കുന്നു|സംസാരിച്ചു|വിളിക്കുന്നു|മറുപടി|ശബ്ദത്തിൽ പറയുന്നു)|(संवाद|डायलॉग|कहता|कहती|कहा|पूछता|पूछा|बोलता|बोली|बातचीत)|(வசனம்|டயலாக்|பேசுகிறார்|பேசினார்|கேட்கிறார்|கேட்டார்|சொல்கிறார்|சொன்னார்|உரையாடல்)|(ಸಂಭಾಷಣೆ|ಡೈಲಾಗ್|ಹೇಳುತ್ತಾ|ಹೇಳಿದ|ಕೇಳುತ್ತಾ|ಮಾತನಾಡು|ಮಾತುಕತೆ)|(సంభాషణ|డైలాగ్|చెబుత|చెప్పా|అడుగుత|అడిగా|మాట్లాడుత|మాటలు)/i;
 
   return dialogueKeywords.test(trimmed);
+}
+
+/**
+ * Returns true ONLY if the user explicitly asks for a silent / zero-dialogue film.
+ */
+export function isExplicitlySilent(text: string): boolean {
+  if (!text) return false;
+  return /\b(no dialogue|zero dialogue|without dialogue|silent film|silent movie|mute)\b|(ഡയലോഗ്\s*വേണ്ട|ഡയലോഗ്\s*ഇല്ലാതെ|സംഭാഷണമില്ല|ശബ്ദരഹിതം|निःशब्द|बिना संवाद|வசனம்\s*வேண்டாம்|ಮೌನ|డైలాగ్\s*వద్దు)/i.test(
+    text
+  );
 }
 
 /**
@@ -98,18 +105,13 @@ function splitStorySentences(text: string): string[] {
 }
 
 function deriveSubjectLabel(premise: string, lang: AppLang): string {
-  // Try picking first non-punctuation word that looks like a subject or fallback neutrally
-  const clean = premise.replace(/["“”'‘’.,!?()]/g, ' ').trim();
-  const words = clean.split(/\s+/).filter(Boolean);
-  const firstWord = words[0] || '';
-
   const fallbackByLang: Record<AppLang, string> = {
-    ml: firstWord ? `${firstWord} ഉൾപ്പെടുന്ന പ്രധാന കഥാപാത്രങ്ങൾ` : 'കഥയിലെ പ്രധാന കഥാപാത്രങ്ങൾ',
-    en: firstWord ? `Main characters connected to "${firstWord}"` : 'Central characters from your story',
-    hi: firstWord ? `"${firstWord}" से जुड़े मुख्य पात्र` : 'कहानी के मुख्य पात्र',
-    ta: firstWord ? `"${firstWord}" தொடர்புடைய முக்கிய கதாபாத்திரங்கள்` : 'கதையின் முக்கிய கதாபாத்திரங்கள்',
-    kn: firstWord ? `"${firstWord}" ಗೆ ಸಂಬಂಧಿಸಿದ ಮುಖ್ಯ ಪಾತ್ರಗಳು` : 'ಕಥೆಯ ಮುಖ್ಯ ಪಾತ್ರಗಳು',
-    te: firstWord ? `"${firstWord}" కి సంబంధించిన ప్రధాన పాత్రలు` : 'కథలోని ప్రధాన పాత్రలు',
+    ml: 'കഥയിലെ പ്രധാന കഥാപാത്രങ്ങൾ',
+    en: 'Central characters from your story',
+    hi: 'कहानी के मुख्य पात्र',
+    ta: 'கதையின் முக்கிய கதாபாத்திரங்கள்',
+    kn: 'ಕಥೆಯ ಮುಖ್ಯ ಪಾತ್ರಗಳು',
+    te: 'కథలోని ప్రధాన పాత్రలు',
   };
 
   return fallbackByLang[lang] || fallbackByLang.ml;
@@ -235,7 +237,7 @@ const DYNAMIC_STORY_PACKS: Record<AppLang, GenreTemplatePack> = {
       },
       {
         partLabel: 'മോഡൽ 9',
-        lensTitle: (c) => `${c} — ശബ്ദരഹിത ദൃശ്യഭാഷ (Silent Visual Montage)`,
+        lensTitle: (c) => `${c} — നിശബ്ദ ദൃശ്യാവിഷ്കാരം`,
         mood: 'Pure Visual • Sound Design Focus',
         twistBuilder: (p) => ({
           beginning: `യാതൊരു സംഭാഷണവുമില്ലാതെ ശുദ്ധമായ ദൃശ്യങ്ങളിലൂടെ ${p.lead}.`,
@@ -670,69 +672,565 @@ function buildShotBgmCue(beatText: string, shotIndex: number, totalShots: number
   return `${phase}; tailored organically to the visual mood and natural ambient foley of the scene.`;
 }
 
+const SUB_BEAT_PHASES: Record<
+  AppLang,
+  { actionSuffix: (shotNum: number, total: number) => string; photoPose: string; videoMotion: string }[]
+> = {
+  ml: [
+    {
+      actionSuffix: () => 'രംഗത്തിന്റെ തുടക്കവും കഥാപാത്രത്തിന്റെ പ്രവേശനവും',
+      photoPose: 'Character entering the scene calmly, crisp environmental establishing composition',
+      videoMotion: 'Slow steady dolly-in establishing the character moving naturally into the environment',
+    },
+    {
+      actionSuffix: () => 'ചുറ്റുപാടുകളോടുള്ള പ്രതികരണവും സൂക്ഷ്മ ഭാവങ്ങളും',
+      photoPose: 'Alert facial expression catching subtle detail in the scene',
+      videoMotion: 'Smooth medium tracking shot following the subtle head turn and eye focus',
+    },
+    {
+      actionSuffix: () => 'കൈകളുടെയും പ്രധാന വസ്തുവിന്റെയും ക്ലോസ്-അപ്പ് വിശദാംശം',
+      photoPose: 'Crisp close-up keyframe focused tightly on hands and central story object',
+      videoMotion: 'Deliberate rack-focus motion highlighting tactile movement and ambient texture',
+    },
+    {
+      actionSuffix: () => 'വൈകാരികമായ വഴിത്തിരിവും തീവ്രത കൂടുന്ന നിമിഷവും',
+      photoPose: 'Dramatic tense posture framed cleanly from over-the-shoulder angle',
+      videoMotion: 'Fluid push-in capturing rising emotion, natural breath, and meaningful eye contact',
+    },
+    {
+      actionSuffix: () => 'അടുത്ത രംഗത്തിലേക്കുള്ള തുടർച്ചയും ചലനവും',
+      photoPose: 'Dynamic three-quarter stance walking forward while maintaining exact wardrobe and props',
+      videoMotion: 'Seamless Steadicam glide transitioning smoothly toward the next narrative beat',
+    },
+  ],
+  en: [
+    {
+      actionSuffix: () => 'Opening setting & character entry into frame',
+      photoPose: 'Character positioned cleanly inside the setting, clear establishing posture',
+      videoMotion: 'Smooth slow dolly-in introducing the subject and surroundings seamlessly',
+    },
+    {
+      actionSuffix: () => 'Observational reaction & subtle expression shift',
+      photoPose: 'Natural mid-shot portrait showing focused expression and spatial awareness',
+      videoMotion: 'Gentle tracking pan matching natural head turn and reactive body movement',
+    },
+    {
+      actionSuffix: () => 'Close-up tactile detail on hands & key story prop',
+      photoPose: 'Shallow depth-of-field macro keyframe isolating hands and crucial story object',
+      videoMotion: 'Crisp subtle handheld micro-motion holding tension on the fine physical action',
+    },
+    {
+      actionSuffix: () => 'Dramatic peak & emotional response',
+      photoPose: 'Expressive dramatic framing highlighting emotional intensity and balanced lighting',
+      videoMotion: 'Controlled emotional push-in capturing spoken line or silent expressive breath',
+    },
+    {
+      actionSuffix: () => 'Continuous movement leading directly to the next shot',
+      photoPose: 'Three-quarter directional stance preparing to move onward with identical wardrobe',
+      videoMotion: 'Fluid Steadicam follow-through carrying momentum cleanly into the upcoming beat',
+    },
+  ],
+  hi: [
+    {
+      actionSuffix: () => 'दृश्य की शुरुआत और पात्र का प्रवेश',
+      photoPose: 'Character entering frame clearly, natural environment depth',
+      videoMotion: 'Smooth slow dolly-in establishing setting and movement',
+    },
+    {
+      actionSuffix: () => 'प्रतिक्रिया और चेहरे के सूक्ष्म भाव',
+      photoPose: 'Focused medium portrait showing alert expression',
+      videoMotion: 'Gentle tracking motion following reaction cleanly',
+    },
+    {
+      actionSuffix: () => 'हाथों और मुख्य वस्तु का क्लोज़-अप',
+      photoPose: 'Tight close-up keyframe on hands and central prop',
+      videoMotion: 'Subtle rack focus motion accentuating action detail',
+    },
+    {
+      actionSuffix: () => 'भावनात्मक मोड़ और मुख्य संवाद/प्रतिक्रिया',
+      photoPose: 'Expressive over-the-shoulder keyframe with dramatic lighting',
+      videoMotion: 'Slow dramatic push-in capturing emotion and speech',
+    },
+    {
+      actionSuffix: () => 'अगले शॉट की ओर निरंतर गति',
+      photoPose: 'Forward three-quarter stance locking exact wardrobe & prop',
+      videoMotion: 'Seamless Steadicam follow motion into next shot',
+    },
+  ],
+  ta: [
+    {
+      actionSuffix: () => 'காட்சித் தொடக்கமும் கதாபாத்திரத்தின் வருகையும்',
+      photoPose: 'Character entering frame naturally in setting',
+      videoMotion: 'Smooth establishing dolly-in motion',
+    },
+    {
+      actionSuffix: () => 'எதிர்வினையும் முகபாவ மாற்றமும்',
+      photoPose: 'Medium portrait capturing focused reaction',
+      videoMotion: 'Gentle tracking camera following expression',
+    },
+    {
+      actionSuffix: () => 'கைகள் மற்றும் முக்கிய பொருளின் க்ளோஸ்-அப்',
+      photoPose: 'Tight close-up keyframe on crucial prop & hands',
+      videoMotion: 'Rack focus motion revealing key detail',
+    },
+    {
+      actionSuffix: () => 'உணர்ச்சிப்பூர்வ உச்சகட்டத் தருணம்',
+      photoPose: 'Dramatic keyframe holding tense emotional posture',
+      videoMotion: 'Smooth push-in capturing emotion or spoken dialogue',
+    },
+    {
+      actionSuffix: () => 'அடுத்த காட்சிக்கான தொடர்ச்சியான நகர்வு',
+      photoPose: 'Three-quarter forward stance preserving wardrobe & props',
+      videoMotion: 'Steadicam follow-through into next beat',
+    },
+  ],
+  kn: [
+    {
+      actionSuffix: () => 'ದೃಶ್ಯದ ಆರಂಭ ಮತ್ತು ಪಾತ್ರದ ಪ್ರವೇಶ',
+      photoPose: 'Character framed cleanly entering the scene',
+      videoMotion: 'Smooth slow establishing dolly-in',
+    },
+    {
+      actionSuffix: () => 'ಸೂಕ್ಷ್ಮ ಭಾವನೆಗಳು ಮತ್ತು ಪ್ರತಿಕ್ರಿಯೆ',
+      photoPose: 'Focused medium shot capturing reaction',
+      videoMotion: 'Gentle tracking pan following expression',
+    },
+    {
+      actionSuffix: () => 'ಕೈಗಳು ಮತ್ತು ಪ್ರಮುಖ ವಸ್ತುವಿನ ಕ್ಲೋಸ್-ಅಪ್',
+      photoPose: 'Tight close-up keyframe on hands and story prop',
+      videoMotion: 'Rack-focus motion highlighting fine action',
+    },
+    {
+      actionSuffix: () => 'ಭಾವನಾತ್ಮಕ ತಿರುವು ಮತ್ತು ಮುಖ್ಯ ಕ್ಷಣ',
+      photoPose: 'Expressive dramatic keyframe with balanced key light',
+      videoMotion: 'Controlled push-in capturing emotion and dialogue',
+    },
+    {
+      actionSuffix: () => 'ಮುಂದಿನ ಶಾಟ್‌ಗೆ ನಿರಂತರ ಚಲನೆ',
+      photoPose: 'Directional stance locking exact wardrobe and continuity',
+      videoMotion: 'Seamless Steadicam movement transitioning out',
+    },
+  ],
+  te: [
+    {
+      actionSuffix: () => 'సన్నివేశం ప్రారంభం మరియు పాత్ర ప్రవేశం',
+      photoPose: 'Character positioned clearly entering setting',
+      videoMotion: 'Smooth slow dolly-in establishing the scene',
+    },
+    {
+      actionSuffix: () => 'స్పందన మరియు ముఖ కవళికల మార్పు',
+      photoPose: 'Focused medium shot capturing attentive expression',
+      videoMotion: 'Gentle tracking shot following reaction',
+    },
+    {
+      actionSuffix: () => 'చేతులు మరియు ప్రధాన వస్తువు క్లోజ్-అప్',
+      photoPose: 'Tight close-up keyframe on hands and object',
+      videoMotion: 'Rack-focus detail shot holding visual tension',
+    },
+    {
+      actionSuffix: () => 'భావోద్వేగ మలుపు మరియు ప్రధాన క్షణం',
+      photoPose: 'Expressive dramatic framing with cinematic lighting',
+      videoMotion: 'Slow emotional push-in capturing dialogue and mood',
+    },
+    {
+      actionSuffix: () => 'తదుపరి షాట్‌కు నిరంతర కదలిక',
+      photoPose: 'Forward stance maintaining exact clothing & props',
+      videoMotion: 'Seamless Steadicam glide transitioning forward',
+    },
+  ],
+};
+
+interface ArcBeatBlueprint {
+  stageTag: string;
+  sceneType: 'dialogue' | 'visual-comedy';
+  situationLine: (beat: string) => string;
+  cameraHint: string;
+  visualMotion: string;
+}
+
+const EIGHT_PART_ARC_BEATS: Record<AppLang, ArcBeatBlueprint[]> = {
+  ml: [
+    {
+      stageTag: 'ഭാഗം 1 — തുടക്കവും അപ്രതീക്ഷിത വരവും (Introduction)',
+      sceneType: 'dialogue',
+      situationLine: (b) => `${b} — കഥയുടെ തുടക്കത്തിൽ സ്വാഭാവികമായ ചുറ്റുപാടിലേക്ക് അപ്രതീക്ഷിതമായി പുതിയൊരു സാഹചര്യം കടന്നുവരുന്നു`,
+      cameraHint: 'Wide establishing 35mm frame introducing characters, home/location & initial setup cleanly',
+      visualMotion: 'Smooth dolly-in introducing the main character and setting the opening mood',
+    },
+    {
+      stageTag: 'ഭാഗം 2 — ആദ്യത്തെ ചെറിയ ആശയക്കുഴപ്പം (First Problem)',
+      sceneType: 'dialogue',
+      situationLine: (b) => `ആദ്യ നിമിഷത്തെ ശാന്തത മാറി, "${b}" എന്നതുമായി ബന്ധപ്പെട്ട് ചെറിയൊരു തർക്കവും ആശയക്കുഴപ്പവും പൊട്ടിപ്പുറപ്പെടുന്നു`,
+      cameraHint: 'Two-shot medium frame capturing surprised expressions and gesturing hands',
+      visualMotion: 'Crisp pan between faces showing instant confusion and rising disagreement',
+    },
+    {
+      stageTag: 'ഭാഗം 3 — നിശബ്ദ വിഷ്വൽ കോമഡി (No-Dialogue Visual Comedy)',
+      sceneType: 'visual-comedy',
+      situationLine: () => `സംഭാഷണങ്ങളില്ലാതെ പൂർണ്ണമായും മുഖഭാവങ്ങളും ശരീരചലനങ്ങളും കൊണ്ട് രസകരമായ കുഴപ്പങ്ങൾ സംഭവിക്കുന്നു — വീഴാൻ പോകുന്ന സാധനം പിടിക്കാനുള്ള തത്രപ്പാട്`,
+      cameraHint: 'Dynamic medium-low physical comedy frame capturing exaggerated wide eyes, balance slip & prop motion',
+      visualMotion: 'Whip-pan slapstick camera rhythm catching awkward leaps, slipping objects, and frozen reaction',
+    },
+    {
+      stageTag: 'ഭാഗം 4 — പുറത്തുനിന്നുള്ള പുതിയ പ്രതിസന്ധി (Escalating Obstacle)',
+      sceneType: 'dialogue',
+      situationLine: () => `പ്രശ്നം പരിഹരിക്കുന്നതിനിടയിൽ അയൽക്കാരനോ വീട്ടിലെ മറ്റൊരാളോ അപ്രതീക്ഷിതമായി എത്തി സ്ഥിതി കൂടുതൽ വഷളാക്കുന്നു`,
+      cameraHint: 'Over-the-shoulder doorway framing with nervous side-glances and hidden mess behind back',
+      visualMotion: 'Steadicam push-in as character tries desperately to hide chaos while talking politely',
+    },
+    {
+      stageTag: 'ഭാഗം 5 — തന്ത്രം പാളിപ്പോകുന്ന വഴിത്തിരിവ് (Backfired Plan / Visual Gag)',
+      sceneType: 'visual-comedy',
+      situationLine: () => `കുഴപ്പം മറയ്ക്കാൻ നടത്തിയ ബുദ്ധിപരമായ ശ്രമം വിപരീതഫലം നൽകുന്നു — മറ്റൊരു സാധനം തട്ടിമറിഞ്ഞ് രഹസ്യം പുറത്താകാൻ തുടങ്ങുന്നു`,
+      cameraHint: 'Tight close-up insert cut on spilling prop followed by shocked deadpan reaction still',
+      visualMotion: 'Fast rack-focus from tumbling object to silent jaw-drop close-up expression',
+    },
+    {
+      stageTag: 'ഭാഗം 6 — ഏറ്റവും രസകരമായ ഉച്ചസ്ഥായി (Peak Comedic Chaos)',
+      sceneType: 'dialogue',
+      situationLine: () => `എല്ലാവരുടെയും തെറ്റിദ്ധാരണകൾ ഒന്നിച്ചു കൂട്ടിയിടിച്ച് വലിയ കോലാഹലവും വേഗതയേറിയ മറുപടികളും നിറഞ്ഞ ക്ലൈമാക്സ് നിമിഷം`,
+      cameraHint: 'Energetic wide interior shot with multiple characters reacting in completely different directions',
+      visualMotion: 'Rapid handheld tracking circling characters mid-argument with animated comedic timing',
+    },
+    {
+      stageTag: 'ഭാഗം 7 — ഹൃദ്യമായ മാറ്റവും തിരിച്ചറിവും (Unexpected Turning Point)',
+      sceneType: 'visual-comedy',
+      situationLine: () => `ബഹളത്തിനിടയിൽ നിശബ്ദമായി സംഭവിക്കുന്നൊരു ചെറിയ നല്ല പ്രവൃത്തി അല്ലെങ്കിൽ അപ്രതീക്ഷിത തെളിവ് എല്ലാവരുടെയും മനസ്സ് മാറ്റുന്നു`,
+      cameraHint: 'Soft golden close-up capturing gentle eye contact, small helpful gesture & warm atmospheric light',
+      visualMotion: 'Slow gentle push-in dissolving tension into silent warmth and genuine smile',
+    },
+    {
+      stageTag: 'ഭാഗം 8 — സന്തോഷകരമായ അന്ത്യം (Satisfying Conclusion)',
+      sceneType: 'dialogue',
+      situationLine: () => `എല്ലാ പ്രശ്നങ്ങളും ചിരിയോടും സ്നേഹത്തോടും കൂടി ഒത്തുതീർപ്പാകുന്നു — പുതിയ തുടക്കത്തോടെ മനോഹരമായ ഫൈനൽ പഞ്ച്‌ലൈൻ`,
+      cameraHint: 'Warm wide pull-back framing everyone together comfortably in golden closing light',
+      visualMotion: 'Smooth crane pull-out leaving the characters smiling warmly in harmonious closure',
+    },
+  ],
+  en: [
+    {
+      stageTag: 'Part 1 — Introduction & Unexpected Arrival',
+      sceneType: 'dialogue',
+      situationLine: (b) => `${b} — Opening scene establishes the home/setting cleanly as an unexpected visitor or event arrives`,
+      cameraHint: 'Wide 35mm establishing still showcasing characters, environment props & opening atmosphere',
+      visualMotion: 'Smooth steady dolly-in introducing the lead character and spatial geography',
+    },
+    {
+      stageTag: 'Part 2 — First Situational Mix-Up',
+      sceneType: 'dialogue',
+      situationLine: (b) => `Initial calm breaks immediately around "${b}" as an awkward misunderstanding sparks the first disagreement`,
+      cameraHint: 'Medium two-shot keyframe capturing raised eyebrows and contrasting body language',
+      visualMotion: 'Quick responsive pan between speakers highlighting comic disbelief',
+    },
+    {
+      stageTag: 'Part 3 — Pure Visual Comedy Beat (Silent Gag)',
+      sceneType: 'visual-comedy',
+      situationLine: () => `Pure physical comedy with zero spoken words — a clumsy attempt to manage the situation turns into hilarious silent chaos`,
+      cameraHint: 'Wide-angle physical comedy keyframe showing mid-air prop slip, awkward crouch & frozen panic',
+      visualMotion: 'Zippy Steadicam follow with comic whip-pan catching silent pratfalls and wide-eyed glances',
+    },
+    {
+      stageTag: 'Part 4 — Second Escalating Problem (Outsider Arrives)',
+      sceneType: 'dialogue',
+      situationLine: () => `Right as things look manageable, a neighbor, elder, or unexpected guest knocks at the worst possible second`,
+      cameraHint: 'Over-the-shoulder doorway framing contrasting polite smile in front with hidden mess behind',
+      visualMotion: 'Subtle push-in as protagonist nervously blocks view while improvising an excuse',
+    },
+    {
+      stageTag: 'Part 5 — Clever Fix Backfires (Visual Twist)',
+      sceneType: 'visual-comedy',
+      situationLine: () => `A sneaky quick-fix backfires silently in front of everyone — a hidden detail or spilled object exposes the cover-up`,
+      cameraHint: 'Macro close-up insert frame on collapsing prop shifting smoothly to deadpan reaction',
+      visualMotion: 'Crisp rack-focus from falling prop directly to stunned silent facial close-up',
+    },
+    {
+      stageTag: 'Part 6 — Peak Chaos & Cross-Talk Climax',
+      sceneType: 'dialogue',
+      situationLine: () => `Every misunderstanding collides at once into rapid-fire banter, mistaken assumptions, and peak comedic mayhem`,
+      cameraHint: 'Dynamic ensemble wide frame capturing overlapping reactions across the room',
+      visualMotion: 'Energetic handheld tracking weaving rapidly between gesturing characters',
+    },
+    {
+      stageTag: 'Part 7 — Unexpected Heartwarming Turn (Silent Emotion)',
+      sceneType: 'visual-comedy',
+      situationLine: () => `In the quiet pause after the storm, a genuinely sweet or clever silent gesture wins everyone over completely`,
+      cameraHint: 'Intimate warm close-up illuminated by soft side key light highlighting sincere expression',
+      visualMotion: 'Slow emotional dolly-in melting tension into quiet tenderness and laughter',
+    },
+    {
+      stageTag: 'Part 8 — Warm Resolution & Closing Punchline',
+      sceneType: 'dialogue',
+      situationLine: () => `All problems resolve happily with a charming final twist and memorable closing smile that ties back to Part 1`,
+      cameraHint: 'Balanced wide closing keyframe uniting every character cleanly inside warm ambient light',
+      visualMotion: 'Graceful pull-back tracking out as laughter settles into a satisfying ending beat',
+    },
+  ],
+  hi: [
+    {
+      stageTag: 'भाग 1 — शुरुआत और अचानक प्रवेश',
+      sceneType: 'dialogue',
+      situationLine: (b) => `${b} — कहानी की स्पष्ट शुरुआत और मुख्य माहौल का परिचय`,
+      cameraHint: 'Wide establishing 35mm frame introducing character and home setting',
+      visualMotion: 'Smooth slow dolly-in establishing setting and movement',
+    },
+    {
+      stageTag: 'भाग 2 — पहली गलतफहमी और उलझन',
+      sceneType: 'dialogue',
+      situationLine: (b) => `"${b}" को लेकर अचानक पहली मज़ेदार बहस और गलतफहमी शुरू होती है`,
+      cameraHint: 'Medium two-shot showing puzzled expressions',
+      visualMotion: 'Crisp pan capturing confused dialogue exchange',
+    },
+    {
+      stageTag: 'भाग 3 — बिना डायलॉग विज़ुअल कॉमेडी',
+      sceneType: 'visual-comedy',
+      situationLine: () => `बिना एक शब्द बोले चेहरे के भाव और हरकतों से मज़ेदार भागदौड़ और चीज़ें गिरने का सिलसिला`,
+      cameraHint: 'Dynamic physical comedy wide frame',
+      visualMotion: 'Lively Steadicam chase catching slapstick reactions',
+    },
+    {
+      stageTag: 'भाग 4 — नई मुसीबत और मेहमान की एंट्री',
+      sceneType: 'dialogue',
+      situationLine: () => `मुसीबत संभालते ही अचानक पड़ोसी या घर के किसी बड़े के आने से स्थिति और बिगड़ जाती है`,
+      cameraHint: 'Doorway over-the-shoulder tense comic framing',
+      visualMotion: 'Push-in while hiding chaos behind back politely',
+    },
+    {
+      stageTag: 'भाग 5 — तरकीब उल्टी पड़ने वाला ट्विस्ट',
+      sceneType: 'visual-comedy',
+      situationLine: () => `हालात छुपाने की चालाकी चुपचाप उल्टी पड़ जाती है और राज़ सामने आने लगता है`,
+      cameraHint: 'Tight close-up on falling prop and stunned reaction',
+      visualMotion: 'Rack-focus from accident to silent wide-eyed shock',
+    },
+    {
+      stageTag: 'भाग 6 — कॉमेडी का चरम और हंगामा',
+      sceneType: 'dialogue',
+      situationLine: () => `सारी गलतफहमियाँ एक साथ टकराती हैं और ज़ोरदार कॉमेडी हंगामा खड़ा होता है`,
+      cameraHint: 'Energetic group wide frame with animated poses',
+      visualMotion: 'Handheld tracking circling chaotic reactions',
+    },
+    {
+      stageTag: 'भाग 7 — दिल छू लेने वाला मोड़',
+      sceneType: 'visual-comedy',
+      situationLine: () => `शोर थमते ही एक प्यारी और चुपचाप की गई अच्छी हरकत सबका दिल जीत लेती है`,
+      cameraHint: 'Warm close-up in golden light showing gentle smile',
+      visualMotion: 'Slow heartfelt push-in turning chaos to warmth',
+    },
+    {
+      stageTag: 'भाग 8 — खुशनुमा अंत और पंचलाइन',
+      sceneType: 'dialogue',
+      situationLine: () => `सारी मुश्किलें हल होकर हंसी-खुशी के साथ कहानी मज़ेदार अंदाज़ में समाप्त होती है`,
+      cameraHint: 'Warm closing wide shot together',
+      visualMotion: 'Smooth pull-back ending on smiling faces',
+    },
+  ],
+  ta: [
+    { stageTag: 'பகுதி 1 — அறிமுகம் & திடீர் வருகை', sceneType: 'dialogue', situationLine: (b) => `${b} — கதை அமைதியான சூழலில் சுவாரஸ்யமாகத் தொடங்குகிறது`, cameraHint: 'Wide 35mm establishing still', visualMotion: 'Smooth slow dolly-in' },
+    { stageTag: 'பகுதி 2 — முதல் குழப்பம்', sceneType: 'dialogue', situationLine: (b) => `"${b}" காரணமாக எதிர்பாராத சிறு வாக்குவாதமும் குழப்பமும் ஏற்படுகிறது`, cameraHint: 'Two-shot reaction framing', visualMotion: 'Responsive pan between faces' },
+    { stageTag: 'பகுதி 3 — வசனமில்லா விஷுவல் காமெடி', sceneType: 'visual-comedy', situationLine: () => `வசனம் இன்றி முகபாவங்களும் உடல் அசைவுகளும் நிறைந்த நகைச்சுவை கலாட்டா`, cameraHint: 'Physical comedy wide still', visualMotion: 'Whip-pan slapstick tracking' },
+    { stageTag: 'பகுதி 4 — புதிய சிக்கல் & விருந்தினர் வருகை', sceneType: 'dialogue', situationLine: () => `நிலைமையை சமாளிக்கும் நேரத்தில் அண்டை வீட்டாரின் திடீர் வருகையால் புதிய சிக்கல்`, cameraHint: 'Doorway over-the-shoulder frame', visualMotion: 'Tense comic push-in' },
+    { stageTag: 'பகுதி 5 — திட்டம் சொதப்பும் திருப்பம்', sceneType: 'visual-comedy', situationLine: () => `ரகசியத்தை மறைக்க செய்த தந்திரம் அமைதியாக சொதப்பி மாட்டிக்கொள்ளும் தருணம்`, cameraHint: 'Tight macro detail + shock close-up', visualMotion: 'Rack-focus comedic reveal' },
+    { stageTag: 'பகுதி 6 — உச்சகட்ட நகைச்சுவை குழப்பம்', sceneType: 'dialogue', situationLine: () => `அனைத்து குழப்பங்களும் ஒன்றாக மோதி உச்சகட்ட நகைச்சுவை கலாட்டா வெடிக்கிறது`, cameraHint: 'Ensemble room-wide reaction shot', visualMotion: 'Energetic handheld tracking' },
+    { stageTag: 'பகுதி 7 — மனதை மாற்றும் நெகிழ்ச்சித் திருப்பம்', sceneType: 'visual-comedy', situationLine: () => `குழப்பத்திற்கு நடுவே நடக்கும் ஒரு அழகான செயலால் அனைவரின் மனமும் மாறுகிறது`, cameraHint: 'Warm close-up keyframe', visualMotion: 'Slow emotional dolly-in' },
+    { stageTag: 'பகுதி 8 — இனிமையான முடிவு', sceneType: 'dialogue', situationLine: () => `சிக்கல்கள் எல்லாம் தீர்ந்து சிரிப்பும் மகிழ்ச்சியுமாக கதை நிறைவடைகிறது`, cameraHint: 'Warm wide pull-back closing shot', visualMotion: 'Graceful crane pull-out' },
+  ],
+  kn: [
+    { stageTag: 'ಭಾಗ 1 — ಆರಂಭ ಮತ್ತು ಪ್ರವೇಶ', sceneType: 'dialogue', situationLine: (b) => `${b} — ಕಥೆಯ ಸ್ಪಷ್ಟ ಆರಂಭ ಮತ್ತು ಸನ್ನಿವೇಶದ ಪರಿಚಯ`, cameraHint: 'Wide 35mm establishing frame', visualMotion: 'Smooth dolly-in' },
+    { stageTag: 'ಭಾಗ 2 — ಮೊದಲ ಗೊಂದಲ', sceneType: 'dialogue', situationLine: (b) => `"${b}" ಸುತ್ತ ಅನಿರೀಕ್ಷಿತ ಗೊಂದಲ ಮತ್ತು ತಮಾಷೆಯ ವಾದ ಶುರುವಾಗುತ್ತದೆ`, cameraHint: 'Medium two-shot reaction', visualMotion: 'Crisp face-to-face pan' },
+    { stageTag: 'ಭಾಗ 3 — ಡೈಲಾಗ್ ಇಲ್ಲದ ವಿಷುಯಲ್ ಕಾಮಿಡಿ', sceneType: 'visual-comedy', situationLine: () => `ಮಾತಿಲ್ಲದೆ ಕೇವಲ ಮುಖಭಾವ ಮತ್ತು ದೇಹದ ಚಲನೆಯಿಂದ ನಡೆಯುವ ಹಾಸ್ಯಮಯ ಗಡಿಬಿಡಿ`, cameraHint: 'Dynamic slapstick wide shot', visualMotion: 'Zippy Steadicam tracking' },
+    { stageTag: 'ಭಾಗ 4 — ಹೊಸ ತೊಂದರೆ ಮತ್ತು ಅತಿಥಿ', sceneType: 'dialogue', situationLine: () => `ಸಮಸ್ಯೆ ಬಗೆಹರಿಸುವಷ್ಟರಲ್ಲಿ ನೆರೆಯವರ ಅನಿರೀಕ್ಷಿತ ಆಗಮನದಿಂದ ಪರಿಸ್ಥಿತಿ ಇನ್ನಷ್ಟು ಜಟಿಲವಾಗುತ್ತದೆ`, cameraHint: 'Over-the-shoulder doorway shot', visualMotion: 'Subtle comic push-in' },
+    { stageTag: 'ಭಾಗ 5 — ಉಪಾಯ ಉಲ್ಟಾ ಆಗುವ ತಿರುವು', sceneType: 'visual-comedy', situationLine: () => `ವಿಷಯ ಮರೆಮಾಚಲು ಮಾಡಿದ ಉಪಾಯ ಸದ್ದಿಲ್ಲದೆ ಉಲ್ಟಾ ಹೊಡೆದು ಹೊಸ ಕಿರಿಕಿರಿ ತರುತ್ತದೆ`, cameraHint: 'Close-up spilling prop + shock', visualMotion: 'Quick rack-focus reaction' },
+    { stageTag: 'ಭಾಗ 6 — ಪೀಕ್ ಕಾಮಿಡಿ ಗದ್ದಲ', sceneType: 'dialogue', situationLine: () => `ಎಲ್ಲಾ ತಪ್ಪುಗ್ರಹಿಕೆಗಳು ಒಟ್ಟಿಗೆ ಸೇರಿ ದೊಡ್ಡ ಹಾಸ್ಯಮಯ ಗೊಂದಲ ಸೃಷ್ಟಿಯಾಗುತ್ತದೆ`, cameraHint: 'Ensemble room reaction wide frame', visualMotion: 'Handheld circling camera' },
+    { stageTag: 'ಭಾಗ 7 — ಹೃದಯ ಸ್ಪರ್ಶಿಸುವ ತಿರುವು', sceneType: 'visual-comedy', situationLine: () => `ಗದ್ದಲದ ನಡುವೆ ನಡೆದ ಒಂದು ಸಿಹಿ ಘಟನೆ ಎಲ್ಲರ ಮನಸ್ಸನ್ನು ಗೆಲ್ಲುತ್ತದೆ`, cameraHint: 'Soft warm close-up portrait', visualMotion: 'Slow gentle dolly-in' },
+    { stageTag: 'ಭಾಗ 8 — ಸಂತೋಷದ ಅಂತ್ಯ', sceneType: 'dialogue', situationLine: () => `ಎಲ್ಲಾ ಸಮಸ್ಯೆಗಳು ನಗುವಿನೊಂದಿಗೆ ಬಗೆಹರಿದು ಕಥೆ ಸುಂದರವಾಗಿ ಮುಕ್ತಾಯವಾಗುತ್ತದೆ`, cameraHint: 'Balanced warm wide finale', visualMotion: 'Smooth pull-back closing shot' },
+  ],
+  te: [
+    { stageTag: 'భాగం 1 — పరిచయం & ఆకస్మిక ప్రవేశం', sceneType: 'dialogue', situationLine: (b) => `${b} — కథ స్పష్టమైన ప్రారంభంతో సహజ వాతావరణంలో మొదలవుతుంది`, cameraHint: 'Wide 35mm establishing frame', visualMotion: 'Smooth dolly-in' },
+    { stageTag: 'భాగం 2 — మొదటి అపార్థం', sceneType: 'dialogue', situationLine: (b) => `"${b}" విషయంలో అనుకోని చిన్న అపార్థం తలెత్తి మొదటి గందరగోళం మొదలవుతుంది`, cameraHint: 'Medium two-shot frame', visualMotion: 'Quick pan between expressions' },
+    { stageTag: 'భాగం 3 — డైలాగ్ లేని విజువల్ కామెడీ', sceneType: 'visual-comedy', situationLine: () => `మాటలు లేకుండా పూర్తిగా హావభావాలు, శరీర కదలికలతో నవ్వు తెప్పించే గందరగోళ సన్నివేశం`, cameraHint: 'Physical comedy wide angle', visualMotion: 'Whip-pan slapstick motion' },
+    { stageTag: 'భాగం 4 — కొత్త చిక్కు & బయటి వ్యక్తి రాక', sceneType: 'dialogue', situationLine: () => `పరిస్థితి చక్కదిద్దేలోపే పొరుగింటి వారు అకస్మాత్తుగా రావడంతో సమస్య మరింత పెరుగుతుంది`, cameraHint: 'Doorway over-the-shoulder frame', visualMotion: 'Nervous push-in' },
+    { stageTag: 'భాగం 5 — ప్లాన్ బెడిసికొట్టిన మలుపు', sceneType: 'visual-comedy', situationLine: () => `దాచడానికి చేసిన తెలివైన ప్రయత్నం నిశ్శబ్దంగా బెడిసికొట్టి అసలు విషయం బయటపడబోతుంది`, cameraHint: 'Tight close-up prop + shock still', visualMotion: 'Crisp rack-focus reveal' },
+    { stageTag: 'భాగం 6 — క్లైమాక్స్ కామెడీ హంగామా', sceneType: 'dialogue', situationLine: () => `అన్ని అపార్థాలు ఒక్కసారిగా కలిసి సరదా గందరగోళం తారాస్థాయికి చేరుతుంది`, cameraHint: 'Ensemble wide room reaction', visualMotion: 'Energetic handheld tracking' },
+    { stageTag: 'భాగం 7 — మనసు మార్చే మధురమైన మలుపు', sceneType: 'visual-comedy', situationLine: () => `అల్లరి మధ్యలో జరిగిన ఒక మంచి పని అందరి మనసులను హత్తుకుని నవ్వు తెప్పిస్తుంది`, cameraHint: 'Warm close-up keyframe', visualMotion: 'Slow tender dolly-in' },
+    { stageTag: 'భాగం 8 — సంతోషకరమైన ముగింపు', sceneType: 'dialogue', situationLine: () => `సమస్యలన్నీ పరిష్కారమై అందరూ కలిసి నవ్వుతూ కథ ఆనందంగా ముగుస్తుంది`, cameraHint: 'Warm wide pull-back finale', visualMotion: 'Graceful closing pull-out' },
+  ],
+};
+
+function defaultDialogueForBeat(lang: AppLang, idx: number): string {
+  const byLang: Record<AppLang, string[]> = {
+    ml: [
+      'ഇതാരാ ഇപ്പോൾ ഇങ്ങോട്ട് വന്നത്... ഒരു നിമിഷം നിൽക്കൂ!',
+      'ഞാൻ വിചാരിച്ച പോലെയല്ല കാര്യങ്ങൾ, ഇതാകെ മാറിപ്പോയല്ലോ!',
+      'അയ്യോ, ആ മേശയുടെ അടുത്ത് തൊടല്ലേ... വേഗം പിടിക്ക്!',
+      'ഹലോ... അകത്തേക്ക് വരൂ, പക്ഷേ അങ്ങോട്ട് മാത്രം നോക്കരുത്!',
+      'ഇതെന്താ ഇവിടെ നടന്നത്? ഈ സാധനങ്ങളൊക്കെ ആരാ മറിച്ചിട്ടത്?!',
+      'ഇതെല്ലാം നിങ്ങൾ കരുതുന്നത് പോലെയല്ല, സത്യം കേൾക്കൂ!',
+      'ഒന്ന് സൂക്ഷിച്ചു നോക്കൂ... ഇവൻ നമ്മളെ സഹായിക്കാനാ വന്നതെന്ന് തോന്നുന്നു!',
+      'ഒടുവിൽ ഇതൊരു അടിപൊളി തുടക്കമായല്ലോ... എല്ലാവർക്കും ചിരി വരുന്നു!',
+    ],
+    en: [
+      'Hold on a second... where did that suddenly come from?!',
+      'Wait, that is NOT what I thought was going to happen!',
+      'Watch out—grab that before it knocks over the whole shelf!',
+      'Oh hi! Come right in—just please do not look behind that couch!',
+      'Wait a minute... how did my clever plan make things ten times worse?!',
+      'Stop talking all at once—let me explain what actually happened!',
+      'Hold everything... did you just see what he quietly brought back?',
+      'Well, look at us now... honestly, I would not trade this chaos for anything.',
+    ],
+    hi: [
+      'अरे रुको... यह अचानक अंदर कौन आ गया?!',
+      'लगता है अब तो पूरी बात ही उलट गई!',
+      'अरे संभालो! कहीं वह गुलदस्ता नीचे न गिर जाए!',
+      'अरे आइए आइए... बस उधर कोने में मत देखिएगा!',
+      'ये क्या गज़ब हो गया? मेरा आसान आइडिया उल्टा पड़ गया!',
+      'सब एक साथ मत बोलो, पहले पूरी बात तो सुनो!',
+      'एक मिनट रुकिए... ज़रा देखिए तो सही उसने क्या कमाल किया!',
+      'आखिरकार सब ठीक हो गया... यह तो सबसे यादगार मोड़ बन गया!',
+    ],
+    ta: [
+      'ஒரு நிமிஷம்... இது எப்படி இங்கே வந்தது?!',
+      'நான் நினைத்த மாதிரி இல்லையே, நிலைமை மாறிவிட்டதே!',
+      'ஐயோ, அதைப் பிடிங்க... கீழே விழுந்து உடைந்துவிடப் போகிறது!',
+      'வாங்க வாங்க... ஆனால் அந்தப் பக்கம் மட்டும் பார்க்காதீங்க!',
+      'என்ன நடக்குது இங்கே? நல்ல திட்டம் போட்டால் இப்படி சொதப்பிடுச்சே!',
+      'எல்லாரும் ஒரே நேரத்தில் பேசாதீங்க, உண்மையைக் கேளுங்க!',
+      'கொஞ்சம் அமைதியா பாருங்க... அவன் செய்த நல்ல காரியத்தைப் பாருங்க!',
+      'கடைசியில் எல்லாம் நன்மைக்கே... செம கலகலப்பான முடிவு!',
+    ],
+    kn: [
+      'ಒಂದು ನಿಮಿಷ... ಇದು ಅಚಾನಕ್ಕಾಗಿ ಎಲ್ಲಿಂದ ಬಂತು?!',
+      'ನಾನು ಅಂದುಕೊಂಡಂತೆ ಆಗಲಿಲ್ಲ, ಎಲ್ಲವೂ ಬದಲಾಯಿತಲ್ಲ!',
+      'ಅಯ್ಯೋ ಬೇಗ ಹಿಡಿ... ಆ ವಸ್ತು ಕೆಳಗೆ ಬಿದ್ದು ಹೋಗುತ್ತದೆ!',
+      'ಬನ್ನಿ ಬನ್ನಿ... ಆದರೆ ಆ ಮೂಲೆಯ ಕಡೆ ಮಾತ್ರ ನೋಡಬೇಡಿ!',
+      'ಇದೇನಾಯ್ತು ಇಲ್ಲಿ? ನನ್ನ ಉಪಾಯವೇ ಉಲ್ಟಾ ಹೊಡೆಯಿತಲ್ಲ!',
+      'ಎಲ್ಲರೂ ಒಟ್ಟಿಗೆ ಮಾತನಾಡಬೇಡಿ, ನಿಜ ಏನೆಂದು ಕೇಳಿ!',
+      'ಒಂದು ಕ್ಷಣ ನಿಲ್ಲಿ... ಅವನು ತಂದಿರುವುದನ್ನು ಸ್ವಲ್ಪ ನೋಡಿ!',
+      'ಕೊನೆಗೂ ಎಲ್ಲವೂ ಚೆನ್ನಾಗಿ ಮುಗಿಯಿತು... ಅದ್ಭುತ ತಮಾಷೆಯ ಅನುಭವ!',
+    ],
+    te: [
+      'ఒక్క నిమిషం... ఇది అకస్మాత్తుగా ఇక్కడికి ఎలా వచ్చింది?!',
+      'నేను అనుకున్నట్టు జరగలేదు, మొత్తం తారుమారైందే!',
+      'అయ్యో త్వరగా పట్టుకోండి... అది కింద పడిపోయేలా ఉంది!',
+      'రండి రండి... కానీ ఆ మూల వైపు మాత్రం చూడకండి!',
+      'ఇదేంటిలా జరిగింది? నా తెలివైన ప్లాన్ మొత్తం తిరగబడిందే!',
+      'అందరూ ఒకేసారి మాట్లాడకండి, అసలు నిజం వినండి!',
+      'ఒక్క నిమిషం ఆగండి... ఇతను ఏం చేశాడో గమనించండి!',
+      'చివరికి అంతా మంచే జరిగింది... భలే సరదాగా ముగిసింది!',
+    ],
+  };
+  const pool = byLang[lang] || byLang.ml;
+  return pool[idx % pool.length];
+}
+
 export function generateBreakdownLocal(
   script: string,
   preferredShotDuration: number = 8,
   characterPhotos: any[] = [],
   targetShotCount: number = 8,
-  lang: AppLang = 'ml'
+  lang: AppLang = 'ml',
+  dialogueMode: DialogueMode = 'dynamic'
 ): { title: string; shots: GeneratedShot[] } {
   const numShots = Math.max(1, targetShotCount || 8);
   const pack = DYNAMIC_STORY_PACKS[lang] || DYNAMIC_STORY_PACKS.ml;
+  const phasePool = SUB_BEAT_PHASES[lang] || SUB_BEAT_PHASES.ml;
+  const arcBlueprints = EIGHT_PART_ARC_BEATS[lang] || EIGHT_PART_ARC_BEATS.ml;
   const cleanScript = (script || '').trim();
   const storyBeats = splitStorySentences(cleanScript);
   const effectiveBeats = storyBeats.length > 0 ? storyBeats : [cleanScript];
 
-  // Strictly check whether the user's story contains dialogue
-  const scriptAllowsDialogue = hasExplicitDialogue(cleanScript);
-
+  const effectiveMode: DialogueMode = isExplicitlySilent(cleanScript) ? 'silent' : dialogueMode;
   const hasPhotos = Array.isArray(characterPhotos) && characterPhotos.length > 0;
   const continuityTag = hasPhotos
     ? 'Strict Character Face ID, Clothing, Prop & Lighting Continuity Locked to Reference Photo'
-    : 'Strict Subject Appearance, Wardrobe, Prop & Environmental Continuity Locked Across Sequence';
+    : 'Exact Subject Face, Clothing, Key Props & Location Atmosphere Continuous From Shot 01';
 
   const lightingPhases = [
-    'soft directional key light with natural depth',
-    'balanced volumetric shadows and rich color fidelity',
-    'dramatic rim lighting emphasizing motion and form',
-    'atmospheric chiaroscuro contrast matching environment mood',
-    'golden natural bounce light with crisp textural detail',
+    'soft morning-warm directional key light with natural ambient depth',
+    'balanced volumetric indoor light and crisp facial contrast',
+    'bright energetic comedy fill light emphasizing physical movement & props',
+    'doorway contrast rim light separating foreground tension from background',
+    'dramatic shadow-play bounce highlighting sudden reaction beat',
+    'vivid multi-point ensemble lighting keeping every character sharp',
+    'warm golden sunset glow softening emotional atmosphere',
+    'clean harmonious cinematic key light bringing story full circle',
   ];
+
+  const usedDialogues = new Set<string>();
 
   const shots: GeneratedShot[] = Array.from({ length: numShots }, (_, idx) => {
     const shotNum = idx + 1;
-    const beatIndex = Math.min(
-      effectiveBeats.length - 1,
-      Math.floor((idx * effectiveBeats.length) / numShots)
-    );
-    const beatText = effectiveBeats[beatIndex] || cleanScript;
+    const arcIdx = Math.min(arcBlueprints.length - 1, Math.floor((idx * arcBlueprints.length) / numShots));
+    const arc = arcBlueprints[arcIdx];
+    const beatIndex = Math.min(effectiveBeats.length - 1, Math.floor((idx * effectiveBeats.length) / numShots));
+    const rawBeat = effectiveBeats[beatIndex] || cleanScript;
+    const beatText = rawBeat.replace(/[.।!?]+$/g, '').trim() || rawBeat;
+    const subPhase = phasePool[idx % phasePool.length];
     const cameraStyle = pack.shotCameraFocus[idx % pack.shotCameraFocus.length];
     const lightStyle = lightingPhases[idx % lightingPhases.length];
     const bgmCue = buildShotBgmCue(beatText, idx, numShots);
 
-    // Only keep/extract dialogue when the user's story beat explicitly involves speech/quotes
-    const beatHasDialogue = scriptAllowsDialogue && hasExplicitDialogue(beatText);
-    const extractedSpeech = beatHasDialogue ? extractDialogueIfPresent(beatText) : '';
+    let dialogueLine = '';
+    if (effectiveMode === 'dialogue') {
+      const candidate = extractDialogueIfPresent(beatText) || defaultDialogueForBeat(lang, idx);
+      if (candidate && !usedDialogues.has(candidate)) {
+        dialogueLine = candidate;
+        usedDialogues.add(candidate);
+      } else {
+        for (let offset = 1; offset <= 10; offset++) {
+          const alt = defaultDialogueForBeat(lang, idx + offset);
+          if (alt && !usedDialogues.has(alt)) {
+            dialogueLine = alt;
+            usedDialogues.add(alt);
+            break;
+          }
+        }
+      }
+    } else if (effectiveMode === 'dynamic') {
+      if (arc.sceneType === 'dialogue') {
+        const candidate = extractDialogueIfPresent(beatText) || defaultDialogueForBeat(lang, idx);
+        if (candidate && !usedDialogues.has(candidate)) {
+          dialogueLine = candidate;
+          usedDialogues.add(candidate);
+        } else {
+          for (let offset = 1; offset <= 10; offset++) {
+            const alt = defaultDialogueForBeat(lang, idx + offset);
+            if (alt && !usedDialogues.has(alt)) {
+              dialogueLine = alt;
+              usedDialogues.add(alt);
+              break;
+            }
+          }
+        }
+      } else {
+        // Explicit No-Dialogue / Visual Comedy scene!
+        dialogueLine = '';
+      }
+    }
 
-    const imagePrompt = `[IMAGE GENERATION PROMPT — SHOT ${shotNum.toString().padStart(2, '0')}]: Photorealistic 35mm film still depicting story beat: "${beatText}". Continuity: ${continuityTag}. Framing: ${cameraStyle}. Lighting: ${lightStyle}, ultra-detailed 8k realism.`;
+    const distinctAction = `${arc.stageTag}: ${arc.situationLine(beatText)}${
+      idx >= arcBlueprints.length ? ` (${subPhase.actionSuffix(shotNum, numShots)})` : ''
+    }`;
 
-    const audioInstruction =
-      beatHasDialogue && extractedSpeech
-        ? `Spoken Dialogue (${lang.toUpperCase()}): "${extractedSpeech}". Background Music & SFX: ${bgmCue}`
-        : `${pack.silentAudioNote} Background Music & SFX: ${bgmCue}`;
+    const imagePrompt = `[PHOTO KEYFRAME PROMPT — SHOT ${shotNum.toString().padStart(2, '0')}]: Photorealistic 35mm static film frame (${arc.stageTag}). Framing: ${arc.cameraHint} (${cameraStyle}). Continuity Lock: ${continuityTag}. Lighting: ${lightStyle}, 8k crisp detail, no text overlays.`;
 
-    const videoPrompt = `[VIDEO GENERATION PROMPT — SHOT ${shotNum.toString().padStart(2, '0')}]: Smooth 24fps cinematic sequence directly visualizing: "${beatText}". Continuity: ${continuityTag}. Camera Movement: ${cameraStyle}, organic natural motion. ${audioInstruction} Duration: ${preferredShotDuration} seconds.`;
+    const audioInstruction = dialogueLine
+      ? `Spoken Dialogue (${lang.toUpperCase()}): "${dialogueLine}". Background Music & SFX: ${bgmCue}`
+      : `NO DIALOGUE / VISUAL COMEDY BEAT: Express story purely through physical action, facial timing, and ambient SFX. Background Music & SFX: ${bgmCue}`;
+
+    const videoPrompt = `[VIDEO MOTION PROMPT — SHOT ${shotNum.toString().padStart(2, '0')}]: Continuous 24fps sequence${
+      shotNum > 1 ? ` seamlessly following Shot ${(shotNum - 1).toString().padStart(2, '0')}` : ''
+    }. Visual Beat: ${arc.situationLine(beatText)}. Motion & Camera: ${arc.visualMotion}. Continuity Lock: ${continuityTag}. ${audioInstruction} Duration: ${preferredShotDuration}s.`;
 
     return {
       shotNumber: shotNum,
       durationSeconds: preferredShotDuration,
       timing: `Shot ${shotNum.toString().padStart(2, '0')} — ${preferredShotDuration}s`,
-      action: beatText,
+      action: distinctAction,
       characters: [deriveSubjectLabel(beatText, lang)],
       bgm: bgmCue,
       continuity: continuityTag,
-      malayalamDialogue: extractedSpeech,
-      dialogueEnglish: extractedSpeech,
+      malayalamDialogue: dialogueLine,
+      dialogueEnglish: dialogueLine,
       imagePrompt,
       videoPrompt,
       visualPrompt: imagePrompt,
@@ -740,81 +1238,150 @@ export function generateBreakdownLocal(
   });
 
   return {
-    title: 'Story-Matched Sequential Breakdown',
+    title: '8-Part Unique Variety Breakdown',
     shots,
   };
 }
 
 /**
- * Expands AI-generated core story shots cleanly while preserving BGM, visual continuity,
- * and strict zero-dialogue rules.
+ * Expands AI-generated core story shots cleanly while ensuring EVERY single shot
+ * has distinct framing/action progression, zero repeated dialogue lines, separate photo vs video prompts,
+ * locked continuity, BGM progression, and respects DialogueMode ('dynamic' | 'dialogue' | 'silent').
  */
 export function expandShotsToTargetCount(
   coreShots: GeneratedShot[],
   targetShotCount: number,
   preferredShotDuration: number,
   allowDialogue: boolean,
-  lang: AppLang = 'ml'
+  lang: AppLang = 'ml',
+  dialogueMode: DialogueMode = 'dynamic'
 ): GeneratedShot[] {
   if (!coreShots || coreShots.length === 0) return [];
   const total = Math.max(1, targetShotCount);
   const pack = DYNAMIC_STORY_PACKS[lang] || DYNAMIC_STORY_PACKS.ml;
+  const phasePool = SUB_BEAT_PHASES[lang] || SUB_BEAT_PHASES.ml;
+  const effectiveMode: DialogueMode = !allowDialogue ? 'silent' : dialogueMode;
+  const seenDialogues = new Set<string>();
 
   if (coreShots.length >= total) {
     return coreShots.slice(0, total).map((shot, idx) => {
-      const cleanedDialogue = allowDialogue ? (shot.malayalamDialogue || '') : '';
+      const shotNum = idx + 1;
+      const padded = shotNum.toString().padStart(2, '0');
+      let cleanedDialogue = '';
+      if (effectiveMode !== 'silent') {
+        const raw = (shot.malayalamDialogue || '').trim();
+        const isVisualSilentBeat = effectiveMode === 'dynamic' && raw.length === 0;
+        if (!isVisualSilentBeat && raw && !seenDialogues.has(raw.toLowerCase())) {
+          cleanedDialogue = raw;
+          seenDialogues.add(raw.toLowerCase());
+        } else if (effectiveMode === 'dialogue' && (!raw || seenDialogues.has(raw.toLowerCase()))) {
+          for (let offset = 0; offset <= 10; offset++) {
+            const fresh = defaultDialogueForBeat(lang, idx + offset);
+            if (fresh && !seenDialogues.has(fresh.toLowerCase())) {
+              cleanedDialogue = fresh;
+              seenDialogues.add(fresh.toLowerCase());
+              break;
+            }
+          }
+        }
+      }
+
       const bgmCue = shot.bgm || buildShotBgmCue(shot.action || '', idx, total);
+      const continuityLock =
+        shot.continuity ||
+        `Consistent face, clothing, props & environment light continuous from Shot ${Math.max(1, idx).toString().padStart(2, '0')}`;
+
+      const sanitizedVideo =
+        cleanedDialogue.length === 0 && shot.videoPrompt
+          ? shot.videoPrompt
+              .replace(/Spoken Dialogue\s*\([^)]*\)\s*:\s*["“][^"”]*["”]\.?/gi, `NO DIALOGUE / VISUAL COMEDY: ${pack.silentAudioNote}`)
+              .replace(/^\[VIDEO MOTION PROMPT[^\]]*\]:/i, `[VIDEO MOTION PROMPT — SHOT ${padded}]:`)
+          : shot.videoPrompt
+          ? shot.videoPrompt.replace(/^\[VIDEO MOTION PROMPT[^\]]*\]:/i, `[VIDEO MOTION PROMPT — SHOT ${padded}]:`)
+          : undefined;
+
+      const sanitizedImage = shot.imagePrompt
+        ? shot.imagePrompt.replace(/^\[(?:PHOTO KEYFRAME PROMPT|IMAGE GENERATION PROMPT)[^\]]*\]:/i, `[PHOTO KEYFRAME PROMPT — SHOT ${padded}]:`)
+        : undefined;
+
       return {
         ...shot,
-        shotNumber: idx + 1,
+        shotNumber: shotNum,
         durationSeconds: preferredShotDuration,
-        timing: `Shot ${(idx + 1).toString().padStart(2, '0')} — ${preferredShotDuration}s`,
+        timing: `Shot ${padded} — ${preferredShotDuration}s`,
         bgm: bgmCue,
-        continuity:
-          shot.continuity || 'Consistent character appearance, wardrobe, props & environmental lighting',
+        continuity: continuityLock,
         malayalamDialogue: cleanedDialogue,
-        dialogueEnglish: allowDialogue ? (shot.dialogueEnglish || cleanedDialogue) : '',
+        dialogueEnglish: cleanedDialogue ? (shot.dialogueEnglish || cleanedDialogue) : '',
+        imagePrompt: sanitizedImage || shot.imagePrompt,
+        videoPrompt: sanitizedVideo || shot.videoPrompt,
       };
     });
   }
 
   return Array.from({ length: total }, (_, idx) => {
+    const shotNum = idx + 1;
     const coreIdx = Math.min(coreShots.length - 1, Math.floor((idx * coreShots.length) / total));
     const base = coreShots[coreIdx];
-    const subRepeatIndex = idx % 3;
+    const subPhase = phasePool[idx % phasePool.length];
     const cameraVariant = pack.shotCameraFocus[(idx + coreIdx) % pack.shotCameraFocus.length];
 
     const isPrimaryBeatClip =
       idx === 0 || Math.floor(((idx - 1) * coreShots.length) / total) !== coreIdx;
 
-    const rawDialogue = allowDialogue && isPrimaryBeatClip ? (base.malayalamDialogue || '') : '';
-    const bgmCue = base.bgm || buildShotBgmCue(base.action || '', idx, total);
+    let rawDialogue = '';
+    if (effectiveMode !== 'silent' && isPrimaryBeatClip) {
+      const candidate = (base.malayalamDialogue || '').trim();
+      if (candidate && !seenDialogues.has(candidate.toLowerCase())) {
+        rawDialogue = candidate;
+        seenDialogues.add(candidate.toLowerCase());
+      }
+    }
+
+    const bgmCue =
+      isPrimaryBeatClip && base.bgm
+        ? base.bgm
+        : buildShotBgmCue(base.action || '', idx, total);
     const continuityLock =
-      base.continuity || 'Same exact subject features, wardrobe, lighting & prop continuity maintained';
+      base.continuity ||
+      `Consistent subject face, outfit, props & atmosphere continuous from Shot ${Math.max(1, idx).toString().padStart(2, '0')}`;
 
-    const cleanedVideoPrompt = !allowDialogue
-      ? (base.videoPrompt || '').replace(/Spoken Dialogue[^.]*\.?/gi, pack.silentAudioNote)
-      : base.videoPrompt || '';
+    const cleanBaseImage = (base.imagePrompt || '')
+      .replace(/^\[(?:IMAGE GENERATION PROMPT|PHOTO KEYFRAME PROMPT)[^\]]*\]:\s*/i, '')
+      .trim();
+    const cleanBaseVideo = (
+      effectiveMode === 'silent' || !rawDialogue
+        ? (base.videoPrompt || '').replace(/Spoken Dialogue[^.]*\.?/gi, pack.silentAudioNote)
+        : base.videoPrompt || ''
+    )
+      .replace(/^\[(?:VIDEO GENERATION PROMPT|VIDEO MOTION PROMPT)[^\]]*\]:\s*/i, '')
+      .trim();
 
-    const suffixTag = subRepeatIndex === 0 ? '' : ` [${cameraVariant}]`;
+    const stepLabel = isPrimaryBeatClip
+      ? base.action
+      : `${base.action} (${subPhase.actionSuffix(shotNum, total)})`;
+
+    const imagePrompt = isPrimaryBeatClip && cleanBaseImage
+      ? `[PHOTO KEYFRAME PROMPT — SHOT ${shotNum.toString().padStart(2, '0')}]: ${cleanBaseImage} Continuity Lock: ${continuityLock}.`
+      : `[PHOTO KEYFRAME PROMPT — SHOT ${shotNum.toString().padStart(2, '0')}]: Photorealistic 35mm static film frame. Framing: ${cameraVariant}. Pose & Detail: ${subPhase.photoPose} during beat "${base.action}". Continuity Lock: ${continuityLock}. No text overlays.`;
+
+    const videoPrompt = isPrimaryBeatClip && cleanBaseVideo
+      ? `[VIDEO MOTION PROMPT — SHOT ${shotNum.toString().padStart(2, '0')}]: ${cleanBaseVideo}`
+      : `[VIDEO MOTION PROMPT — SHOT ${shotNum.toString().padStart(2, '0')}]: Smooth 24fps continuous motion following Shot ${(shotNum - 1).toString().padStart(2, '0')}. Camera & Action: ${subPhase.videoMotion} (${cameraVariant}) depicting ${base.action}. Continuity Lock: ${continuityLock}. ${rawDialogue ? `Spoken Dialogue (${lang.toUpperCase()}): "${rawDialogue}".` : `NO DIALOGUE / VISUAL COMEDY: ${pack.silentAudioNote}`} Background Music & SFX: ${bgmCue} Duration: ${preferredShotDuration}s.`;
 
     return {
-      shotNumber: idx + 1,
+      shotNumber: shotNum,
       durationSeconds: preferredShotDuration,
-      timing: `Shot ${(idx + 1).toString().padStart(2, '0')} — ${preferredShotDuration}s`,
-      action: `${base.action}${suffixTag}`,
+      timing: `Shot ${shotNum.toString().padStart(2, '0')} — ${preferredShotDuration}s`,
+      action: stepLabel,
       characters: base.characters || [],
       bgm: bgmCue,
       continuity: continuityLock,
       malayalamDialogue: rawDialogue,
-      dialogueEnglish: allowDialogue && isPrimaryBeatClip ? (base.dialogueEnglish || rawDialogue) : '',
-      imagePrompt: base.imagePrompt
-        ? `${base.imagePrompt}${suffixTag} [Continuity: ${continuityLock}]`
-        : `[IMAGE GENERATION PROMPT]: Cinematic 35mm still: ${base.action}${suffixTag}. Continuity: ${continuityLock}.`,
-      videoPrompt: cleanedVideoPrompt
-        ? `${cleanedVideoPrompt}${suffixTag} [BGM: ${bgmCue}] [Continuity: ${continuityLock}]`
-        : `[VIDEO GENERATION PROMPT]: 24fps motion shot: ${base.action}${suffixTag}. Continuity: ${continuityLock}. ${rawDialogue ? `Spoken Dialogue: "${rawDialogue}".` : pack.silentAudioNote} BGM: ${bgmCue}`,
-      visualPrompt: base.visualPrompt || base.imagePrompt,
+      dialogueEnglish: rawDialogue ? (base.dialogueEnglish || rawDialogue) : '',
+      imagePrompt,
+      videoPrompt,
+      visualPrompt: imagePrompt,
     };
   });
 }

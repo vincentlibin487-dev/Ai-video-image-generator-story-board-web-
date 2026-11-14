@@ -136,34 +136,40 @@ export default async function handler(req: any, res: any) {
 
       if (ai) {
         try {
-          const prompt = `Rewrite this story summary into 4 to 6 short, vibrant conversational lines between two male friends ("A" and "B") passionately sharing this story with real emotion and feeling strictly in ${langConfig.geminiLangName}.
-Make it sound natural, expressive, curious, and exciting — like people talking face-to-face telling a gripping cinema story (no robotic bullet headers, no stage directions).
-Preserve 100% of the actual story plot. Return valid JSON only:
+          const pureScriptRule =
+            langConfig.code === 'en'
+              ? 'Write naturally in expressive, clear English.'
+              : `STRICT NATIVE SCRIPT RULE: Write 100% in pure ${langConfig.geminiLangName} script ONLY. NEVER use any English words, Latin letters, digits, foreign language words (no Tamil in Malayalam, no Manglish), speaker labels (A:/B:), or brackets. Transliterate every loanword into pure native ${langConfig.geminiLangName} script.`;
+
+          const prompt = `Transform this story overview into 4 to 5 short, natural spoken storytelling lines shared warmly between two friends ("A" and "B") in ${langConfig.geminiLangName}.
+Make it flow like a real human telling a gripping movie story aloud — warm pauses using commas, expressive curiosity, and smooth rhythm (NOT flat bullet reading).
+${pureScriptRule}
+Preserve all facts of the story plot. Return valid JSON only:
 { "lines": [{ "role": "A", "text": "..." }, { "role": "B", "text": "..." }] }`;
 
           const resAi = await withTimeout(
             ai.models.generateContent({
-              model: 'gemini-3.1-flash-lite',
+              model: 'gemini-4-hydrogen',
               contents: `Language: ${langConfig.geminiLangName}\nStory:\n${preparedText}`,
               config: {
                 systemInstruction: prompt,
                 responseMimeType: 'application/json',
-                thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL },
+                thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
               },
             }),
-            5000
+            7500
           );
 
           const parsed = JSON.parse(resAi.text || '{}');
           if (Array.isArray(parsed.lines)) {
             turns = parsed.lines
               .filter((l: any) => l?.text && typeof l.text === 'string')
-              .slice(0, 6)
+              .slice(0, 5)
               .map((l: any, idx: number) => ({
                 role: (l.role === 'B' || idx % 2 === 1 ? 'B' : 'A') as 'A' | 'B',
                 text: cleanTextForSpeech(l.text, langConfig.code),
               }))
-              .filter((l: { role: 'A' | 'B'; text: string }) => l.text.length > 0);
+              .filter((l: { role: 'A' | 'B'; text: string }) => l.text.length > 1);
           }
         } catch {
           turns = [];
@@ -174,15 +180,15 @@ Preserve 100% of the actual story plot. Return valid JSON only:
         turns = buildLocalConversationalTurns(preparedText, langConfig.code);
       }
 
-      // Synthesize all conversational turns in parallel with distinct lively male tones
+      // Synthesize all conversational turns in parallel with distortion-free natural vocal balance
       const buffers = await Promise.all(
         turns.map((turn) =>
           synthesizeEdgeBuffer(
             turn.text,
             langConfig.ttsVoice,
             langConfig.ttsLang,
-            turn.role === 'B' ? '+6%' : '+2%',
-            turn.role === 'B' ? '+6Hz' : '-2Hz'
+            turn.role === 'B' ? '-7%' : '-5%',
+            turn.role === 'B' ? '-2Hz' : '+0Hz'
           )
         )
       );
@@ -190,7 +196,7 @@ Preserve 100% of the actual story plot. Return valid JSON only:
       const combined = Buffer.concat(buffers);
       return res.status(200).json({
         audioDataUrl: `data:audio/mpeg;base64,${combined.toString('base64')}`,
-        voice: `${langConfig.ttsVoice} (Conversational Story Feel)`,
+        voice: `${langConfig.ttsVoice} (Clear Storytelling Voice)`,
         pace: paceKey,
       });
     }
@@ -199,20 +205,25 @@ Preserve 100% of the actual story plot. Return valid JSON only:
     let narrationText = preparedText;
     if (ai && paceKey === 'narrator') {
       try {
-        const prompt = `Rewrite this story card neatly into a captivating, natural, emotional spoken storytelling narration in ${langConfig.geminiLangName}.
-Make it flow like a passionate human cinema storyteller speaking warmly and vividly — remove stiff labels, keep all story facts intact, max 5 natural sentences. Return valid JSON: { "narration": "..." }`;
+        const pureScriptRule =
+          langConfig.code === 'en'
+            ? 'Write clearly in expressive English.'
+            : `STRICT NATIVE SCRIPT RULE: Write 100% in pure ${langConfig.geminiLangName} Unicode script ONLY. ZERO English letters, digits, or mixed-language words.`;
+
+        const prompt = `Rewrite this story card neatly into a warm, crystal-clear human cinema storytelling narration in ${langConfig.geminiLangName}.
+Use natural punctuation commas and pauses so every syllable lands clearly without rushing. ${pureScriptRule} Max 5 crisp sentences. Return valid JSON: { "narration": "..." }`;
 
         const resAi = await withTimeout(
           ai.models.generateContent({
-            model: 'gemini-3.1-flash-lite',
+            model: 'gemini-4-hydrogen',
             contents: `Language: ${langConfig.geminiLangName}\nStory:\n${preparedText}`,
             config: {
               systemInstruction: prompt,
               responseMimeType: 'application/json',
-              thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL },
+              thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
             },
           }),
-          5000
+          7500
         );
 
         const parsed = JSON.parse(resAi.text || '{}');

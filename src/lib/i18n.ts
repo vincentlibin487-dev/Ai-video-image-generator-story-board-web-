@@ -28,45 +28,80 @@ export const VOICE_PACE_SETTINGS: Record<
   VoicePace,
   { edgeRate: string; edgePitch: string; audioPlaybackRate: number; webRate: number; pauseMs: number }
 > = {
-  story: { edgeRate: '+2%', edgePitch: '+1Hz', audioPlaybackRate: 1.0, webRate: 0.98, pauseMs: 180 },
-  narrator: { edgeRate: '+0%', edgePitch: '+0Hz', audioPlaybackRate: 1.0, webRate: 0.96, pauseMs: 220 },
-  calm: { edgeRate: '-8%', edgePitch: '+0Hz', audioPlaybackRate: 1.0, webRate: 0.88, pauseMs: 300 },
+  story: { edgeRate: '-6%', edgePitch: '+0Hz', audioPlaybackRate: 1.0, webRate: 0.90, pauseMs: 240 },
+  narrator: { edgeRate: '-8%', edgePitch: '-1Hz', audioPlaybackRate: 1.0, webRate: 0.88, pauseMs: 280 },
+  calm: { edgeRate: '-15%', edgePitch: '+0Hz', audioPlaybackRate: 1.0, webRate: 0.82, pauseMs: 360 },
 };
 
+const ML_TERM_MAP: [RegExp, string][] = [
+  [/\bthriller\b/gi, 'ത്രില്ലർ'],
+  [/\bmystery\b/gi, 'മിസ്റ്ററി'],
+  [/\bdrama\b/gi, 'ഡ്രാമ'],
+  [/\bemotional\b/gi, 'വൈകാരികം'],
+  [/\baction\b/gi, 'ആക്ഷൻ'],
+  [/\bcomedy\b/gi, 'കോമഡി'],
+  [/\bfun\b/gi, 'തമാശ'],
+  [/\bsci[- ]?fi\b/gi, 'സയൻസ് ഫിക്ഷൻ'],
+  [/\bfolk\b/gi, 'നാടോടി'],
+  [/\bhorror\b/gi, 'ഹൊറർ'],
+  [/\bcommercial\b/gi, 'പരസ്യം'],
+  [/\bads?\b/gi, 'പരസ്യം'],
+  [/\bpromo\b/gi, 'പ്രൊമോ'],
+  [/\bbgm\b/gi, 'പശ്ചാത്തല സംഗീതം'],
+  [/\bsfx\b/gi, 'ശബ്ദവിന്യാസം'],
+  [/\bcontinuity\b/gi, 'തുടർച്ച'],
+  [/\bscene\b/gi, 'രംഗം'],
+  [/\bshot\b/gi, 'ഷോട്ട്'],
+  [/\btwist\b/gi, 'വഴിത്തിരിവ്'],
+  [/\bclimax\b/gi, 'ക്ലൈമാക്സ്'],
+  [/\bsuspense(ful)?\b/gi, 'ആകാംക്ഷ'],
+  [/\bmass\b/gi, 'മാസ്'],
+  [/\bai\b/gi, 'എ ഐ'],
+];
+
 /**
- * Cleans emojis/symbols cleanly while preserving natural punctuation
- * so storytelling voiceover flows with human warmth and expression.
+ * Cleans emojis/symbols and removes foreign Latin fragments on non-English languages
+ * so neural TTS speaks with crisp native pronunciation (അക്ഷരസ്ഫുടത).
  */
 export function cleanTextForSpeech(rawText: string, lang: AppLang = 'ml'): string {
   const andConnector =
     lang === 'en' ? ' and ' : lang === 'hi' ? ' और ' : ', ';
 
-  const cleaned = rawText
+  let cleaned = rawText
+    // Remove bracketed studio metadata e.g. [BGM STYLE: ...]
+    .replace(/\[[^\]]*\]/g, ' ')
     // Strip emojis, pictographs, variation selectors, zero-width joiners
     .replace(/[\p{Extended_Pictographic}\uFE0F\u200D]/gu, ' ')
     // Replace ampersands and bullets/dashes with natural connectors
     .replace(/\s*&\s*/g, andConnector)
     .replace(/\s*[•●▪▫■□★☆✦✧→➔➡🎬🎙️⏹️]+\s*/g, ', ')
     .replace(/\s*[—–/]+\s*/g, ', ')
-    // Smooth parentheses/brackets
     .replace(/[()[\]{}]/g, ', ')
-    // Remove stray quotation marks and hash symbols
-    .replace(/["'“”‘’#*]/g, ' ')
-    // Normalize whitespace around commas and periods without forcing awkward pauses
+    .replace(/["'“”‘’#*]/g, ' ');
+
+  if (lang === 'ml') {
+    for (const [pattern, replacement] of ML_TERM_MAP) {
+      cleaned = cleaned.replace(pattern, replacement);
+    }
+  }
+
+  // For non-English Indian languages, strip stray English words & Arabic digits that break accent
+  if (lang !== 'en') {
+    cleaned = cleaned.replace(/\b[A-Za-z0-9_-]+\b/g, ' ');
+  }
+
+  return cleaned
     .replace(/\s*,\s*/g, ', ')
     .replace(/(,\s*){2,}/g, ', ')
+    .replace(/,\s*\./g, '.')
     .replace(/([.।!?])\s+/g, '$1 ')
     .replace(/\n{2,}/g, '\n')
     .replace(/[ \t]{2,}/g, ' ')
     .trim();
-
-  return cleaned;
 }
 
 export function buildCardNarrationText({
   title,
-  genre,
-  characters,
   summary,
   lang,
 }: {
@@ -78,8 +113,6 @@ export function buildCardNarrationText({
 }): string {
   const parts = [
     title ? `${title}.` : '',
-    genre ? `${genre}.` : '',
-    characters ? `${characters}.` : '',
     summary || '',
   ].filter(Boolean);
 
@@ -131,6 +164,11 @@ export interface UiStrings {
   bgmLabel: string;
   continuityLabel: string;
   shotBgmLabel: string;
+  shotDialogueLabel: string;
+  dialogueModeLabel: string;
+  dialogueModeDynamic: string;
+  dialogueModeDialogue: string;
+  dialogueModeSilent: string;
   voiceLoadingStop: string;
   voiceStop: string;
   voicePlay: string;
@@ -207,6 +245,11 @@ export const UI_TRANSLATIONS: Record<AppLang, UiStrings> = {
     bgmLabel: '🎵 ബാക്ക്ഗ്രൗണ്ട് മ്യൂസിക് (BGM):',
     continuityLabel: '🎬 വിഷ്വൽ കണ്ടിന്യൂയിറ്റി (Continuity):',
     shotBgmLabel: '🎵 ബാക്ക്ഗ്രൗണ്ട് മ്യൂസിക് & സൗണ്ട് (BGM - എഡിറ്റ് ചെയ്യാം)',
+    shotDialogueLabel: '💬 സീൻ സംഭാഷണം / ഡയലോഗ് (എഡിറ്റ് ചെയ്യാം)',
+    dialogueModeLabel: 'സംഭാഷണ ശൈലി (Dialogue Control):',
+    dialogueModeDynamic: '🎭 മിക്സ് (ഡയലോഗ് + വിഷ്വൽ കോമഡി)',
+    dialogueModeDialogue: '💬 ഡയലോഗ് പ്രധാനം',
+    dialogueModeSilent: '🤫 ഡയലോഗ് ഇല്ല / വിഷ്വൽ കോമഡി',
     voiceLoadingStop: 'ലോഡ് ചെയ്യുന്നു... (Stop)',
     voiceStop: 'നിർത്തുക (Stop)',
     voicePlay: 'വോയിസ് കേൾക്കുക',
@@ -281,6 +324,11 @@ export const UI_TRANSLATIONS: Record<AppLang, UiStrings> = {
     bgmLabel: '🎵 Background Music (BGM):',
     continuityLabel: '🎬 Visual Continuity:',
     shotBgmLabel: '🎵 Background Music & Sound Cue (Editable)',
+    shotDialogueLabel: '💬 Spoken Dialogue for This Shot (Editable)',
+    dialogueModeLabel: 'Dialogue & Comedy Control:',
+    dialogueModeDynamic: '🎭 Dynamic Mix (Dialogue + Visual Comedy)',
+    dialogueModeDialogue: '💬 Dialogue-Driven',
+    dialogueModeSilent: '🤫 No Dialogue / Visual Comedy',
     voiceLoadingStop: 'Loading... (Stop)',
     voiceStop: 'Stop Voiceover',
     voicePlay: 'Listen Voiceover',
@@ -355,6 +403,11 @@ export const UI_TRANSLATIONS: Record<AppLang, UiStrings> = {
     bgmLabel: '🎵 बैकग्राउंड म्यूज़िक (BGM):',
     continuityLabel: '🎬 विज़ुअल कंटिन्यूटी (Continuity):',
     shotBgmLabel: '🎵 बैकग्राउंड म्यूज़िक और साउंड (BGM - संपादन योग्य)',
+    shotDialogueLabel: '💬 इस शॉट का संवाद / डायलॉग (संपादन योग्य)',
+    dialogueModeLabel: 'संवाद शैली (Dialogue Control):',
+    dialogueModeDynamic: '🎭 मिक्स (डायलॉग + विज़ुअल कॉमेडी)',
+    dialogueModeDialogue: '💬 संवाद आधारित',
+    dialogueModeSilent: '🤫 बिना डायलॉग / विज़ुअल कॉमेडी',
     voiceLoadingStop: 'लोड हो रहा है... (रोकें)',
     voiceStop: 'रोकें (Stop)',
     voicePlay: 'आवाज़ सुनें',
@@ -429,6 +482,11 @@ export const UI_TRANSLATIONS: Record<AppLang, UiStrings> = {
     bgmLabel: '🎵 பின்னணி இசை (BGM):',
     continuityLabel: '🎬 காட்சித் தொடர்ச்சி (Continuity):',
     shotBgmLabel: '🎵 பின்னணி இசை & ஒலி (BGM - திருத்தலாம்)',
+    shotDialogueLabel: '💬 காட்சி வசனம் / டயலாக் (திருத்தலாம்)',
+    dialogueModeLabel: 'வசன பாணி (Dialogue Control):',
+    dialogueModeDynamic: '🎭 கலப்பு (வசனம் + விஷுவல் காமெடி)',
+    dialogueModeDialogue: '💬 வசனம் கொண்ட காட்சிகள்',
+    dialogueModeSilent: '🤫 வசனம் இல்லை / விஷுவல் காமெடி',
     voiceLoadingStop: 'ஏற்றுகிறது... (நிறுத்து)',
     voiceStop: 'நிறுத்து (Stop)',
     voicePlay: 'குரலில் கேட்க',
@@ -503,6 +561,11 @@ export const UI_TRANSLATIONS: Record<AppLang, UiStrings> = {
     bgmLabel: '🎵 ಹಿನ್ನೆಲೆ ಸಂಗೀತ (BGM):',
     continuityLabel: '🎬 ದೃಶ್ಯ ನಿರಂತರತೆ (Continuity):',
     shotBgmLabel: '🎵 ಹಿನ್ನೆಲೆ ಸಂಗೀತ & ಧ್ವನಿ (BGM - ಸಂಪಾದಿಸಬಹುದು)',
+    shotDialogueLabel: '💬 ದೃಶ್ಯದ ಸಂಭಾಷಣೆ / ಡೈಲಾಗ್ (ಸಂಪಾದಿಸಬಹುದು)',
+    dialogueModeLabel: 'ಸಂಭಾಷಣೆ ಶೈಲಿ (Dialogue Control):',
+    dialogueModeDynamic: '🎭 ಮಿಕ್ಸ್ (ಡೈಲಾಗ್ + ವಿಷುಯಲ್ ಕಾಮಿಡಿ)',
+    dialogueModeDialogue: '💬 ಸಂಭಾಷಣೆ ಆಧಾರಿತ',
+    dialogueModeSilent: '🤫 ಡೈಲಾಗ್ ಇಲ್ಲ / ವಿಷುಯಲ್ ಕಾಮಿಡಿ',
     voiceLoadingStop: 'ಲೋಡ್ ಆಗುತ್ತಿದೆ... (ನಿಲ್ಲಿಸಿ)',
     voiceStop: 'ನಿಲ್ಲಿಸಿ (Stop)',
     voicePlay: 'ಧ್ವನಿ ಕೇಳಿ',
@@ -577,6 +640,11 @@ export const UI_TRANSLATIONS: Record<AppLang, UiStrings> = {
     bgmLabel: '🎵 బ్యాక్‌గ్రౌండ్ మ్యూజిక్ (BGM):',
     continuityLabel: '🎬 విజువల్ కంటిన్యుటీ (Continuity):',
     shotBgmLabel: '🎵 బ్యాక్‌గ్రౌండ్ మ్యూజిక్ & సౌండ్ (BGM - సవరించవచ్చు)',
+    shotDialogueLabel: '💬 సన్నివేశం సంభాషణ / డైలాగ్ (సవరించవచ్చు)',
+    dialogueModeLabel: 'డైలాగ్ శైలి (Dialogue Control):',
+    dialogueModeDynamic: '🎭 మిక్స్ (డైలాగ్ + విజువల్ కామెడీ)',
+    dialogueModeDialogue: '💬 డైలాగ్ ఆధారితం',
+    dialogueModeSilent: '🤫 డైలాగ్ లేదు / విజువల్ కామెడీ',
     voiceLoadingStop: 'లోడ్ అవుతోంది... (ఆపు)',
     voiceStop: 'ఆపు (Stop)',
     voicePlay: 'వాయిస్ వినండి',

@@ -17,8 +17,10 @@ import {
   Globe,
   Volume2,
   Music,
+  MessageSquare,
 } from 'lucide-react';
 import {
+  DialogueMode,
   StoryAngle,
   GeneratedShot,
   generateStoryAnglesLocal,
@@ -34,7 +36,13 @@ import {
   cleanTextForSpeech,
   getLangConfig,
 } from './lib/i18n';
-import { StickyBottomAd, triggerAdsterraPopunder } from './components/AdsterraAds';
+import {
+  StickyTopAd,
+  StickyBottomAd,
+  InFeedWideVideoAd,
+  InterstitialVideoAdModal,
+  triggerAdsterraPopunder,
+} from './components/AdsterraAds';
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/+$/, '');
 
@@ -89,11 +97,24 @@ export default function App() {
   const [speakingAngleId, setSpeakingAngleId] = useState<string | null>(null);
   const [loadingTtsId, setLoadingTtsId] = useState<string | null>(null);
   const [voicePace, setVoicePace] = useState<VoicePace>('story');
+  const [dialogueMode, setDialogueMode] = useState<DialogueMode>('dynamic');
+  const [showVideoAdModal, setShowVideoAdModal] = useState<boolean>(false);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const ttsAbortRef = useRef<AbortController | null>(null);
   const ttsCacheRef = useRef<Map<string, string>>(new Map());
   const speechSessionRef = useRef<number>(0);
+  const adInteractionCountRef = useRef<number>(0);
+
+  // Trigger 2-second auto-skip video ad & popunder ONLY every 2-3 interactions (not every click)
+  const triggerThrottledAdBreak = () => {
+    adInteractionCountRef.current += 1;
+    const count = adInteractionCountRef.current;
+    if (count === 2 || (count > 2 && (count - 2) % 3 === 0)) {
+      setShowVideoAdModal(true);
+      triggerAdsterraPopunder();
+    }
+  };
 
   const stopAllSpeech = () => {
     speechSessionRef.current += 1;
@@ -162,6 +183,7 @@ export default function App() {
         const result = await postApiJson<{ angles?: StoryAngle[] }>('/api/generate-story-angles', {
           script: trimmedCurrent,
           language: newLang,
+          dialogueMode,
         });
         if (result.angles && Array.isArray(result.angles) && result.angles.length > 0) {
           updatedAngles = result.angles;
@@ -196,6 +218,7 @@ export default function App() {
                 targetShotCount: calculatedShotCount,
                 fastMode: false,
                 language: newLang,
+                dialogueMode,
               }
             );
             if (shotResult.shots && Array.isArray(shotResult.shots)) {
@@ -209,7 +232,8 @@ export default function App() {
               shotDurationSec,
               [],
               calculatedShotCount,
-              newLang
+              newLang,
+              dialogueMode
             );
             setShots(localBreakdown.shots);
           } finally {
@@ -235,11 +259,25 @@ export default function App() {
     }
   };
 
-  // Inline Shot Edit Handler
+  // Inline Shot Edit Handler (keeps Spoken Dialogue synced cleanly with Video Prompt)
   const updateShotField = (index: number, field: keyof GeneratedShot, value: any) => {
     setShots((prev) => {
       const updated = [...prev];
-      updated[index] = { ...updated[index], [field]: value };
+      const current = { ...updated[index], [field]: value };
+
+      if (field === 'malayalamDialogue' && typeof value === 'string' && current.videoPrompt) {
+        const trimmed = value.trim();
+        const cleanedVideo = current.videoPrompt
+          .replace(/\s*Spoken Dialogue \([^)]+\):\s*"[^"]*"\.?/gi, '')
+          .replace(/\s*Audio:\s*NO SPOKEN DIALOGUE[^.]*\.?/gi, '')
+          .trim();
+
+        current.videoPrompt = trimmed
+          ? `${cleanedVideo} Spoken Dialogue (${lang.toUpperCase()}): "${trimmed}".`
+          : `${cleanedVideo} Audio: NO SPOKEN DIALOGUE — Pure visual ambient sound.`;
+      }
+
+      updated[index] = current;
       return updated;
     });
   };
@@ -252,6 +290,7 @@ export default function App() {
     }
 
     stopAllSpeech();
+    triggerThrottledAdBreak();
     const sessionId = speechSessionRef.current;
     const paceCfg = VOICE_PACE_SETTINGS[voicePace];
     const cleanText = cleanTextForSpeech(rawText, lang);
@@ -362,7 +401,7 @@ export default function App() {
 
   // Step 1 -> Step 2: Generate Story Angle Variations in Selected Language
   const handleGenerateStoryAngles = async () => {
-    triggerAdsterraPopunder();
+    triggerThrottledAdBreak();
 
     const trimmedPremise = premise.trim();
     if (!trimmedPremise) {
@@ -381,6 +420,7 @@ export default function App() {
       const result = await postApiJson<{ angles?: StoryAngle[] }>('/api/generate-story-angles', {
         script: trimmedPremise,
         language: lang,
+        dialogueMode,
       });
 
       if (result.angles && Array.isArray(result.angles) && result.angles.length > 0) {
@@ -404,8 +444,12 @@ export default function App() {
   };
 
   // Step 2 -> Step 3: Select Chosen Story Angle and Generate Prompts
-  const handleSelectStoryAndOpenPromptPage = async (angle: StoryAngle) => {
-    triggerAdsterraPopunder();
+  const handleSelectStoryAndOpenPromptPage = async (
+    angle: StoryAngle,
+    modeOverride?: DialogueMode
+  ) => {
+    const activeMode = modeOverride ?? dialogueMode;
+    triggerThrottledAdBreak();
     stopAllSpeech();
     setSelectedAngle(angle);
     setLoadingShots(true);
@@ -422,6 +466,7 @@ export default function App() {
         targetShotCount: calculatedShotCount,
         fastMode: false,
         language: lang,
+        dialogueMode: activeMode,
       });
 
       if (result.shots && Array.isArray(result.shots)) {
@@ -436,7 +481,8 @@ export default function App() {
         shotDurationSec,
         [],
         calculatedShotCount,
-        lang
+        lang,
+        activeMode
       );
       if (localBreakdown.shots.length > 0) {
         setShots(localBreakdown.shots);
@@ -445,6 +491,13 @@ export default function App() {
       }
     } finally {
       setLoadingShots(false);
+    }
+  };
+
+  const handleDialogueModeChangeOnPrompts = (newMode: DialogueMode) => {
+    setDialogueMode(newMode);
+    if (selectedAngle && activeStep === 'prompts' && !loadingShots) {
+      handleSelectStoryAndOpenPromptPage(selectedAngle, newMode);
     }
   };
 
@@ -463,7 +516,10 @@ export default function App() {
   const totalAngleCountDisplay = storyAngles.length > 0 ? storyAngles.length : 14;
 
   return (
-    <div className="min-h-screen bg-[#090a0f] text-zinc-100 flex flex-col font-sans selection:bg-amber-500 selection:text-black">
+    <div className="min-h-screen bg-[#090a0f] text-zinc-100 flex flex-col font-sans selection:bg-amber-500 selection:text-black pt-[54px] md:pt-[94px] max-w-full overflow-x-hidden">
+      {/* Persistent Sticky Top Advertisement Banner */}
+      <StickyTopAd />
+
       {/* Top Global Language Switcher Bar */}
       <div className="bg-[#07080d] border-b border-zinc-800/80 px-3.5 sm:px-6 lg:px-8 py-2">
         <div className="max-w-7xl mx-auto flex items-center justify-between gap-2.5">
@@ -494,7 +550,7 @@ export default function App() {
       </div>
 
       {/* App Header with Desktop Breadcrumb Step Indicator */}
-      <header className="border-b border-zinc-800/80 px-3.5 sm:px-6 lg:px-8 py-3 sm:py-4 bg-[#0d0f17]/95 sticky top-0 z-30 backdrop-blur-md">
+      <header className="border-b border-zinc-800/80 px-3.5 sm:px-6 lg:px-8 py-3 sm:py-4 bg-[#0d0f17]/95 sticky top-[54px] md:top-[94px] z-30 backdrop-blur-md">
         <div className="max-w-7xl mx-auto flex items-center justify-between gap-3">
           <div className="flex items-center gap-2.5 min-w-0">
             <div className="p-2 rounded-xl bg-amber-500 text-black shadow-md shadow-amber-500/20 shrink-0">
@@ -560,7 +616,7 @@ export default function App() {
       </header>
 
       {/* Main Container (Safe bottom clearance for Sticky Bottom Ad + Mobile Nav) */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-3.5 sm:px-6 lg:px-8 py-4 sm:py-8 pb-36 sm:pb-20 md:pb-28">
+      <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-8 pb-36 sm:pb-28 md:pb-32 overflow-x-hidden">
         {/* Error notification */}
         {error && (
           <div className="mb-6 p-3 bg-red-500/10 border border-red-500/30 text-red-300 text-sm rounded-xl">
@@ -696,6 +752,36 @@ export default function App() {
                       ))}
                     </div>
                   </div>
+
+                  {/* Flexible Dialogue vs Visual Comedy Control (Page 1) */}
+                  <div className="pt-2.5 border-t border-zinc-800/60 space-y-2">
+                    <div className="flex items-center gap-1.5">
+                      <MessageSquare className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                      <span className="text-xs font-bold text-zinc-400">{t.dialogueModeLabel}</span>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5">
+                      {(
+                        [
+                          { id: 'dynamic', label: t.dialogueModeDynamic },
+                          { id: 'dialogue', label: t.dialogueModeDialogue },
+                          { id: 'silent', label: t.dialogueModeSilent },
+                        ] as const
+                      ).map((modeOpt) => (
+                        <button
+                          key={modeOpt.id}
+                          type="button"
+                          onClick={() => setDialogueMode(modeOpt.id)}
+                          className={`px-2.5 py-2 rounded-lg text-[11px] font-bold transition-all cursor-pointer text-center leading-tight ${
+                            dialogueMode === modeOpt.id
+                              ? 'bg-amber-500 text-black font-extrabold shadow-sm shadow-amber-500/20'
+                              : 'bg-zinc-900 text-zinc-300 border border-zinc-800 hover:text-white'
+                          }`}
+                        >
+                          {modeOpt.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 </div>
 
                 {/* Dynamic Big Calculation Display Banner */}
@@ -724,6 +810,11 @@ export default function App() {
                     : t.generateAnglesBtn(14, formatDurationDisplay(), calculatedShotCount)}
                 </span>
               </button>
+            </div>
+
+            {/* Wide In-Screen Continuous Video & Banner Slot on Page 1 */}
+            <div className="lg:col-span-12">
+              <InFeedWideVideoAd slotId="page1-center" />
             </div>
           </div>
         )}
@@ -848,124 +939,131 @@ export default function App() {
                       if (selectedGenreFilter === 'ad') return g.includes('ad') || g.includes('പരസ്യം') || g.includes('विज्ञापन') || g.includes('விளம்பரம்') || g.includes('ಜಾಹೀರಾತು') || g.includes('ప్రకటన');
                       return true;
                     })
-                    .map((angle) => {
+                    .map((angle, angleIdx, visibleAngles) => {
+                      const showAdAfter =
+                        visibleAngles.length > 1 &&
+                        (angleIdx === 1 || (angleIdx > 1 && (angleIdx - 1) % 3 === 0));
+
                       return (
-                        <div
-                          key={angle.id}
-                          onClick={() => handleSelectStoryAndOpenPromptPage(angle)}
-                          className="p-4 sm:p-6 rounded-2xl bg-[#0f111c] border-2 border-zinc-800 hover:border-amber-400 hover:bg-[#131525] transition-all cursor-pointer flex flex-col justify-between space-y-4 relative group shadow-2xl"
-                        >
-                          <div className="space-y-3.5">
-                            <div className="flex items-center justify-between border-b border-zinc-800/80 pb-2.5">
-                              <span className="px-3 py-1 rounded-full text-xs font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20">
-                                {angle.genre}
-                              </span>
-                              <ChevronRight className="w-5 h-5 text-zinc-500 group-hover:text-amber-400 group-hover:translate-x-1 transition-all" />
-                            </div>
-
-                            <h3 className="text-lg font-extrabold text-white tracking-wide group-hover:text-amber-300 transition-colors">
-                              {angle.title}
-                            </h3>
-
-                            <p className="text-xs text-amber-400/90 font-mono font-semibold">
-                              {angle.mood}
-                            </p>
-
-                            {/* Characters List */}
-                            {angle.characters && (
-                              <div className="p-3 rounded-xl bg-zinc-950/80 border border-zinc-800/80 text-xs space-y-1">
-                                <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400 block font-mono">
-                                  {t.charactersLabel}
+                        <React.Fragment key={angle.id}>
+                          <div
+                            onClick={() => handleSelectStoryAndOpenPromptPage(angle)}
+                            className="p-4 sm:p-6 rounded-2xl bg-[#0f111c] border-2 border-zinc-800 hover:border-amber-400 hover:bg-[#131525] transition-all cursor-pointer flex flex-col justify-between space-y-4 relative group shadow-2xl"
+                          >
+                            <div className="space-y-3.5">
+                              <div className="flex items-center justify-between border-b border-zinc-800/80 pb-2.5">
+                                <span className="px-3 py-1 rounded-full text-xs font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                                  {angle.genre}
                                 </span>
-                                <p className="text-zinc-200 font-medium leading-relaxed">
-                                  {angle.characters}
+                                <ChevronRight className="w-5 h-5 text-zinc-500 group-hover:text-amber-400 group-hover:translate-x-1 transition-all" />
+                              </div>
+
+                              <h3 className="text-lg font-extrabold text-white tracking-wide group-hover:text-amber-300 transition-colors">
+                                {angle.title}
+                              </h3>
+
+                              <p className="text-xs text-amber-400/90 font-mono font-semibold">
+                                {angle.mood}
+                              </p>
+
+                              {/* Characters List */}
+                              {angle.characters && (
+                                <div className="p-3 rounded-xl bg-zinc-950/80 border border-zinc-800/80 text-xs space-y-1">
+                                  <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400 block font-mono">
+                                    {t.charactersLabel}
+                                  </span>
+                                  <p className="text-zinc-200 font-medium leading-relaxed">
+                                    {angle.characters}
+                                  </p>
+                                </div>
+                              )}
+
+                              {/* Full Story Summary */}
+                              <div className="p-4 bg-[#090a12] rounded-xl border border-zinc-800 text-xs leading-relaxed text-zinc-300 font-sans space-y-1.5">
+                                <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400 block font-mono">
+                                  {t.storyOverviewLabel}
+                                </span>
+                                <p className="whitespace-pre-line text-zinc-200 leading-relaxed font-sans">
+                                  {angle.storySummary || angle.synopsis}
                                 </p>
                               </div>
-                            )}
 
-                            {/* Full Story Summary */}
-                            <div className="p-4 bg-[#090a12] rounded-xl border border-zinc-800 text-xs leading-relaxed text-zinc-300 font-sans space-y-1.5">
-                              <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400 block font-mono">
-                                {t.storyOverviewLabel}
-                              </span>
-                              <p className="whitespace-pre-line text-zinc-200 leading-relaxed font-sans">
-                                {angle.storySummary || angle.synopsis}
-                              </p>
+                              {/* Background Music (BGM) & Visual Continuity Badges */}
+                              {(angle.bgm || angle.continuity) && (
+                                <div className="space-y-2">
+                                  {angle.bgm && (
+                                    <div className="p-2.5 rounded-xl bg-amber-500/5 border border-amber-500/20 text-xs space-y-1">
+                                      <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400 block font-mono">
+                                        {t.bgmLabel}
+                                      </span>
+                                      <p className="text-zinc-200 leading-relaxed">{angle.bgm}</p>
+                                    </div>
+                                  )}
+                                  {angle.continuity && (
+                                    <div className="p-2.5 rounded-xl bg-zinc-950/80 border border-zinc-800/90 text-xs space-y-1">
+                                      <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-400 block font-mono">
+                                        {t.continuityLabel}
+                                      </span>
+                                      <p className="text-zinc-300 leading-relaxed">{angle.continuity}</p>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
                             </div>
 
-                            {/* Background Music (BGM) & Visual Continuity Badges */}
-                            {(angle.bgm || angle.continuity) && (
-                              <div className="space-y-2">
-                                {angle.bgm && (
-                                  <div className="p-2.5 rounded-xl bg-amber-500/5 border border-amber-500/20 text-xs space-y-1">
-                                    <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400 block font-mono">
-                                      {t.bgmLabel}
+                            <div className="pt-3 border-t border-zinc-800/80 flex items-center gap-2">
+                              {(() => {
+                                const isSpeaking = speakingAngleId === angle.id;
+                                const isLoadingVoice = loadingTtsId === angle.id;
+                                const isActiveVoice = isSpeaking || isLoadingVoice;
+                                return (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      const fullText = buildCardNarrationText({
+                                        title: angle.title,
+                                        genre: angle.genre,
+                                        characters: angle.characters,
+                                        summary: angle.storySummary || angle.synopsis,
+                                        lang,
+                                      });
+                                      toggleSpeakText(angle.id, fullText);
+                                    }}
+                                    className={`px-3.5 py-3 rounded-xl border text-xs font-bold transition-all cursor-pointer flex items-center gap-2 shrink-0 ${
+                                      isActiveVoice
+                                        ? 'bg-amber-500 text-black border-amber-400 shadow-md shadow-amber-500/30'
+                                        : 'bg-zinc-900 hover:bg-zinc-800 text-amber-400 border border-amber-500/30'
+                                    }`}
+                                    title={isActiveVoice ? t.voiceStop : t.voicePlay}
+                                  >
+                                    <span className="text-base">{isActiveVoice ? '⏹️' : '🎙️'}</span>
+                                    <span>
+                                      {isLoadingVoice
+                                        ? t.voiceLoadingStop
+                                        : isSpeaking
+                                        ? t.voiceStop
+                                        : t.voicePlay}
                                     </span>
-                                    <p className="text-zinc-200 leading-relaxed">{angle.bgm}</p>
-                                  </div>
-                                )}
-                                {angle.continuity && (
-                                  <div className="p-2.5 rounded-xl bg-zinc-950/80 border border-zinc-800/90 text-xs space-y-1">
-                                    <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-400 block font-mono">
-                                      {t.continuityLabel}
-                                    </span>
-                                    <p className="text-zinc-300 leading-relaxed">{angle.continuity}</p>
-                                  </div>
-                                )}
-                              </div>
-                            )}
+                                  </button>
+                                );
+                              })()}
+
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleSelectStoryAndOpenPromptPage(angle);
+                                }}
+                                className="flex-1 py-3.5 rounded-xl bg-amber-500 group-hover:bg-amber-400 text-black font-extrabold text-xs uppercase tracking-wider shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer"
+                              >
+                                <span>{t.selectThisStory(calculatedShotCount)}</span>
+                              </button>
+                            </div>
                           </div>
 
-                          <div className="pt-3 border-t border-zinc-800/80 flex items-center gap-2">
-                            {(() => {
-                              const isSpeaking = speakingAngleId === angle.id;
-                              const isLoadingVoice = loadingTtsId === angle.id;
-                              const isActiveVoice = isSpeaking || isLoadingVoice;
-                              return (
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    const fullText = buildCardNarrationText({
-                                      title: angle.title,
-                                      genre: angle.genre,
-                                      characters: angle.characters,
-                                      summary: angle.storySummary || angle.synopsis,
-                                      lang,
-                                    });
-                                    toggleSpeakText(angle.id, fullText);
-                                  }}
-                                  className={`px-3.5 py-3 rounded-xl border text-xs font-bold transition-all cursor-pointer flex items-center gap-2 shrink-0 ${
-                                    isActiveVoice
-                                      ? 'bg-amber-500 text-black border-amber-400 shadow-md shadow-amber-500/30'
-                                      : 'bg-zinc-900 hover:bg-zinc-800 text-amber-400 border border-amber-500/30'
-                                  }`}
-                                  title={isActiveVoice ? t.voiceStop : t.voicePlay}
-                                >
-                                  <span className="text-base">{isActiveVoice ? '⏹️' : '🎙️'}</span>
-                                  <span>
-                                    {isLoadingVoice
-                                      ? t.voiceLoadingStop
-                                      : isSpeaking
-                                      ? t.voiceStop
-                                      : t.voicePlay}
-                                  </span>
-                                </button>
-                              );
-                            })()}
-
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleSelectStoryAndOpenPromptPage(angle);
-                              }}
-                              className="flex-1 py-3.5 rounded-xl bg-amber-500 group-hover:bg-amber-400 text-black font-extrabold text-xs uppercase tracking-wider shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer"
-                            >
-                              <span>{t.selectThisStory(calculatedShotCount)}</span>
-                            </button>
-                          </div>
-                        </div>
+                          {showAdAfter && <InFeedWideVideoAd slotId={`angle-slot-${angleIdx}`} />}
+                        </React.Fragment>
                       );
                     })}
                 </div>
@@ -979,24 +1077,56 @@ export default function App() {
         {/* ================================================================= */}
         {activeStep === 'prompts' && selectedAngle && (
           <div className="space-y-6">
-            {/* Prompts Page Top Header with Back to Options Button */}
-            <div className="flex flex-wrap items-center justify-between gap-3 bg-[#111320] p-4 rounded-xl border border-amber-500/40 shadow-xl">
-              <button
-                type="button"
-                onClick={() => setActiveStep('options')}
-                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-amber-400 border border-amber-500/30 text-xs font-bold transition-all cursor-pointer"
-              >
-                <ArrowLeft className="w-4 h-4" />
-                <span>{t.backToAngles}</span>
-              </button>
+            {/* Prompts Page Top Header with Back to Options & Dialogue Mode Switcher */}
+            <div className="bg-[#111320] p-4 rounded-xl border border-amber-500/40 shadow-xl space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <button
+                  type="button"
+                  onClick={() => setActiveStep('options')}
+                  className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-amber-400 border border-amber-500/30 text-xs font-bold transition-all cursor-pointer"
+                >
+                  <ArrowLeft className="w-4 h-4" />
+                  <span>{t.backToAngles}</span>
+                </button>
 
-              <div className="flex items-center gap-2">
-                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20">
-                  {selectedAngle.genre}
+                <div className="flex items-center gap-2">
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                    {selectedAngle.genre}
+                  </span>
+                  <span className="text-xs font-bold text-white">
+                    {selectedAngle.title} — {formatDurationDisplay()}
+                  </span>
+                </div>
+              </div>
+
+              <div className="pt-2.5 border-t border-zinc-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <span className="text-[11px] font-bold text-zinc-400 flex items-center gap-1.5 shrink-0">
+                  <MessageSquare className="w-3.5 h-3.5 text-amber-400" />
+                  {t.dialogueModeLabel}
                 </span>
-                <span className="text-xs font-bold text-white">
-                  {selectedAngle.title} — {formatDurationDisplay()}
-                </span>
+                <div className="grid grid-cols-1 sm:flex sm:flex-wrap items-center gap-1.5">
+                  {(
+                    [
+                      { id: 'dynamic', label: t.dialogueModeDynamic },
+                      { id: 'dialogue', label: t.dialogueModeDialogue },
+                      { id: 'silent', label: t.dialogueModeSilent },
+                    ] as const
+                  ).map((modeOpt) => (
+                    <button
+                      key={modeOpt.id}
+                      type="button"
+                      disabled={loadingShots}
+                      onClick={() => handleDialogueModeChangeOnPrompts(modeOpt.id)}
+                      className={`px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all cursor-pointer disabled:opacity-50 ${
+                        dialogueMode === modeOpt.id
+                          ? 'bg-amber-500 text-black font-extrabold shadow-sm shadow-amber-500/20'
+                          : 'bg-zinc-900 text-zinc-300 border border-zinc-800 hover:text-white'
+                      }`}
+                    >
+                      {modeOpt.label}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
 
@@ -1033,21 +1163,25 @@ export default function App() {
                   const shotBgm = shot.bgm || selectedAngle.bgm || '';
                   const shotContinuity = shot.continuity || selectedAngle.continuity || '';
 
+                  const shotDialogue = shot.malayalamDialogue || '';
+
                   const vidPromptText =
                     shot.videoPrompt ||
-                    `[VIDEO GENERATION PROMPT]: Cinematic 24fps video motion prompt. Situation & Action: ${shot.action}.${
-                      shotContinuity ? ` Visual Continuity: ${shotContinuity}.` : ''
+                    `[VIDEO MOTION PROMPT — SHOT ${shotNumber.toString().padStart(2, '0')}]: Continuous 24fps sequence${
+                      shotNumber > 1 ? ` seamlessly following Shot ${(shotNumber - 1).toString().padStart(2, '0')}` : ''
+                    }. Situation & Action: ${shot.action}.${
+                      shotContinuity ? ` Continuity Lock: ${shotContinuity}.` : ''
                     }${
-                      shot.malayalamDialogue && shot.malayalamDialogue.trim().length > 0
-                        ? ` Spoken Dialogue (${lang.toUpperCase()}): "${shot.malayalamDialogue}".`
+                      shotDialogue.trim().length > 0
+                        ? ` Spoken Dialogue (${lang.toUpperCase()}): "${shotDialogue.trim()}".`
                         : ' Audio: NO SPOKEN DIALOGUE — Pure visual storytelling with realistic ambient sound only.'
                     }${shotBgm ? ` Background Music & SFX: ${shotBgm}.` : ''} Camera: Smooth anamorphic tracking shot, ${shotDur} seconds.`;
 
                   const imgPromptText =
                     shot.imagePrompt ||
-                    `[IMAGE GENERATION PROMPT]: Cinematic photorealistic 35mm film still [100% Face & Wardrobe Continuity Locked]. Situation & Action: ${shot.action}.${
-                      shotContinuity ? ` Visual Continuity: ${shotContinuity}.` : ''
-                    } Lighting: Natural golden hour light, volumetric shadows, 8k ultra detailed photography.`;
+                    `[PHOTO KEYFRAME PROMPT — SHOT ${shotNumber.toString().padStart(2, '0')}]: Cinematic photorealistic 35mm static film frame. Situation & Action: ${shot.action}.${
+                      shotContinuity ? ` Continuity Lock: ${shotContinuity}.` : ''
+                    } Lighting: Natural cinematic key light, volumetric shadows, 8k crisp still photography, no text overlays.`;
 
                   const isVideoCopied = copiedKey === `vid-${idx}`;
                   const isImageCopied = copiedKey === `img-${idx}`;
@@ -1056,12 +1190,14 @@ export default function App() {
                   const copyVideoPrompt = () => {
                     navigator.clipboard.writeText(vidPromptText);
                     setCopiedKey(`vid-${idx}`);
+                    triggerThrottledAdBreak();
                     setTimeout(() => setCopiedKey(null), 2000);
                   };
 
                   const copyImagePrompt = () => {
                     navigator.clipboard.writeText(imgPromptText);
                     setCopiedKey(`img-${idx}`);
+                    triggerThrottledAdBreak();
                     setTimeout(() => setCopiedKey(null), 2000);
                   };
 
@@ -1069,22 +1205,26 @@ export default function App() {
                     const masterPayload = `========================================
 SHOT ${shotNumber} (${shotDur} SECONDS) - ${shot.action}
 ========================================
-${shotBgm ? `BGM & SOUND: ${shotBgm}\n` : ''}${shotContinuity ? `CONTINUITY LOCK: ${shotContinuity}\n` : ''}
-1. VIDEO GENERATION PROMPT (WITH BGM, CONTINUITY & LIGHTING):
+${shotDialogue.trim() ? `SPOKEN DIALOGUE: "${shotDialogue.trim()}"\n` : ''}${shotBgm ? `BGM & SOUND: ${shotBgm}\n` : ''}${shotContinuity ? `CONTINUITY LOCK: ${shotContinuity}\n` : ''}
+1. VIDEO MOTION PROMPT (CONTINUOUS MOTION + DIALOGUE + BGM):
 ${vidPromptText}
 
-2. IMAGE GENERATION PROMPT (FACE & CLOTHING CONTINUITY):
+2. STATIC PHOTO KEYFRAME PROMPT (FACE & WARDROBE CONTINUITY):
 ${imgPromptText}`;
                     navigator.clipboard.writeText(masterPayload);
                     setCopiedKey(`master-${idx}`);
+                    triggerThrottledAdBreak();
                     setTimeout(() => setCopiedKey(null), 2000);
                   };
 
+                  const showShotAdAfter =
+                    idx === 1 || (idx > 1 && (idx - 1) % 3 === 0);
+
                   return (
-                    <div
-                      key={idx}
-                      className="bg-[#10121d] border border-zinc-800 rounded-2xl overflow-hidden shadow-2xl transition-all"
-                    >
+                    <React.Fragment key={idx}>
+                      <div
+                        className="bg-[#10121d] border border-zinc-800 rounded-2xl overflow-hidden shadow-2xl transition-all"
+                      >
                       {/* Shot Header Bar */}
                       <div className="px-4 sm:px-5 py-3 sm:py-3.5 bg-[#0b0c13] border-b border-zinc-800 flex flex-wrap items-center justify-between gap-2.5 sm:gap-3">
                         <div className="flex items-center gap-2.5 sm:gap-3">
@@ -1138,32 +1278,48 @@ ${imgPromptText}`;
                           />
                         </div>
 
-                        {/* Editable BGM & Sound Cue + Visual Continuity Lock */}
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                        {/* Editable Dialogue, BGM & Visual Continuity Lock */}
+                        <div className="space-y-3">
                           <div className="space-y-1">
-                            <span className="text-[11px] font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
-                              <Music className="w-3.5 h-3.5 shrink-0" />
-                              {t.shotBgmLabel}
+                            <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-400 flex items-center gap-1.5">
+                              <MessageSquare className="w-3.5 h-3.5 shrink-0" />
+                              {t.shotDialogueLabel}
                             </span>
                             <input
                               type="text"
-                              value={shotBgm}
-                              onChange={(e) => updateShotField(idx, 'bgm', e.target.value)}
-                              className="w-full bg-[#0a0b12] border border-amber-500/30 rounded-lg p-2.5 text-sm sm:text-xs text-zinc-100 font-sans focus:outline-none focus:border-amber-500 transition-colors"
+                              value={shotDialogue}
+                              placeholder="—"
+                              onChange={(e) => updateShotField(idx, 'malayalamDialogue', e.target.value)}
+                              className="w-full bg-[#0a0b12] border border-emerald-500/30 rounded-lg p-2.5 text-sm sm:text-xs text-emerald-100 placeholder-zinc-600 font-sans focus:outline-none focus:border-emerald-400 transition-colors"
                             />
                           </div>
 
-                          <div className="space-y-1">
-                            <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-400 flex items-center gap-1.5">
-                              <Layers className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                              {t.continuityLabel}
-                            </span>
-                            <input
-                              type="text"
-                              value={shotContinuity}
-                              onChange={(e) => updateShotField(idx, 'continuity', e.target.value)}
-                              className="w-full bg-[#0a0b12] border border-zinc-800 rounded-lg p-2.5 text-sm sm:text-xs text-zinc-300 font-sans focus:outline-none focus:border-amber-500 transition-colors"
-                            />
+                          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                            <div className="space-y-1">
+                              <span className="text-[11px] font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
+                                <Music className="w-3.5 h-3.5 shrink-0" />
+                                {t.shotBgmLabel}
+                              </span>
+                              <input
+                                type="text"
+                                value={shotBgm}
+                                onChange={(e) => updateShotField(idx, 'bgm', e.target.value)}
+                                className="w-full bg-[#0a0b12] border border-amber-500/30 rounded-lg p-2.5 text-sm sm:text-xs text-zinc-100 font-sans focus:outline-none focus:border-amber-500 transition-colors"
+                              />
+                            </div>
+
+                            <div className="space-y-1">
+                              <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-400 flex items-center gap-1.5">
+                                <Layers className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                                {t.continuityLabel}
+                              </span>
+                              <input
+                                type="text"
+                                value={shotContinuity}
+                                onChange={(e) => updateShotField(idx, 'continuity', e.target.value)}
+                                className="w-full bg-[#0a0b12] border border-zinc-800 rounded-lg p-2.5 text-sm sm:text-xs text-zinc-300 font-sans focus:outline-none focus:border-amber-500 transition-colors"
+                              />
+                            </div>
                           </div>
                         </div>
 
@@ -1275,6 +1431,9 @@ ${imgPromptText}`;
                         </div>
                       </div>
                     </div>
+
+                      {showShotAdAfter && <InFeedWideVideoAd slotId={`shot-slot-${idx}`} />}
+                    </React.Fragment>
                   );
                 })}
 
@@ -1346,6 +1505,12 @@ ${imgPromptText}`;
 
       {/* Persistent Sticky Bottom Adsterra Banner (320x50 Mobile / 728x90 Desktop) */}
       <StickyBottomAd />
+
+      {/* 2-Second Auto-Skip Sponsored Video Break (Triggered every 2-3 actions) */}
+      <InterstitialVideoAdModal
+        open={showVideoAdModal}
+        onClose={() => setShowVideoAdModal(false)}
+      />
     </div>
   );
 }
