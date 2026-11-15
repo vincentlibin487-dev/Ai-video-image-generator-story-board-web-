@@ -1,3 +1,4 @@
+import type { User } from 'firebase/auth';
 import {
   doc,
   serverTimestamp,
@@ -26,8 +27,26 @@ export interface VisitorSessionRecord {
   ttsPlaysCount: number;
   activeDurationSec: number;
   dayKey: string;
+  isLoggedIn?: boolean;
+  userEmail?: string;
   createdAt?: Timestamp | null;
   updatedAt?: Timestamp | null;
+}
+
+export interface GenerationLogRecord {
+  logId: string;
+  visitorId: string;
+  sessionId: string;
+  isLoggedIn: boolean;
+  userEmail: string;
+  actionType: 'angles' | 'prompts';
+  language: AppLang;
+  searchPremise: string;
+  generatedTitles: string[];
+  selectedStoryTitle: string;
+  shotCount: number;
+  dayKey: string;
+  createdAt?: Timestamp | null;
 }
 
 const VISITOR_ID_KEY = 'csb_anon_visitor_id_v1';
@@ -49,6 +68,8 @@ interface LocalSessionState {
   ttsPlaysCount: number;
   activeDurationSec: number;
   dayKey: string;
+  isLoggedIn: boolean;
+  userEmail: string;
   createdOnServer: boolean;
 }
 
@@ -145,6 +166,8 @@ async function createSessionDoc(state: LocalSessionState): Promise<void> {
       ttsPlaysCount: clampInt(state.ttsPlaysCount, 0, 20),
       activeDurationSec: clampInt(state.activeDurationSec, 0, 86400),
       dayKey: state.dayKey,
+      isLoggedIn: Boolean(state.isLoggedIn),
+      userEmail: String(state.userEmail || '').slice(0, 128),
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     });
@@ -166,6 +189,8 @@ async function updateSessionDoc(state: LocalSessionState): Promise<void> {
       breakdownsGeneratedCount: clampInt(state.breakdownsGeneratedCount, 0, 1000),
       ttsPlaysCount: clampInt(state.ttsPlaysCount, 0, 1000),
       activeDurationSec: clampInt(state.activeDurationSec, 0, 86400),
+      isLoggedIn: Boolean(state.isLoggedIn),
+      userEmail: String(state.userEmail || '').slice(0, 128),
       updatedAt: serverTimestamp(),
     });
   } catch (error) {
@@ -201,7 +226,18 @@ async function flushSessionUpdate() {
     if (!sessionState.createdOnServer) {
       await createSessionDoc(sessionState);
     } else {
-      await updateSessionDoc(sessionState);
+      try {
+        await updateSessionDoc(sessionState);
+      } catch (updateErr) {
+        const msg = updateErr instanceof Error ? updateErr.message : String(updateErr);
+        if (msg.toLowerCase().includes('no document to update') || msg.toLowerCase().includes('not-found')) {
+          sessionState.createdOnServer = false;
+          saveSessionToStorage();
+          await createSessionDoc(sessionState);
+        } else {
+          throw updateErr;
+        }
+      }
     }
   } catch (err) {
     console.warn(
@@ -259,6 +295,8 @@ export function initGuestSession(initialLang: AppLang): void {
         ttsPlaysCount: 0,
         activeDurationSec: 1,
         dayKey: formatDayKey(),
+        isLoggedIn: false,
+        userEmail: '',
         createdOnServer: false,
       };
       saveSessionToStorage();
@@ -279,6 +317,8 @@ export function initGuestSession(initialLang: AppLang): void {
       ttsPlaysCount: 0,
       activeDurationSec: 1,
       dayKey: formatDayKey(),
+      isLoggedIn: false,
+      userEmail: '',
       createdOnServer: false,
     };
   }
@@ -362,4 +402,67 @@ export function trackTtsPlayed(): void {
   sessionState.ttsPlaysCount = clampInt(sessionState.ttsPlaysCount + 1, 0, 1000);
   saveSessionToStorage();
   void flushSessionUpdate();
+}
+
+export function setSessionAuthUser(user: User | null): void {
+  if (!sessionState) return;
+  const isVerified = Boolean(user && user.emailVerified && user.email);
+  const nextEmail = isVerified && user?.email ? user.email.slice(0, 128) : '';
+  if (sessionState.isLoggedIn === isVerified && sessionState.userEmail === nextEmail) return;
+  sessionState.isLoggedIn = isVerified;
+  sessionState.userEmail = nextEmail;
+  saveSessionToStorage();
+  void flushSessionUpdate();
+}
+
+export async function recordGenerationActivity(params: {
+  actionType: 'angles' | 'prompts';
+  language: AppLang;
+  searchPremise: string;
+  generatedTitles?: string[];
+  selectedStoryTitle?: string;
+  shotCount?: number;
+  user?: User | null;
+}): Promise<void> {
+  if (typeof window === 'undefined') return;
+  const searchText = String(params.searchPremise || '').trim().slice(0, 5000);
+  if (!searchText) return;
+
+  const visitorId = sessionState?.visitorId || generateId('vis');
+  const sessionId = sessionState?.sessionId || generateId('sess');
+  const isVerified = Boolean(params.user && params.user.emailVerified && params.user.email);
+  const userEmail = isVerified && params.user?.email ? params.user.email.slice(0, 128) : '';
+  const logId = generateId('glog');
+  const path = `generation_logs/${logId}`;
+
+  const titles = Array.isArray(params.generatedTitles)
+    ? params.generatedTitles
+        .map((t) => String(t || '').trim().slice(0, 200))
+        .filter(Boolean)
+        .slice(0, 20)
+    : [];
+
+  try {
+    await setDoc(doc(db, 'generation_logs', logId), {
+      logId,
+      visitorId,
+      sessionId,
+      isLoggedIn: isVerified,
+      userEmail,
+      actionType: params.actionType,
+      language: VALID_LANGS.includes(params.language) ? params.language : 'ml',
+      searchPremise: searchText,
+      generatedTitles: titles,
+      selectedStoryTitle: String(params.selectedStoryTitle || '').slice(0, 300),
+      shotCount: clampInt(params.shotCount || 0, 0, 2000),
+      dayKey: formatDayKey(),
+      createdAt: serverTimestamp(),
+    });
+  } catch (err) {
+    try {
+      handleFirestoreError(err, OperationType.CREATE, path);
+    } catch {
+      // Structured FirestoreErrorInfo logged cleanly
+    }
+  }
 }

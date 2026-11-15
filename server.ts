@@ -66,20 +66,30 @@ function cleanBase64(dataUrl: string): { mimeType: string; data: string } {
   return { mimeType: 'image/jpeg', data: dataUrl };
 }
 
-// Endpoint to fetch real HilltopAds VAST video ad data with live MP4s and clickthrough
+// Strict Non-Adult / Family-Safe (SFW) keyword & domain filter for ad creatives
+const ADULT_NSFW_REGEX =
+  /\b(porn|porno|pornography|xxx|nsfw|adult|erotic|erotica|hentai|nude|nudity|naked|sex|sexy|horny|milf|boob|boobs|tits|titty|pussy|cock|dick|fuck|fucking|babe|babes|camgirl|camgirls|livecam|webcam|stripchat|chaturbate|bongacams|livejasmin|myfreecams|camsoda|flirt4free|onlyfans|fansly|xvideos|xhamster|pornhub|redtube|youporn|xnxx|spankbang|brazzers|bangbros|realitykings|fetish|bdsm|escort|escorts|hookup|hookups|sexdating|adultdating|jerkmate|adultfriendfinder|ashleymadison|benaughty|nutaku|fakku|exoclick|trafficjunky|juicyads|plugrush|18\+|18plus|plus18|hot-singles|local-girls|meet-girls|sugar-daddy|lingerie|hardcore|softcore|playboy|penthouse|hustler|ecchi|viagra|cialis|penis|iab25|iab25-[1-7]|rta-5042)\b/i;
+
+function isFamilySafeAdContent(...values: Array<string | undefined | null>): boolean {
+  const combined = values.filter(Boolean).join(' ');
+  if (!combined) return true;
+  return !ADULT_NSFW_REGEX.test(combined);
+}
+
+function stripXmlTags(input: string): string {
+  return input
+    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/gi, '$1')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+// Endpoint to fetch real HilltopAds VAST video ad data with strict Non-Adult (SFW) filtering
 app.get('/api/vast-ad', async (req: Request, res: Response) => {
   const vastFeedUrl =
     'https://subtle-injury.com/d/mLF.zQdgGfNEvDZGGhUU/Gemme9/uFZjUolTkaPSTzcV2YMBjcYO0/MADJE/t/NFzvYRyGNqjuQAwYN-QR';
 
-  const defaultMediaUrls = [
-    'https://www.dismal-library.pro/152327/199275/530449_c6438y.mp4',
-    'https://www.dismal-library.pro/152327/199275/559487_2f79fy.mp4',
-    'https://www.dismal-library.pro/360312/974363/1329362_5d4bfy.mp4',
-    'https://www.dismal-library.pro/152327/199275/559491_4e8bey.mp4',
-    'https://www.dismal-library.pro/152327/199275/559485_3654ay.mp4',
-  ];
-  const defaultClickThrough =
-    'https://subtle-injury.com/d/mLF.zQdgGfNEvDZGGhUU/Gemme9/uFZjUolTkaPSTzcV2YMBjcYO0/MADJE/t/NFzvYRyGNqjuQAwYN-QR';
+  let blockedAdultCount = 0;
 
   try {
     const upstreamRes = await fetch(vastFeedUrl, {
@@ -93,41 +103,89 @@ app.get('/api/vast-ad', async (req: Request, res: Response) => {
 
     if (upstreamRes.ok) {
       const xml = await upstreamRes.text();
-      const mediaFiles = [
-        ...xml.matchAll(/<MediaFile[^>]*><!\[CDATA\[(.*?)\]\]><\/MediaFile>/gi),
-      ]
-        .map((m) => m[1]?.trim())
-        .filter((u) => u && (u.endsWith('.mp4') || u.includes('.mp4') || u.includes('video')));
+      const adBlocks = [...xml.matchAll(/<Ad\b[^>]*>[\s\S]*?<\/Ad>/gi)].map((m) => m[0]);
+      const blocksToInspect = adBlocks.length > 0 ? adBlocks : [xml];
 
-      const clickThrough =
-        xml.match(/<ClickThrough><!\[CDATA\[(.*?)\]\]><\/ClickThrough>/i)?.[1]?.trim() ||
-        defaultClickThrough;
+      const safeVideoUrls: string[] = [];
+      const seenCreativePrefixes = new Set<string>();
+      let safeClickThrough = '';
+      const safeImpressions: string[] = [];
 
-      const impressions = [
-        ...xml.matchAll(/<Impression><!\[CDATA\[(.*?)\]\]><\/Impression>/gi),
-      ]
-        .map((m) => m[1]?.trim())
-        .filter((u): u is string => Boolean(u));
+      for (const block of blocksToInspect) {
+        const adTextMetadata = stripXmlTags(block);
+        const mediaMatches = [
+          ...block.matchAll(/<MediaFile[^>]*>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/MediaFile>/gi),
+        ]
+          .map((m) => m[1]?.trim())
+          .filter((u): u is string => Boolean(u && u.includes('.mp4')));
 
-      if (mediaFiles.length > 0) {
+        const blockClickThrough =
+          block
+            .match(/<ClickThrough[^>]*>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/ClickThrough>/i)?.[1]
+            ?.trim() || '';
+
+        const blockImpressions = [
+          ...block.matchAll(/<Impression[^>]*>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/Impression>/gi),
+        ]
+          .map((m) => m[1]?.trim())
+          .filter((u): u is string => Boolean(u));
+
+        // Strict SFW Gate: reject the entire Ad block if any metadata, URL, or tag contains adult/NSFW signals
+        if (
+          !isFamilySafeAdContent(
+            adTextMetadata,
+            blockClickThrough,
+            ...mediaMatches,
+            ...blockImpressions
+          )
+        ) {
+          blockedAdultCount += 1;
+          continue;
+        }
+
+        // Prefer one clean MP4 resolution (480p or default) per creative ID to avoid playing identical repeats
+        const preferredMp4 =
+          mediaMatches.find((u) => u.includes('480.mp4')) ||
+          mediaMatches.find((u) => !u.includes('360.mp4')) ||
+          mediaMatches[0];
+
+        if (preferredMp4) {
+          const creativeKey = preferredMp4.replace(/(480|360|720)?\.mp4$/i, '');
+          if (!seenCreativePrefixes.has(creativeKey)) {
+            seenCreativePrefixes.add(creativeKey);
+            safeVideoUrls.push(preferredMp4);
+          }
+          if (!safeClickThrough && blockClickThrough) {
+            safeClickThrough = blockClickThrough;
+          }
+          safeImpressions.push(...blockImpressions);
+        }
+      }
+
+      if (safeVideoUrls.length > 0) {
         return res.json({
           success: true,
-          videoUrl: mediaFiles[0],
-          allVideoUrls: mediaFiles,
-          clickThrough,
-          impressions,
+          sfwOnly: true,
+          blockedAdultCount,
+          videoUrl: safeVideoUrls[0],
+          allVideoUrls: safeVideoUrls,
+          clickThrough: safeClickThrough || vastFeedUrl,
+          impressions: safeImpressions,
         });
       }
     }
   } catch (err: any) {
-    console.warn('VAST upstream fetch error, using direct live ad fallback:', err?.message);
+    console.warn('VAST upstream fetch error (strict SFW mode):', err?.message);
   }
 
+  // Never fall back to unverified hardcoded MP4 URLs when live SFW validation fails or blocks adult creatives
   return res.json({
     success: true,
-    videoUrl: defaultMediaUrls[0],
-    allVideoUrls: defaultMediaUrls,
-    clickThrough: defaultClickThrough,
+    sfwOnly: true,
+    blockedAdultCount,
+    videoUrl: '',
+    allVideoUrls: [],
+    clickThrough: '',
     impressions: [],
   });
 });

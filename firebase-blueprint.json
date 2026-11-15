@@ -80,6 +80,15 @@
           "maxLength": 10,
           "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
         },
+        "isLoggedIn": {
+          "type": "boolean",
+          "description": "Optional indicator whether this session signed into a Google account."
+        },
+        "userEmail": {
+          "type": "string",
+          "description": "Optional verified Google email for signed-in sessions (empty for guests).",
+          "maxLength": 128
+        },
         "createdAt": {
           "type": "string",
           "format": "date-time",
@@ -141,6 +150,277 @@
         }
       },
       "required": ["uid", "email", "role", "createdAt"]
+    },
+    "UserAccount": {
+      "title": "UserAccount",
+      "description": "Signed-in Google (Gmail) user profile stored so users can sync stories across devices and admins can monitor daily & total logged-in users.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "Firebase Auth UID.",
+          "minLength": 4,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "Verified Gmail address.",
+          "minLength": 3,
+          "maxLength": 128
+        },
+        "displayName": {
+          "type": "string",
+          "description": "User display name from Google profile.",
+          "maxLength": 128
+        },
+        "photoURL": {
+          "type": "string",
+          "description": "Google avatar URL.",
+          "maxLength": 512
+        },
+        "loginCount": {
+          "type": "integer",
+          "description": "Cumulative login count for this account."
+        },
+        "savedStoriesCount": {
+          "type": "integer",
+          "description": "Current count of stories synced to this Gmail account."
+        },
+        "lastDayKey": {
+          "type": "string",
+          "description": "Local calendar day YYYY-MM-DD of the latest login.",
+          "minLength": 10,
+          "maxLength": 10,
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when user first signed in."
+        },
+        "lastLoginAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of the latest login or sync."
+        }
+      },
+      "required": [
+        "uid",
+        "email",
+        "displayName",
+        "photoURL",
+        "loginCount",
+        "savedStoriesCount",
+        "lastDayKey",
+        "createdAt",
+        "lastLoginAt"
+      ]
+    },
+    "SavedUserStory": {
+      "title": "SavedUserStory",
+      "description": "Story, synopsis, angle metadata, and optional shot prompts automatically synced or favorited to the user's logged-in Gmail account.",
+      "type": "object",
+      "properties": {
+        "storyId": {
+          "type": "string",
+          "description": "Unique saved story document ID.",
+          "minLength": 4,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "ownerUid": {
+          "type": "string",
+          "description": "Owner Firebase Auth UID.",
+          "minLength": 4,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "ownerEmail": {
+          "type": "string",
+          "format": "email",
+          "description": "Owner verified Gmail address.",
+          "minLength": 3,
+          "maxLength": 128
+        },
+        "title": {
+          "type": "string",
+          "description": "Story title.",
+          "minLength": 1,
+          "maxLength": 300
+        },
+        "storySummary": {
+          "type": "string",
+          "description": "Story summary / synopsis.",
+          "maxLength": 20000
+        },
+        "genre": {
+          "type": "string",
+          "description": "Genre label.",
+          "maxLength": 120
+        },
+        "durationDisplay": {
+          "type": "string",
+          "description": "Formatted duration label.",
+          "maxLength": 120
+        },
+        "durationSeconds": {
+          "type": "integer",
+          "description": "Total target film duration in seconds."
+        },
+        "shotCount": {
+          "type": "integer",
+          "description": "Number of shots generated (0 if favorited directly from story angle options)."
+        },
+        "shots": {
+          "type": "array",
+          "description": "Ordered list of generated shot objects with action, dialogue, imagePrompt, and videoPrompt."
+        },
+        "angle": {
+          "type": "object",
+          "description": "Full selected StoryAngle object."
+        },
+        "partNumber": {
+          "type": "integer",
+          "description": "Sequential chapter/part number."
+        },
+        "isAutoSaved": {
+          "type": "boolean",
+          "description": "Whether saved automatically upon prompt generation or heart favorite."
+        },
+        "isLoved": {
+          "type": "boolean",
+          "description": "Whether the user marked this story with the heart love icon."
+        },
+        "savedAtMs": {
+          "type": "integer",
+          "description": "Client epoch ms for sorting/display."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of initial save."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of latest update."
+        }
+      },
+      "required": [
+        "storyId",
+        "ownerUid",
+        "ownerEmail",
+        "title",
+        "storySummary",
+        "genre",
+        "durationDisplay",
+        "durationSeconds",
+        "shotCount",
+        "shots",
+        "angle",
+        "partNumber",
+        "isAutoSaved",
+        "savedAtMs",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "GenerationLog": {
+      "title": "GenerationLog",
+      "description": "Admin-readable activity log recording user story searches/premises and generated story titles/prompts (for both guest and Gmail-logged-in users).",
+      "type": "object",
+      "properties": {
+        "logId": {
+          "type": "string",
+          "description": "Unique generation log ID.",
+          "minLength": 4,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "visitorId": {
+          "type": "string",
+          "description": "Visitor browser identifier.",
+          "minLength": 4,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "sessionId": {
+          "type": "string",
+          "description": "Session identifier.",
+          "minLength": 4,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "isLoggedIn": {
+          "type": "boolean",
+          "description": "Whether generated while signed in with Google."
+        },
+        "userEmail": {
+          "type": "string",
+          "description": "Verified user Gmail if signed in, empty string if guest.",
+          "maxLength": 128
+        },
+        "actionType": {
+          "type": "string",
+          "description": "Generation step triggered.",
+          "enum": ["angles", "prompts"],
+          "maxLength": 16
+        },
+        "language": {
+          "type": "string",
+          "description": "Language code used.",
+          "enum": ["ml", "en", "hi", "ta", "kn", "te"],
+          "maxLength": 5
+        },
+        "searchPremise": {
+          "type": "string",
+          "description": "User search/premise input text.",
+          "minLength": 1,
+          "maxLength": 5000
+        },
+        "generatedTitles": {
+          "type": "array",
+          "description": "Generated story angle titles (capped list)."
+        },
+        "selectedStoryTitle": {
+          "type": "string",
+          "description": "Selected story title when prompts are generated.",
+          "maxLength": 300
+        },
+        "shotCount": {
+          "type": "integer",
+          "description": "Number of video/image shots generated."
+        },
+        "dayKey": {
+          "type": "string",
+          "description": "Local calendar day string YYYY-MM-DD.",
+          "minLength": 10,
+          "maxLength": 10,
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of generation."
+        }
+      },
+      "required": [
+        "logId",
+        "visitorId",
+        "sessionId",
+        "isLoggedIn",
+        "userEmail",
+        "actionType",
+        "language",
+        "searchPremise",
+        "generatedTitles",
+        "selectedStoryTitle",
+        "shotCount",
+        "dayKey",
+        "createdAt"
+      ]
     }
   },
   "firestore": {
@@ -155,6 +435,24 @@
         "$ref": "#/entities/AdminUser"
       },
       "description": "Admin access registry strictly controlled by verified admin accounts."
+    },
+    "/user_accounts/{uid}": {
+      "schema": {
+        "$ref": "#/entities/UserAccount"
+      },
+      "description": "Google signed-in user accounts; owner can read/write own profile, admin can list/monitor daily and total Gmail logins."
+    },
+    "/user_accounts/{uid}/saved_stories/{storyId}": {
+      "schema": {
+        "$ref": "#/entities/SavedUserStory"
+      },
+      "description": "Stories, ❤️ favorites, and prompts synced directly to the signed-in user's Gmail account."
+    },
+    "/generation_logs/{logId}": {
+      "schema": {
+        "$ref": "#/entities/GenerationLog"
+      },
+      "description": "Append-only user search premise and generated story/prompt logs readable only by the verified admin."
     }
   }
 }

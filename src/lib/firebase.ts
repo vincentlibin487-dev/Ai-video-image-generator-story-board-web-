@@ -12,6 +12,7 @@ googleProvider.setCustomParameters({ prompt: 'select_account' });
 
 export const ADMIN_EMAIL = 'amalj7767@gmail.com';
 export const FIREBASE_QUOTA_UPGRADE_URL = `https://console.firebase.google.com/project/${firebaseConfig.projectId}/firestore/databases/${firebaseConfig.firestoreDatabaseId}/data?openUpgradeDialog=true`;
+export const FIREBASE_AUTH_DOMAINS_URL = `https://console.firebase.google.com/project/${firebaseConfig.projectId}/authentication/settings`;
 
 export enum OperationType {
   CREATE = 'create',

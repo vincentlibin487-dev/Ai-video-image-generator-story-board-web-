@@ -1,11 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { SkipForward, Play, Volume2, VolumeX, X, ExternalLink, RefreshCw } from 'lucide-react';
+import { SkipForward, Volume2, VolumeX, X } from 'lucide-react';
 
 // =========================================================================
-// OFFICIAL AD NETWORKS CONFIGURATION (Network 1: Adsterra | Network 2: HilltopAds)
+// OFFICIAL LIVE AD NETWORKS (Network 1: Adsterra | Network 2: HilltopAds)
+// Strict Non-Adult / Family-Safe (SFW) Guard Enabled
 // =========================================================================
 
-// --- Network 1: Adsterra Real Codes ---
 export const ADSTERRA_CONFIG = {
   desktop728x90: {
     key: '5f1ed3d25298d614ede7fc1d7dabb7b0',
@@ -19,10 +19,8 @@ export const ADSTERRA_CONFIG = {
     height: 50,
     invokeUrl: 'https://www.highperformanceformat.com/14df69c732a8a38670f754f6fcfba403/invoke.js',
   },
-  popunderUrl: 'https://abscloud.org/1/258bc21406c0c2080700daaefc38766c',
 };
 
-// --- Network 2: HilltopAds Real Codes ---
 export const HILLTOP_CONFIG = {
   banner300x100: {
     width: 300,
@@ -34,28 +32,25 @@ export const HILLTOP_CONFIG = {
     height: 250,
     src: 'https://unfoldedtrade.com/bCX.VFsCdkGwlv0/YOWccO/beymA9GuUZPUrlkkpPlTOcT2bM-jEY/0zNNj/klthNgzoYFykNkjbQh3XMxwU',
   },
-  videoSliderSrc:
-    'https://unfoldedtrade.com/bXX.VIsSdJG/lL0PYZWWce/uehmR9zuVZ/UTlsk/P_Tgcj2/M/j/YJ0BO/DeUgttN/zdYzyyNQjxQq4zOFQh',
   vastVideoFeedUrl:
     'https://subtle-injury.com/d/mLF.zQdgGfNEvDZGGhUU/Gemme9/uFZjUolTkaPSTzcV2YMBjcYO0/MADJE/t/NFzvYRyGNqjuQAwYN-QR',
-  popunderUrl:
-    'https://pleased-report.com/be3.Vg0/PD3spPv/bXm-VkJUZwD/0/3lNAjuIp2hNXDNIL1sLvTGco2gMxjPY/0vMKj/kC',
 };
 
-// Verified original commercial video streams from the user's HilltopAds VAST account
-const VERIFIED_VAST_COMMERCIALS = [
-  'https://www.dismal-library.pro/152327/199275/530449_c6438y.mp4',
-  'https://www.dismal-library.pro/152327/199275/559487_2f79fy.mp4',
-  'https://www.dismal-library.pro/360312/974363/1329362_5d4bfy.mp4',
-  'https://www.dismal-library.pro/152327/199275/559491_4e8bey.mp4',
-  'https://www.dismal-library.pro/152327/199275/559485_3654ay.mp4',
-];
+const CLIENT_ADULT_NSFW_REGEX =
+  /\b(porn|porno|pornography|xxx|nsfw|adult|erotic|erotica|hentai|nude|nudity|naked|sex|sexy|horny|milf|boob|boobs|tits|titty|pussy|cock|dick|fuck|fucking|babe|babes|camgirl|camgirls|livecam|webcam|stripchat|chaturbate|bongacams|livejasmin|myfreecams|camsoda|flirt4free|onlyfans|fansly|xvideos|xhamster|pornhub|redtube|youporn|xnxx|spankbang|brazzers|bangbros|realitykings|fetish|bdsm|escort|escorts|hookup|hookups|sexdating|adultdating|jerkmate|adultfriendfinder|ashleymadison|benaughty|nutaku|fakku|exoclick|trafficjunky|juicyads|plugrush|18\+|18plus|plus18|hot-singles|local-girls|meet-girls|sugar-daddy|lingerie|hardcore|softcore|playboy|penthouse|hustler|ecchi|viagra|cialis|penis|rta-5042)\b/i;
+
+export function containsAdultAdSignals(...values: Array<string | undefined | null>): boolean {
+  const combined = values.filter(Boolean).join(' ');
+  if (!combined) return false;
+  return CLIENT_ADULT_NSFW_REGEX.test(combined);
+}
 
 interface VastAdData {
   videoUrl: string;
   allVideoUrls: string[];
   clickThrough: string;
   impressions: string[];
+  loaded: boolean;
 }
 
 let cachedVastData: VastAdData | null = null;
@@ -70,26 +65,28 @@ async function fetchLiveVastData(): Promise<VastAdData> {
       const res = await fetch('/api/vast-ad');
       if (res.ok) {
         const data = await res.json();
-        if (data && data.videoUrl) {
-          cachedVastData = {
-            videoUrl: data.videoUrl,
-            allVideoUrls:
-              Array.isArray(data.allVideoUrls) && data.allVideoUrls.length > 0
-                ? data.allVideoUrls
-                : VERIFIED_VAST_COMMERCIALS,
-            clickThrough: data.clickThrough || HILLTOP_CONFIG.vastVideoFeedUrl,
-            impressions: data.impressions || [],
-          };
-          return cachedVastData;
-        }
+        const rawUrls: string[] = Array.isArray(data?.allVideoUrls) ? data.allVideoUrls : [];
+        const safeUrls = rawUrls.filter((u) => Boolean(u) && !containsAdultAdSignals(u));
+        const safeClick =
+          data?.clickThrough && !containsAdultAdSignals(data.clickThrough) ? data.clickThrough : '';
+
+        cachedVastData = {
+          videoUrl: safeUrls[0] || '',
+          allVideoUrls: safeUrls,
+          clickThrough: safeClick,
+          impressions: Array.isArray(data?.impressions) ? data.impressions : [],
+          loaded: true,
+        };
+        return cachedVastData;
       }
     } catch {}
 
     cachedVastData = {
-      videoUrl: VERIFIED_VAST_COMMERCIALS[0],
-      allVideoUrls: VERIFIED_VAST_COMMERCIALS,
-      clickThrough: HILLTOP_CONFIG.vastVideoFeedUrl,
+      videoUrl: '',
+      allVideoUrls: [],
+      clickThrough: '',
       impressions: [],
+      loaded: true,
     };
     return cachedVastData;
   })();
@@ -97,26 +94,62 @@ async function fetchLiveVastData(): Promise<VastAdData> {
   return vastFetchPromise;
 }
 
+function hasRenderedCreative(doc: Document | null | undefined): boolean {
+  if (!doc || !doc.body) return false;
+  const media = doc.body.querySelector('img, iframe, video, canvas, ins, a, object, embed');
+  if (!media) return false;
+  const rect = media.getBoundingClientRect();
+  return rect.width >= 40 && rect.height >= 20;
+}
+
+function documentHasAdultCreative(doc: Document | null | undefined): boolean {
+  if (!doc || !doc.body) return false;
+  try {
+    const signals: Array<string | null | undefined> = [doc.title, doc.body.innerText];
+
+    doc.body.querySelectorAll('a, img, iframe, video, source, script').forEach((el) => {
+      signals.push(
+        el.getAttribute('href'),
+        el.getAttribute('src'),
+        el.getAttribute('alt'),
+        el.getAttribute('title'),
+        el.getAttribute('aria-label'),
+        el.getAttribute('data-url'),
+        el.getAttribute('data-href')
+      );
+    });
+
+    return containsAdultAdSignals(...signals);
+  } catch {
+    return false;
+  }
+}
+
 /**
- * Dual-Network Live Banner Frame (Adsterra <-> HilltopAds Automatic Rotation)
- * - Rotates automatically between Network 1 (Adsterra) and Network 2 (HilltopAds).
- * - Delivers original live ads with full permissions (clicks, impressions, responsive scaling).
- * - No skip button (permanent image/banner ad, exactly as requested).
+ * Pure Frameless Dual-Network Banner Renderer (Adsterra <-> HilltopAds).
+ * - ZERO outer boxes, borders, backgrounds, or ad-network/sponsored text labels.
+ * - Strict SFW guard scans injected DOM links/images/text and wipes/hides any adult creative immediately.
  */
 export const DualNetworkBannerFrame: React.FC<{
   slotId: string;
   slotIndex?: number;
   preferFormat?: 'banner' | 'square' | 'wide';
   title?: string;
-}> = ({ slotId, slotIndex = 0, preferFormat = 'banner', title = 'Sponsored Banner' }) => {
+}> = ({ slotId, slotIndex = 0, preferFormat = 'banner', title = 'Advertisement' }) => {
+  const wrapperRef = useRef<HTMLDivElement | null>(null);
+  const iframeRef = useRef<HTMLIFrameElement | null>(null);
+  const [inView, setInView] = useState<boolean>(false);
   const [isDesktop, setIsDesktop] = useState<boolean>(() =>
     typeof window !== 'undefined' ? window.innerWidth >= 768 : false
   );
-
-  // Alternate initial network based on slotIndex (Odd: Adsterra, Even: HilltopAds)
+  const [containerWidth, setContainerWidth] = useState<number>(() =>
+    typeof window !== 'undefined' ? window.innerWidth : 360
+  );
   const [activeNetwork, setActiveNetwork] = useState<'adsterra' | 'hilltop'>(
     slotIndex % 2 === 0 ? 'hilltop' : 'adsterra'
   );
+  const [failoverAttempts, setFailoverAttempts] = useState<number>(0);
+  const [blockedAsAdult, setBlockedAsAdult] = useState<boolean>(false);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -125,174 +158,265 @@ export const DualNetworkBannerFrame: React.FC<{
     return () => window.removeEventListener('resize', updateSize);
   }, []);
 
-  // Periodic rotation between Network 1 (Adsterra) and Network 2 (HilltopAds) every 20 seconds
   useEffect(() => {
-    const timer = window.setInterval(() => {
-      setActiveNetwork((prev) => (prev === 'adsterra' ? 'hilltop' : 'adsterra'));
-    }, 20000);
-    return () => window.clearInterval(timer);
+    const el = wrapperRef.current;
+    if (!el) return;
+
+    const updateWidth = () => {
+      const rect = el.getBoundingClientRect();
+      if (rect.width > 0) setContainerWidth(rect.width);
+    };
+    updateWidth();
+
+    let ro: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== 'undefined') {
+      ro = new ResizeObserver(updateWidth);
+      ro.observe(el);
+    }
+
+    let io: IntersectionObserver | null = null;
+    if (typeof IntersectionObserver !== 'undefined') {
+      io = new IntersectionObserver(
+        (entries) => {
+          if (entries.some((e) => e.isIntersecting)) {
+            setInView(true);
+            io?.disconnect();
+          }
+        },
+        { rootMargin: '500px 0px' }
+      );
+      io.observe(el);
+    } else {
+      setInView(true);
+    }
+
+    return () => {
+      ro?.disconnect();
+      io?.disconnect();
+    };
   }, []);
 
-  // Calculate dimensions and markup for active network
+  // Rotate between Adsterra and HilltopAds periodically
+  useEffect(() => {
+    if (blockedAsAdult) return;
+    const timer = window.setInterval(() => {
+      setActiveNetwork((prev) => (prev === 'adsterra' ? 'hilltop' : 'adsterra'));
+    }, 25000);
+    return () => window.clearInterval(timer);
+  }, [blockedAsAdult]);
+
   const adDetails = (() => {
     if (activeNetwork === 'adsterra') {
       const cfg = isDesktop ? ADSTERRA_CONFIG.desktop728x90 : ADSTERRA_CONFIG.mobile320x50;
-      const html = `<!doctype html>
-<html>
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <style>
-      * { box-sizing: border-box; }
-      html, body {
-        margin: 0;
-        padding: 0;
-        width: 100%;
-        height: 100%;
-        background: transparent;
-        overflow: hidden;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-      }
-    </style>
-  </head>
-  <body>
-    <script type="text/javascript">
-      atOptions = {
-        'key': '${cfg.key}',
-        'format': 'iframe',
-        'height': ${cfg.height},
-        'width': ${cfg.width},
-        'params': {}
-      };
-    </script>
-    <script type="text/javascript" src="${cfg.invokeUrl}"></script>
-  </body>
-</html>`;
-      return {
-        width: cfg.width,
-        height: cfg.height,
-        networkName: 'Adsterra',
-        srcDoc: html,
-      };
+      const scriptHtml = `<script type="text/javascript">
+        atOptions = {
+          'key': '${cfg.key}',
+          'format': 'iframe',
+          'height': ${cfg.height},
+          'width': ${cfg.width},
+          'params': {}
+        };
+      </script>
+      <script type="text/javascript" src="${cfg.invokeUrl}"></script>`;
+      return { width: cfg.width, height: cfg.height, scriptHtml };
     }
 
-    // HilltopAds: 300x250 or 300x100
     const is300x250 = preferFormat === 'square' || (!isDesktop && preferFormat !== 'wide');
     const cfg = is300x250 ? HILLTOP_CONFIG.banner300x250 : HILLTOP_CONFIG.banner300x100;
-    const html = `<!doctype html>
+    const scriptHtml = `<script>
+      (function(cfg){
+        var d = document,
+            s = d.createElement('script'),
+            l = d.currentScript || d.scripts[d.scripts.length - 1];
+        s.settings = cfg || {};
+        s.src = "${cfg.src}";
+        s.async = true;
+        s.referrerPolicy = 'no-referrer-when-downgrade';
+        if (l && l.parentNode) {
+          l.parentNode.insertBefore(s, l);
+        } else {
+          d.body.appendChild(s);
+        }
+      })({});
+    </script>`;
+    return { width: cfg.width, height: cfg.height, scriptHtml };
+  })();
+
+  const safeWidth = Math.max(260, containerWidth);
+  const scale = Math.min(1, safeWidth / adDetails.width);
+  const scaledWidth = Math.floor(adDetails.width * scale);
+  const scaledHeight = Math.floor(adDetails.height * scale);
+
+  useEffect(() => {
+    if (!inView || blockedAsAdult) return;
+    const iframe = iframeRef.current;
+    if (!iframe) return;
+
+    let observer: MutationObserver | null = null;
+
+    const inspectAndProtect = () => {
+      try {
+        const doc = iframeRef.current?.contentWindow?.document;
+        if (documentHasAdultCreative(doc)) {
+          if (doc?.body) doc.body.innerHTML = '';
+          if (failoverAttempts < 1) {
+            setFailoverAttempts((c) => c + 1);
+            setActiveNetwork((prev) => (prev === 'adsterra' ? 'hilltop' : 'adsterra'));
+          } else {
+            setBlockedAsAdult(true);
+          }
+          return true;
+        }
+      } catch {}
+      return false;
+    };
+
+    try {
+      const doc = iframe.contentWindow?.document;
+      if (!doc) return;
+      const baseHref = typeof window !== 'undefined' ? window.location.origin : '';
+      doc.open();
+      doc.write(`<!doctype html>
 <html>
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="rating" content="General" />
+    ${baseHref ? `<base href="${baseHref}/" />` : ''}
     <style>
-      * { box-sizing: border-box; }
       html, body {
         margin: 0;
         padding: 0;
-        width: 100%;
-        height: 100%;
-        background: transparent;
+        width: ${adDetails.width}px;
+        height: ${adDetails.height}px;
         overflow: hidden;
+        background: transparent;
         display: flex;
         align-items: center;
         justify-content: center;
       }
+      a { cursor: pointer; }
     </style>
   </head>
   <body>
-    <div style="display:flex;align-items:center;justify-content:center;width:100%;height:100%;">
-      <script>
-        (function(cfg){
-          var d = document,
-              s = d.createElement('script'),
-              l = d.currentScript || d.scripts[d.scripts.length - 1];
-          s.settings = cfg || {};
-          s.src = "${cfg.src}";
-          s.async = true;
-          s.referrerPolicy = 'no-referrer-when-downgrade';
-          if (l && l.parentNode) {
-            l.parentNode.insertBefore(s, l);
-          } else {
-            d.body.appendChild(s);
-          }
-        })({});
-      </script>
-    </div>
+    ${adDetails.scriptHtml}
   </body>
-</html>`;
-    return {
-      width: cfg.width,
-      height: cfg.height,
-      networkName: 'HilltopAds',
-      srcDoc: html,
+</html>`);
+      doc.close();
+
+      if (doc.body && typeof MutationObserver !== 'undefined') {
+        observer = new MutationObserver(() => {
+          inspectAndProtect();
+        });
+        observer.observe(doc.body, {
+          childList: true,
+          subtree: true,
+          attributes: true,
+        });
+      }
+    } catch {}
+
+    const checkTimes = [800, 1800, 3500, 6500];
+    const timers = checkTimes.map((ms) =>
+      window.setTimeout(() => {
+        if (inspectAndProtect()) return;
+        if (ms === 3500) {
+          try {
+            const filled = hasRenderedCreative(iframeRef.current?.contentWindow?.document);
+            if (!filled && failoverAttempts < 1) {
+              setFailoverAttempts((c) => c + 1);
+              setActiveNetwork((prev) => (prev === 'adsterra' ? 'hilltop' : 'adsterra'));
+            }
+          } catch {}
+        }
+      }, ms)
+    );
+
+    return () => {
+      observer?.disconnect();
+      timers.forEach((t) => window.clearTimeout(t));
     };
-  })();
+  }, [
+    inView,
+    blockedAsAdult,
+    activeNetwork,
+    adDetails.width,
+    adDetails.height,
+    adDetails.scriptHtml,
+    slotId,
+    failoverAttempts,
+  ]);
+
+  if (blockedAsAdult) return null;
 
   return (
-    <div className="w-full flex flex-col items-center justify-center overflow-hidden">
-      {/* Network indicator tag */}
-      <div className="w-full flex items-center justify-between px-2 mb-1 text-[9px] font-mono text-zinc-500">
-        <span>SPONSORED</span>
-        <button
-          type="button"
-          onClick={() => setActiveNetwork((prev) => (prev === 'adsterra' ? 'hilltop' : 'adsterra'))}
-          className="flex items-center gap-1 hover:text-amber-400 transition-colors cursor-pointer"
-          title="Switch Network"
-        >
-          <RefreshCw className="w-2.5 h-2.5" />
-          <span>{adDetails.networkName} (Live)</span>
-        </button>
-      </div>
-
+    <div ref={wrapperRef} className="w-full max-w-full flex items-center justify-center">
       <div
-        className="relative overflow-hidden flex items-center justify-center max-w-full rounded-xl bg-[#080a14] border border-zinc-800/80"
+        className="relative overflow-hidden mx-auto flex items-center justify-center"
         style={{
-          width: `${adDetails.width}px`,
-          height: `${adDetails.height}px`,
+          width: `${scaledWidth}px`,
+          height: `${scaledHeight}px`,
+          maxWidth: '100%',
         }}
       >
-        <iframe
-          key={`${slotId}-${activeNetwork}-${adDetails.width}x${adDetails.height}`}
-          title={title}
-          srcDoc={adDetails.srcDoc}
-          scrolling="no"
-          frameBorder="0"
-          sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-top-navigation-by-user-activation"
-          allow="autoplay; encrypted-media"
-          className="w-full h-full border-0 block"
-        />
+        {inView && (
+          <iframe
+            ref={iframeRef}
+            key={`${slotId}-${activeNetwork}-${adDetails.width}x${adDetails.height}`}
+            title={title}
+            scrolling="no"
+            frameBorder="0"
+            sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox"
+            allow="autoplay; encrypted-media"
+            style={{
+              width: `${adDetails.width}px`,
+              height: `${adDetails.height}px`,
+              border: 'none',
+              overflow: 'hidden',
+              background: 'transparent',
+              transform: `scale(${scale})`,
+              transformOrigin: 'top left',
+              display: 'block',
+            }}
+          />
+        )}
       </div>
     </div>
   );
 };
 
 /**
- * Real In-Page Video Ad Unit (Original Commercial Video, 2-Second Skip, Audio Toggle, Sponsor Click).
- * Seamlessly plays genuine commercial advertisements between story angles and shot cards.
+ * Pure Frameless Video Ad Unit (Real SFW-Filtered VAST Commercial Video Only).
+ * - Waits for server-side Non-Adult (SFW) VAST validation before rendering any stream.
+ * - Hides cleanly if no verified SFW video stream is available.
+ * - Tapping on or near the video NEVER hijacks navigation to another website.
  */
 export const SkippableVideoAdUnit: React.FC<{
   slotId: string;
   compact?: boolean;
+  mini?: boolean;
+  fillParent?: boolean;
   startIndex?: number;
   onDismiss?: () => void;
-}> = ({ slotId, compact = false, startIndex = 0, onDismiss }) => {
+}> = ({ compact = false, mini = false, fillParent = false, startIndex = 0, onDismiss }) => {
   const [adData, setAdData] = useState<VastAdData>({
-    videoUrl: VERIFIED_VAST_COMMERCIALS[startIndex % VERIFIED_VAST_COMMERCIALS.length],
-    allVideoUrls: VERIFIED_VAST_COMMERCIALS,
-    clickThrough: HILLTOP_CONFIG.vastVideoFeedUrl,
+    videoUrl: '',
+    allVideoUrls: [],
+    clickThrough: '',
     impressions: [],
+    loaded: false,
   });
   const [videoIndex, setVideoIndex] = useState<number>(startIndex);
+  const [errorCount, setErrorCount] = useState<number>(0);
   const [skipSecondsLeft, setSkipSecondsLeft] = useState<number>(2);
   const [isMuted, setIsMuted] = useState<boolean>(true);
+  const containerRef = useRef<HTMLDivElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
   useEffect(() => {
     let isMounted = true;
     fetchLiveVastData().then((data) => {
-      if (isMounted && data?.videoUrl) {
+      if (isMounted) {
         setAdData(data);
       }
     });
@@ -301,7 +425,6 @@ export const SkippableVideoAdUnit: React.FC<{
     };
   }, []);
 
-  // 2-Second skippable countdown
   useEffect(() => {
     setSkipSecondsLeft(2);
     const t1 = window.setTimeout(() => setSkipSecondsLeft(1), 1000);
@@ -313,11 +436,55 @@ export const SkippableVideoAdUnit: React.FC<{
   }, [videoIndex]);
 
   const currentVideoSrc =
-    adData.allVideoUrls[videoIndex % adData.allVideoUrls.length] || adData.videoUrl;
+    adData.allVideoUrls.length > 0
+      ? adData.allVideoUrls[videoIndex % adData.allVideoUrls.length]
+      : '';
+
+  // Ensure continuous muted playback whenever visible on screen
+  useEffect(() => {
+    if (!currentVideoSrc) return;
+    const vid = videoRef.current;
+    const container = containerRef.current;
+    if (!vid || !container) return;
+
+    const tryPlay = () => {
+      if (vid.paused) {
+        vid.muted = isMuted;
+        vid.play().catch(() => {
+          vid.muted = true;
+          vid.play().catch(() => {});
+        });
+      }
+    };
+
+    tryPlay();
+
+    if (typeof IntersectionObserver === 'undefined') return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) {
+          tryPlay();
+        }
+      },
+      { threshold: 0.15 }
+    );
+    io.observe(container);
+    return () => io.disconnect();
+  }, [currentVideoSrc, isMuted]);
+
+  // If SFW validation returned no safe video URLs (or failed all), hide slot cleanly
+  if (!adData.loaded || !currentVideoSrc || errorCount >= adData.allVideoUrls.length) {
+    return null;
+  }
 
   const handleSkipNext = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (skipSecondsLeft > 0) return;
+    setVideoIndex((prev) => prev + 1);
+  };
+
+  const handleVideoError = () => {
+    setErrorCount((c) => c + 1);
     setVideoIndex((prev) => prev + 1);
   };
 
@@ -327,109 +494,200 @@ export const SkippableVideoAdUnit: React.FC<{
       const next = !prev;
       if (videoRef.current) {
         videoRef.current.muted = next;
+        if (videoRef.current.paused) {
+          videoRef.current.play().catch(() => {});
+        }
       }
       return next;
     });
   };
 
-  const handleOpenClickThrough = () => {
-    if (typeof window !== 'undefined' && adData.clickThrough) {
-      window.open(adData.clickThrough, '_blank', 'noopener,noreferrer');
-    }
-  };
-
   return (
     <div
-      className={`rounded-2xl bg-[#0b0d17] border border-amber-500/40 overflow-hidden shadow-2xl transition-all ${
-        compact ? 'p-2.5 space-y-2' : 'p-3.5 space-y-2.5'
+      ref={containerRef}
+      className={`relative w-full rounded-xl overflow-hidden flex items-center justify-center bg-black ${
+        fillParent
+          ? 'h-full'
+          : mini
+          ? 'h-[94px] sm:h-[136px]'
+          : compact
+          ? 'h-[150px] sm:h-[180px]'
+          : 'h-[190px] sm:h-[230px]'
       }`}
     >
-      {/* Top Header bar with skip, audio toggle, and sponsor link */}
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-1.5 min-w-0">
-          <span className="text-[10px] font-mono font-bold text-amber-400 flex items-center gap-1 uppercase tracking-wider bg-amber-500/10 px-2.5 py-0.5 rounded border border-amber-500/30">
-            <Play className="w-2.5 h-2.5 fill-amber-400 text-amber-400" />
-            <span>Commercial Ad</span>
-          </span>
-          <button
-            type="button"
-            onClick={handleOpenClickThrough}
-            className="hidden sm:flex items-center gap-1 text-[10px] text-zinc-400 hover:text-amber-300 font-mono transition-colors cursor-pointer"
-            title="Visit sponsor"
-          >
-            <span>Visit Sponsor</span>
-            <ExternalLink className="w-2.5 h-2.5" />
-          </button>
-        </div>
+      <video
+        ref={videoRef}
+        key={currentVideoSrc}
+        src={currentVideoSrc}
+        autoPlay
+        muted={isMuted}
+        playsInline
+        loop
+        preload="auto"
+        onCanPlay={() => {
+          if (videoRef.current?.paused) {
+            videoRef.current.play().catch(() => {});
+          }
+        }}
+        onError={handleVideoError}
+        className="w-full h-full object-cover pointer-events-none select-none"
+      />
 
-        <div className="flex items-center gap-1.5">
-          {/* Mute / Unmute Toggle */}
-          <button
-            type="button"
-            onClick={toggleMute}
-            className="p-1.5 rounded-lg bg-zinc-900 text-zinc-300 hover:text-white border border-zinc-700 cursor-pointer transition-colors"
-            aria-label={isMuted ? 'Unmute' : 'Mute'}
-            title={isMuted ? 'Unmute audio' : 'Mute audio'}
-          >
-            {isMuted ? <VolumeX className="w-3.5 h-3.5 text-amber-400" /> : <Volume2 className="w-3.5 h-3.5 text-emerald-400" />}
-          </button>
+      {/* Minimal Overlay Controls Only (Mute + 2s Next Video + Close) — stays safely inside app */}
+      <div
+        className={`absolute z-10 flex items-center gap-1 ${
+          mini ? 'top-1.5 right-1.5' : 'top-2 right-2 gap-1.5'
+        }`}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <button
+          type="button"
+          onClick={toggleMute}
+          className={`${
+            mini ? 'p-1' : 'p-1.5'
+          } rounded-lg bg-black/70 hover:bg-black/90 text-white cursor-pointer backdrop-blur-sm`}
+          aria-label={isMuted ? 'Unmute' : 'Mute'}
+        >
+          {isMuted ? (
+            <VolumeX className={mini ? 'w-3 h-3' : 'w-3.5 h-3.5'} />
+          ) : (
+            <Volume2 className={mini ? 'w-3 h-3' : 'w-3.5 h-3.5'} />
+          )}
+        </button>
 
-          {/* 2-Second Skip Button */}
+        {!mini && (
           <button
             type="button"
             onClick={handleSkipNext}
             disabled={skipSecondsLeft > 0}
-            className={`px-3 py-1 rounded-lg text-[10px] font-mono font-bold flex items-center gap-1 transition-all ${
+            className={`px-2 py-1 rounded-lg text-[11px] font-mono font-bold flex items-center gap-1 backdrop-blur-sm transition-all ${
               skipSecondsLeft > 0
-                ? 'bg-zinc-900 text-zinc-400 border border-zinc-800 cursor-not-allowed'
-                : 'bg-amber-500 hover:bg-amber-400 text-black cursor-pointer font-extrabold shadow-md'
+                ? 'bg-black/70 text-zinc-300 cursor-not-allowed'
+                : 'bg-amber-500 hover:bg-amber-400 text-black cursor-pointer font-extrabold'
             }`}
           >
             <SkipForward className="w-3 h-3" />
-            <span>{skipSecondsLeft > 0 ? `Skip in ${skipSecondsLeft}s` : 'Skip'}</span>
+            <span>{skipSecondsLeft > 0 ? `${skipSecondsLeft}s` : 'Next'}</span>
           </button>
+        )}
 
-          {onDismiss && (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onDismiss();
-              }}
-              className="p-1 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white border border-zinc-800 cursor-pointer"
-              aria-label="Close"
-            >
-              <X className="w-3 h-3" />
-            </button>
-          )}
-        </div>
+        {onDismiss && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onDismiss();
+            }}
+            className={`${
+              mini ? 'p-1' : 'p-1.5'
+            } rounded-lg bg-black/70 hover:bg-black/90 text-white cursor-pointer backdrop-blur-sm`}
+            aria-label="Close"
+          >
+            <X className={mini ? 'w-3 h-3' : 'w-3.5 h-3.5'} />
+          </button>
+        )}
       </div>
+    </div>
+  );
+};
 
-      {/* Real Video Player Box */}
-      <div
-        onClick={handleOpenClickThrough}
-        className={`relative w-full rounded-xl bg-black border border-zinc-800 overflow-hidden flex items-center justify-center cursor-pointer group ${
-          compact ? 'min-h-[140px] max-h-[200px]' : 'min-h-[180px] max-h-[260px]'
-        }`}
-      >
-        <video
-          ref={videoRef}
-          key={currentVideoSrc}
-          src={currentVideoSrc}
-          autoPlay
-          muted={isMuted}
-          playsInline
-          loop
-          className="w-full h-full object-contain"
+/**
+ * Centered Compact Playing Video Ad WITH a Small Banner Ad directly below it.
+ * Used between every 3 cards, below 3-feature grids, and underneath long paragraphs (~8-10+ lines).
+ */
+export const VideoWithSmallBannerAd: React.FC<{
+  slotId: string;
+  slotIndex?: number;
+  startIndex?: number;
+  compact?: boolean;
+}> = ({ slotId, slotIndex = 0, startIndex = 0, compact = true }) => {
+  return (
+    <div className="col-span-full w-full max-w-xl mx-auto my-3 flex flex-col items-center gap-2">
+      <div className="w-full">
+        <SkippableVideoAdUnit
+          slotId={`${slotId}-video`}
+          compact={compact}
+          startIndex={startIndex}
         />
+      </div>
+      <div className="w-full flex items-center justify-center">
+        <DualNetworkBannerFrame
+          slotId={`${slotId}-small-banner`}
+          slotIndex={slotIndex}
+          preferFormat="banner"
+          title={`Banner ${slotId}`}
+        />
+      </div>
+    </div>
+  );
+};
 
-        {/* Sponsor overlay hint */}
-        <div className="absolute inset-x-0 bottom-0 p-2 bg-gradient-to-t from-black/90 via-black/40 to-transparent flex items-center justify-between text-[10px] font-mono text-zinc-300 opacity-90 group-hover:opacity-100 transition-opacity">
-          <span className="flex items-center gap-1 text-amber-300">
-            <span>Tap to open offer</span>
-            <ExternalLink className="w-2.5 h-2.5" />
-          </span>
-          <span className="text-zinc-500">{isMuted ? 'Audio Muted' : 'Sound ON'}</span>
+/**
+ * Top In-Flow Compact Video + Small Banner directly below.
+ */
+export const TopBannerAd: React.FC = () => {
+  return (
+    <div className="w-full max-w-4xl mx-auto mb-4 flex flex-col items-center gap-2">
+      <div className="w-full max-w-md mx-auto">
+        <SkippableVideoAdUnit slotId="top-flow-video" compact startIndex={0} />
+      </div>
+      <DualNetworkBannerFrame
+        slotId="top-flow"
+        slotIndex={0}
+        preferFormat="banner"
+        title="Top Banner"
+      />
+    </div>
+  );
+};
+
+/**
+ * Compact Video Ad Pair with Small Banner right below.
+ */
+export const InlineVideoAdPair: React.FC<{ sectionId: string }> = ({ sectionId }) => {
+  return (
+    <div className="w-full max-w-5xl mx-auto my-3 space-y-2.5">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <SkippableVideoAdUnit slotId={`${sectionId}-vid-1`} compact startIndex={0} />
+        <SkippableVideoAdUnit slotId={`${sectionId}-vid-2`} compact startIndex={1} />
+      </div>
+      <div className="flex items-center justify-center">
+        <DualNetworkBannerFrame
+          slotId={`${sectionId}-sub-banner`}
+          slotIndex={1}
+          preferFormat="banner"
+          title={`Sub Banner ${sectionId}`}
+        />
+      </div>
+    </div>
+  );
+};
+
+/**
+ * Full-Width Showcase (Centered Playing Video + Dual Small Banners below).
+ */
+export const FullWidthShowcaseAd: React.FC<{ slotId: string }> = ({ slotId }) => {
+  return (
+    <div className="col-span-full w-full max-w-5xl mx-auto my-3 space-y-2.5">
+      <div className="max-w-lg mx-auto w-full">
+        <SkippableVideoAdUnit slotId={`${slotId}-center-vid`} compact startIndex={2} />
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-12 gap-2.5 items-center">
+        <div className="md:col-span-6 w-full flex items-center justify-center">
+          <DualNetworkBannerFrame
+            slotId={`${slotId}-wide`}
+            slotIndex={0}
+            preferFormat="banner"
+            title={`Showcase Wide ${slotId}`}
+          />
+        </div>
+        <div className="md:col-span-6 w-full flex items-center justify-center">
+          <DualNetworkBannerFrame
+            slotId={`${slotId}-alt`}
+            slotIndex={1}
+            preferFormat="banner"
+            title={`Showcase Alt ${slotId}`}
+          />
         </div>
       </div>
     </div>
@@ -437,83 +695,7 @@ export const SkippableVideoAdUnit: React.FC<{
 };
 
 /**
- * Top In-Flow Banner placed cleanly BELOW Language Bar & Header.
- * Automatically alternates between Adsterra (728x90/320x50) and HilltopAds (300x100).
- */
-export const TopBannerAd: React.FC = () => {
-  return (
-    <aside
-      aria-label="Top Sponsored Banner"
-      className="w-full max-w-5xl mx-auto mb-5 rounded-2xl bg-[#0e101c] border border-zinc-800/90 px-3 py-2.5 flex flex-col items-center justify-center gap-1 shadow-lg"
-    >
-      <div className="w-full flex items-center justify-center min-h-[104px]">
-        <DualNetworkBannerFrame
-          slotId="top-flow"
-          slotIndex={0}
-          preferFormat="wide"
-          title="Top Banner Advertisement"
-        />
-      </div>
-    </aside>
-  );
-};
-
-/**
- * Inline Video Ad Pair (1-2 Compact Real Commercial Videos with 2-Second Skip).
- */
-export const InlineVideoAdPair: React.FC<{ sectionId: string }> = ({ sectionId }) => {
-  return (
-    <section
-      aria-label="Featured Video Ads"
-      className="w-full max-w-5xl mx-auto my-4 grid grid-cols-1 md:grid-cols-2 gap-3.5"
-    >
-      <SkippableVideoAdUnit slotId={`${sectionId}-vid-1`} compact startIndex={0} />
-      <SkippableVideoAdUnit slotId={`${sectionId}-vid-2`} compact startIndex={1} />
-    </section>
-  );
-};
-
-/**
- * Large Full-Width Center Showcase Image Banner.
- * Features Adsterra and HilltopAds side-by-side or rotating.
- */
-export const FullWidthShowcaseAd: React.FC<{ slotId: string }> = ({ slotId }) => {
-  return (
-    <aside
-      aria-label="Full-Width Sponsored Showcase"
-      className="col-span-full w-full mx-auto my-3 rounded-2xl bg-gradient-to-b from-[#111528] to-[#0b0d17] border border-amber-500/25 p-4 sm:p-5 shadow-2xl flex flex-col items-center justify-center gap-3"
-    >
-      <div className="w-full flex items-center justify-between">
-        <span className="text-[10px] font-mono uppercase tracking-widest text-amber-400/80">
-          Featured Sponsor Spotlight
-        </span>
-        <span className="text-[10px] font-mono text-zinc-500">Dual Network Live</span>
-      </div>
-      <div className="w-full grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
-        <div className="md:col-span-6 w-full flex items-center justify-center rounded-xl bg-[#07080f] border border-zinc-800/80 p-2 min-h-[120px]">
-          <DualNetworkBannerFrame
-            slotId={`${slotId}-wide`}
-            slotIndex={0}
-            preferFormat="wide"
-            title={`Full-Width Showcase Wide ${slotId}`}
-          />
-        </div>
-        <div className="md:col-span-6 w-full flex items-center justify-center rounded-xl bg-[#07080f] border border-zinc-800/80 p-2 min-h-[260px]">
-          <DualNetworkBannerFrame
-            slotId={`${slotId}-square`}
-            slotIndex={1}
-            preferFormat="square"
-            title={`Full-Width Showcase Feature ${slotId}`}
-          />
-        </div>
-      </div>
-    </aside>
-  );
-};
-
-/**
- * Centered In-Feed Banner Card placed between items.
- * Alternates between Adsterra and HilltopAds (300x250 / 728x90).
+ * Pure In-Feed Banner (placed where compact small banner is needed — NO box, NO title).
  */
 export const InFeedBannerAd: React.FC<{
   slotId: string;
@@ -523,69 +705,70 @@ export const InFeedBannerAd: React.FC<{
   const preferFormat = size === 'large' ? 'square' : size === 'wide' ? 'wide' : 'banner';
 
   return (
-    <aside
-      aria-label="In-Feed Sponsored Card"
-      className="col-span-full w-full max-w-4xl mx-auto my-2.5 rounded-2xl bg-[#0e101c] border border-zinc-800/90 p-3 sm:p-4 shadow-xl flex flex-col items-center justify-center gap-2"
-    >
-      <div className="w-full flex items-center justify-center min-h-[110px]">
-        <DualNetworkBannerFrame
-          slotId={slotId}
-          slotIndex={slotIndex}
-          preferFormat={preferFormat}
-          title={`Sponsored Banner ${slotId}`}
-        />
-      </div>
-    </aside>
+    <div className="col-span-full w-full max-w-4xl mx-auto my-2 flex items-center justify-center">
+      <DualNetworkBannerFrame
+        slotId={slotId}
+        slotIndex={slotIndex}
+        preferFormat={preferFormat}
+        title={`In-Feed Banner ${slotId}`}
+      />
+    </div>
   );
 };
 
 /**
- * Non-blocking 2-Second In-Page Video Ad Overlay.
- * Triggered on option selections: plays the REAL commercial video with sound controls,
- * auto-closes after 2 seconds or on skip, with direct link to sponsor.
+ * 2-Second Auto-Cut In-Page Video Ad Overlay:
+ * - Triggered smoothly inside the website (40s after opening) — zero external page redirects.
+ * - Only opens when verified SFW VAST video stream is available.
+ * - Auto-skips cleanly in 2 seconds AND offers an immediate Skip button on the video corner.
  */
 export const TwoSecondVideoBreakOverlay: React.FC<{
   open: boolean;
   onClose: () => void;
 }> = ({ open, onClose }) => {
-  const [msLeft, setMsLeft] = useState<number>(2200);
+  const [msLeft, setMsLeft] = useState<number>(2000);
   const [isMuted, setIsMuted] = useState<boolean>(true);
-  const [videoSrc, setVideoSrc] = useState<string>(VERIFIED_VAST_COMMERCIALS[0]);
-  const [clickThrough, setClickThrough] = useState<string>(HILLTOP_CONFIG.vastVideoFeedUrl);
+  const [videoSrc, setVideoSrc] = useState<string>('');
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
 
   useEffect(() => {
     if (!open) return;
-    setMsLeft(2200);
+    setMsLeft(2000);
 
+    let cancelled = false;
     fetchLiveVastData().then((data) => {
+      if (cancelled) return;
       if (data?.allVideoUrls && data.allVideoUrls.length > 0) {
         const randomVid = data.allVideoUrls[Math.floor(Math.random() * data.allVideoUrls.length)];
         setVideoSrc(randomVid);
-        setClickThrough(data.clickThrough || HILLTOP_CONFIG.vastVideoFeedUrl);
+      } else {
+        onCloseRef.current();
       }
     });
 
     const start = performance.now();
     const interval = window.setInterval(() => {
       const elapsed = performance.now() - start;
-      const remaining = Math.max(0, 2200 - elapsed);
+      const remaining = Math.max(0, 2000 - elapsed);
       setMsLeft(remaining);
       if (remaining <= 0) {
         window.clearInterval(interval);
         onCloseRef.current();
       }
-    }, 80);
+    }, 60);
 
-    return () => window.clearInterval(interval);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
   }, [open]);
 
-  if (!open) return null;
+  if (!open || !videoSrc) return null;
 
   const secondsLeft = Math.max(1, Math.ceil(msLeft / 1000));
-  const pct = Math.min(100, Math.max(0, ((2200 - msLeft) / 2200) * 100));
+  const pct = Math.min(100, Math.max(0, ((2000 - msLeft) / 2000) * 100));
 
   const toggleMute = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -596,59 +779,39 @@ export const TwoSecondVideoBreakOverlay: React.FC<{
     });
   };
 
-  const handleOpenClick = () => {
-    if (typeof window !== 'undefined' && clickThrough) {
-      window.open(clickThrough, '_blank', 'noopener,noreferrer');
-    }
-  };
-
   return (
     <div
       role="dialog"
       aria-modal="true"
-      aria-label="In-Page 2-Second Video Ad"
-      className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-3"
+      className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-3"
       onClick={onClose}
     >
       <div
-        className="w-full max-w-lg rounded-2xl bg-[#0e101c] border border-amber-500/40 p-4 shadow-2xl space-y-3"
+        className="relative w-full max-w-md rounded-2xl overflow-hidden bg-black shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between gap-2">
-          <span className="text-[11px] font-mono font-bold text-amber-400 flex items-center gap-1.5">
-            <Play className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
-            <span>COMMERCIAL BREAK • {secondsLeft}s</span>
-          </span>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={toggleMute}
-              className="p-1 rounded bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border border-zinc-700 cursor-pointer"
-              title={isMuted ? 'Unmute' : 'Mute'}
-            >
-              {isMuted ? <VolumeX className="w-3.5 h-3.5 text-amber-400" /> : <Volume2 className="w-3.5 h-3.5 text-emerald-400" />}
-            </button>
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-3 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 text-black text-xs font-extrabold flex items-center gap-1 cursor-pointer shadow-md"
-            >
-              <SkipForward className="w-3.5 h-3.5" />
-              <span>Skip</span>
-            </button>
-          </div>
+        {/* Minimal Skip & Audio Controls overlaid on video */}
+        <div className="absolute top-2.5 right-2.5 z-20 flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={toggleMute}
+            className="p-1.5 rounded-lg bg-black/70 hover:bg-black/90 text-white cursor-pointer backdrop-blur-sm"
+            aria-label={isMuted ? 'Unmute' : 'Mute'}
+          >
+            {isMuted ? <VolumeX className="w-3.5 h-3.5" /> : <Volume2 className="w-3.5 h-3.5" />}
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-3 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 text-black text-xs font-extrabold flex items-center gap-1 cursor-pointer shadow-lg"
+          >
+            <SkipForward className="w-3.5 h-3.5" />
+            <span>Skip ({secondsLeft}s)</span>
+          </button>
         </div>
 
-        {/* Progress Bar */}
-        <div className="w-full h-1.5 rounded-full bg-zinc-800 overflow-hidden">
-          <div className="h-full bg-amber-400 transition-all duration-75" style={{ width: `${pct}%` }} />
-        </div>
-
-        {/* Real Video Player Container */}
-        <div
-          onClick={handleOpenClick}
-          className="relative w-full rounded-xl bg-black border border-zinc-800 overflow-hidden flex items-center justify-center min-h-[220px] max-h-[300px] cursor-pointer group"
-        >
+        {/* Pure In-Site Video Only (no forced external navigation) */}
+        <div className="w-full h-[220px] sm:h-[260px] flex items-center justify-center bg-black">
           <video
             ref={videoRef}
             src={videoSrc}
@@ -656,15 +819,13 @@ export const TwoSecondVideoBreakOverlay: React.FC<{
             muted={isMuted}
             playsInline
             loop
-            className="w-full h-full object-contain"
+            className="w-full h-full object-cover"
           />
-          <div className="absolute inset-x-0 bottom-0 p-2.5 bg-gradient-to-t from-black/90 to-transparent flex items-center justify-between text-xs font-mono text-zinc-300 opacity-90 group-hover:opacity-100 transition-opacity">
-            <span className="flex items-center gap-1 text-amber-300 font-bold">
-              <span>Open Sponsor Offer</span>
-              <ExternalLink className="w-3.5 h-3.5" />
-            </span>
-            <span className="text-zinc-400">{isMuted ? 'Muted' : 'Audio On'}</span>
-          </div>
+        </div>
+
+        {/* Sleek bottom 2s progress line */}
+        <div className="w-full h-1 bg-zinc-900">
+          <div className="h-full bg-amber-400 transition-all duration-75" style={{ width: `${pct}%` }} />
         </div>
       </div>
     </div>
@@ -672,21 +833,18 @@ export const TwoSecondVideoBreakOverlay: React.FC<{
 };
 
 /**
- * Floating Corner Mini Video Ad (Desktop)
+ * Small Persistent Corner Mini Video Player (Mobile + Desktop) — keeps playing smoothly inside the screen.
  */
 export const FloatingMiniVideoAd: React.FC = () => {
   const [visible, setVisible] = useState<boolean>(true);
   if (!visible) return null;
 
   return (
-    <div
-      aria-label="Floating Mini Video Ad"
-      className="hidden sm:block fixed bottom-4 right-4 z-30 w-[280px] shadow-2xl"
-    >
+    <div className="fixed bottom-[68px] sm:bottom-4 right-2 sm:right-4 z-30 w-[156px] sm:w-[230px] shadow-2xl rounded-xl overflow-hidden border border-zinc-800/80 bg-black">
       <SkippableVideoAdUnit
         slotId="floating-mini-vid"
-        compact
-        startIndex={2}
+        mini
+        startIndex={1}
         onDismiss={() => setVisible(false)}
       />
     </div>
@@ -694,23 +852,162 @@ export const FloatingMiniVideoAd: React.FC = () => {
 };
 
 /**
- * Bottom In-Flow Banner placed cleanly above bottom navigation.
- * Alternates between HilltopAds (300x100 / 300x250) and Adsterra.
+ * Bottom In-Flow Video + Small Banner right underneath.
  */
 export const BottomBannerAd: React.FC = () => {
   return (
-    <aside
-      aria-label="Bottom Sponsored Banner"
-      className="w-full max-w-5xl mx-auto mt-8 rounded-2xl bg-[#0e101c] border border-zinc-800/90 px-3 py-3 flex flex-col items-center justify-center gap-1 shadow-lg"
-    >
-      <div className="w-full flex items-center justify-center min-h-[104px]">
-        <DualNetworkBannerFrame
-          slotId="bottom-flow"
-          slotIndex={1}
-          preferFormat="wide"
-          title="Bottom Banner Advertisement"
-        />
+    <div className="w-full max-w-4xl mx-auto mt-6 mb-2 flex flex-col items-center gap-2">
+      <div className="w-full max-w-md mx-auto">
+        <SkippableVideoAdUnit slotId="bottom-flow-video" compact startIndex={1} />
       </div>
-    </aside>
+      <DualNetworkBannerFrame
+        slotId="bottom-flow"
+        slotIndex={1}
+        preferFormat="banner"
+        title="Bottom Banner"
+      />
+    </div>
   );
 };
+
+/**
+ * Clean Idle Editor Ad Strip (shown gently at top/bottom ONLY while not playing or actively editing/uploading).
+ */
+export const EditorIdleBannerBar: React.FC<{ slotId: string; compactVideo?: boolean }> = ({
+  slotId,
+  compactVideo = false,
+}) => {
+  return (
+    <div className="w-full flex items-center justify-center gap-2 px-2 py-1 bg-[#08090c] border-t border-zinc-900 shrink-0">
+      {compactVideo && (
+        <div className="w-[88px] sm:w-[130px] h-[48px] sm:h-[58px] rounded-lg overflow-hidden bg-black shrink-0 border border-zinc-800/80">
+          <SkippableVideoAdUnit slotId={`${slotId}-vid`} mini fillParent startIndex={0} />
+        </div>
+      )}
+      <div className="flex-1 flex items-center justify-center min-w-0 overflow-hidden">
+        <DualNetworkBannerFrame
+          slotId={slotId}
+          slotIndex={0}
+          preferFormat="banner"
+          title={`Editor ${slotId}`}
+        />
+      </div>
+    </div>
+  );
+};
+
+/**
+ * 10-Second Skippable Video Ad Break triggered cleanly ONLY during Export.
+ * Counts down 10 seconds (or immediately if no verified SFW VAST stream exists) and proceeds directly to 4K export.
+ */
+export const FourSecondExportVideoAd: React.FC<{
+  open: boolean;
+  onComplete: () => void;
+  durationMs?: number;
+}> = ({ open, onComplete, durationMs = 10000 }) => {
+  const [msLeft, setMsLeft] = useState<number>(durationMs);
+  const [isMuted, setIsMuted] = useState<boolean>(true);
+  const [videoSrc, setVideoSrc] = useState<string>('');
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const onCompleteRef = useRef(onComplete);
+  onCompleteRef.current = onComplete;
+
+  useEffect(() => {
+    if (!open) return;
+    setMsLeft(durationMs);
+    setVideoSrc('');
+
+    let cancelled = false;
+    fetchLiveVastData().then((data) => {
+      if (cancelled) return;
+      if (data?.allVideoUrls && data.allVideoUrls.length > 0) {
+        const randomVid = data.allVideoUrls[Math.floor(Math.random() * data.allVideoUrls.length)];
+        setVideoSrc(randomVid);
+      } else {
+        onCompleteRef.current();
+      }
+    });
+
+    const start = performance.now();
+    const interval = window.setInterval(() => {
+      const elapsed = performance.now() - start;
+      const remaining = Math.max(0, durationMs - elapsed);
+      setMsLeft(remaining);
+      if (remaining <= 0) {
+        window.clearInterval(interval);
+        onCompleteRef.current();
+      }
+    }, 60);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [open, durationMs]);
+
+  if (!open || !videoSrc) return null;
+
+  const secondsLeft = Math.max(1, Math.ceil(msLeft / 1000));
+  const pct = Math.min(100, Math.max(0, ((durationMs - msLeft) / durationMs) * 100));
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      className="fixed inset-0 z-[70] bg-black/85 backdrop-blur-md flex items-center justify-center p-4"
+    >
+      <div className="relative w-full max-w-md rounded-2xl overflow-hidden bg-black border border-zinc-800 shadow-2xl">
+        <div className="absolute top-3 right-3 z-20 flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              setIsMuted((prev) => {
+                const next = !prev;
+                if (videoRef.current) videoRef.current.muted = next;
+                return next;
+              });
+            }}
+            className="p-2 rounded-xl bg-black/75 text-white cursor-pointer"
+          >
+            {isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+          </button>
+          <button
+            type="button"
+            onClick={onComplete}
+            disabled={msLeft > 5000}
+            className={`px-3.5 py-2 rounded-xl text-xs font-extrabold flex items-center gap-1.5 shadow-lg ${
+              msLeft > 5000
+                ? 'bg-black/75 text-zinc-300 cursor-not-allowed'
+                : 'bg-white text-black hover:bg-amber-400 cursor-pointer'
+            }`}
+          >
+            <SkipForward className="w-3.5 h-3.5" />
+            <span>{msLeft > 5000 ? `${secondsLeft}s` : `Skip (${secondsLeft}s)`}</span>
+          </button>
+        </div>
+
+        <div className="w-full h-[230px] sm:h-[260px] flex items-center justify-center bg-black">
+          <video
+            ref={videoRef}
+            src={videoSrc}
+            autoPlay
+            muted={isMuted}
+            playsInline
+            loop
+            className="w-full h-full object-cover"
+          />
+        </div>
+
+        <div className="px-3 py-2 bg-[#0d0e14] flex items-center justify-between text-[11px] font-mono text-zinc-300">
+          <span>Preparing 4K Render...</span>
+          <span className="text-amber-400 font-bold">{secondsLeft}s</span>
+        </div>
+
+        <div className="w-full h-1.5 bg-zinc-900">
+          <div className="h-full bg-amber-400 transition-all duration-75" style={{ width: `${pct}%` }} />
+        </div>
+      </div>
+    </div>
+  );
+};
+
