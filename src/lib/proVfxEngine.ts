@@ -1087,29 +1087,106 @@ export function queryProMotions(category: string, search: string, page = 0, page
   return { items, total: matchCount };
 }
 
-// 12,000+ Foley, Gunshot, Sword & Cinema SFX
+// 15,000+ Film Foley: Thunder, Gunshots, Door Knock/Open, Keys, Car Start & Cinema SFX
 export const PRO_SFX_CATEGORIES = [
-  'All', 'Gunshots & Reload', 'Sword & Blood Impact', 'Whoosh & Swipes',
-  'Sub Bass Booms', 'Crime & Sirens', 'Thunder & Storm', 'Sci-Fi Lasers', 'UI & Glitch',
+  'All',
+  'Funny & Comedy (Reels & Shorts)',
+  'Thunder, Lightning & Rain',
+  'Gunshots & Reload',
+  'Door Knock & Open',
+  'Keys & Lock Unlocking',
+  'Car Start & Vehicle Foley',
+  'Footsteps & Body Move',
+  'Glass Break & Debris',
+  'Sword & Action Hits',
+  'Phone Ring & Clock Tick',
+  'Whoosh & Swipes',
+  'Sub Bass Booms & Sirens',
+  'Horror, Suspense & Sci-Fi',
 ];
-const SFX_ENGINE_RECIPES = ['boom', 'whoosh', 'whoosh', 'boom', 'siren', 'thunder', 'laser', 'glitch'] as const;
+const SFX_ENGINE_RECIPES = [
+  'pop',
+  'rain_thunder',
+  'gunshot',
+  'door_knock',
+  'key_unlock',
+  'car_start',
+  'footstep',
+  'glass_break',
+  'sword_slash',
+  'phone_ring',
+  'whoosh',
+  'boom',
+  'riser',
+] as const;
+
+const SFX_SUB_RECIPES: Array<readonly string[]> = [
+  ['pop', 'chime', 'whoosh'],
+  ['rain_thunder', 'thunder', 'rain_thunder'],
+  ['gunshot', 'gunshot', 'boom'],
+  ['door_knock', 'door_open', 'door_knock'],
+  ['key_unlock', 'door_open', 'key_unlock'],
+  ['car_start', 'car_start', 'boom'],
+  ['footstep', 'footstep', 'whoosh'],
+  ['glass_break', 'glass_break', 'boom'],
+  ['sword_slash', 'sword_slash', 'boom'],
+  ['phone_ring', 'clock_tick', 'chime'],
+  ['whoosh', 'whoosh', 'pop'],
+  ['boom', 'siren', 'heartbeat'],
+  ['riser', 'laser', 'glitch'],
+];
+
+const SFX_SEARCH_ALIASES: Record<number, string> = {
+  0: 'funny comedy reels shorts meme slapstick boing whistle തമാശ കോമഡി റീൽസ് மீம்ஸ்',
+  1: 'thunder lightning rain storm ഇടിമിന്നൽ മഴ बिजली बारिश இடி மழை',
+  2: 'gunshot gun pistol rifle reload shoot വെടിവെപ്പ് തോക്ക് गोली बंदूक துப்பாக்கி',
+  3: 'door knock open slam creak വാതിൽ തട്ടൽ തുറക്കൽ दरवाज़ा खटखटाना கதவு',
+  4: 'key unlock lock padlock open താക്കോൽ പൂട്ട് തുറക്കൽ चाबी ताला சாவி பூட்டு',
+  5: 'car vehicle engine ignition start bike auto കാർ വണ്ടി സ്റ്റാർട്ട് गाड़ी स्टार्ट கார்',
+  6: 'footsteps walk run gravel mud നടത്തം കാൽപ്പെരുമാറ്റം कदम காலடி',
+  7: 'glass break shatter bottle mirror debris ചില്ല് പൊട്ടൽ काँच கண்ணாடி',
+  8: 'sword katana slash fight punch blood വാൾ അടി വെട്ട് तलवार வாள்',
+  9: 'phone ring bell clock tick alarm ഫോൺ ബെൽ ക്ലോക്ക് फोन घंटी போன்',
+  10: 'whoosh swipe air wind transition വൂഷ് കാറ്റ് हवा காற்று',
+  11: 'boom bass sub explosion siren heartbeat ബൂം സൈറൺ धमाका सायरन பாம்',
+  12: 'horror suspense thriller laser sci-fi പ്രേതം ഹൊറർ സസ്പെൻസ് हॉरर திகில்',
+};
+
+const SFX_FOLEY_VARIANTS: Array<readonly string[]> = [
+  ['Cartoon Boing Spring', 'Slide Whistle Up', 'Fail Buzzer Horn', 'Prank Air Horn', 'Comic Slap Thwack'],
+  ['Thunderclap', 'Lightning Strike', 'Monsoon Rain', 'Cloudburst', 'Distant Thunder'],
+  ['Pistol Shot', 'Rifle Burst', 'Shotgun Blast', 'Silenced Shot', 'Shell Reload'],
+  ['Wood Door Knock', 'Door Creak Open', 'Heavy Slam', 'Knock 3x Urgent', 'Latch Open'],
+  ['Key Insert Unlock', 'Padlock Open', 'Deadbolt Twist', 'Key Jingle', 'Locker Unlock'],
+  ['Car Ignition Start', 'Engine Crank Rev', 'Bike Kick Start', 'Diesel Jeep Start', 'Fast Car Pass'],
+  ['Gravel Footsteps', 'Running Steps', 'Wood Floor Step', 'Slow Stalk Step', 'Cloth Rustle'],
+  ['Window Shatter', 'Bottle Break', 'Mirror Crash', 'Ice Crack', 'Debris Fall'],
+  ['Katana Slash', 'Knife Whip', 'Heavy Punch', 'Steel Clash', 'Action Hit'],
+  ['Vintage Phone Ring', 'Mobile Vibrate', 'Clock Tick-Tock', 'Doorbell Ding', 'Countdown Beep'],
+  ['Air Whoosh', 'Fast Swipe', 'Cinema Whip', 'Wind Swoop', 'Flash Pass'],
+  ['Sub Bass Boom', 'Police Siren', 'Thriller Heartbeat', 'Trailer Drop', 'War Drum'],
+  ['Horror Riser', 'Ghost Breath', 'Laser Blast', 'Digital Glitch', 'Suspense Drone'],
+];
 
 export function queryProSfx(category: string, search: string, page = 0, pageSize = 36): { items: ProCatalogItem[]; total: number } {
   const realCats = PRO_SFX_CATEGORIES.slice(1);
   const q = search.trim().toLowerCase();
-  const perCat = Math.floor(TOTAL_PRO_SFX_COUNT / realCats.length); // 1,500 * 8 = 12,000
+  const perCat = Math.floor(TOTAL_PRO_SFX_COUNT / realCats.length); // 1,250 * 12 = 15,000
   const cats = category === 'All' || !realCats.includes(category) ? realCats : [category];
 
   const buildSfx = (cIdx: number, localIdx: number): ProCatalogItem => {
-    const engineId = SFX_ENGINE_RECIPES[cIdx % SFX_ENGINE_RECIPES.length];
+    const subRecipes = SFX_SUB_RECIPES[cIdx] || [SFX_ENGINE_RECIPES[cIdx % SFX_ENGINE_RECIPES.length]];
+    const engineId = subRecipes[localIdx % subRecipes.length];
+    const variants = SFX_FOLEY_VARIANTS[cIdx] || [realCats[cIdx]];
+    const variantLabel = variants[localIdx % variants.length];
     return {
       id: `psfx__${cIdx}__${localIdx}`,
       engineId,
-      name: `${realCats[cIdx]} SFX #${localIdx + 1}`,
+      name: `${variantLabel} #${localIdx + 1}`,
       category: realCats[cIdx],
       freq: 80 + (localIdx % 18) * 35,
       swatch: 'from-amber-400 via-orange-600 to-zinc-900',
-      sub: `48kHz Foley WAV`,
+      sub: `48kHz Foley WAV · ${realCats[cIdx]}`,
     };
   };
 
@@ -1130,7 +1207,9 @@ export function queryProSfx(category: string, search: string, page = 0, pageSize
   let matchCount = 0;
   for (const cName of cats) {
     const cIdx = realCats.indexOf(cName);
-    if (cName.toLowerCase().includes(q) || 'sfx'.includes(q)) {
+    const aliasText = (SFX_SEARCH_ALIASES[cIdx] || '').toLowerCase();
+    const variantsText = (SFX_FOLEY_VARIANTS[cIdx] || []).join(' ').toLowerCase();
+    if (cName.toLowerCase().includes(q) || aliasText.includes(q) || variantsText.includes(q) || 'sfx'.includes(q)) {
       if (matchCount + perCat > start && items.length < pageSize) {
         const ls = Math.max(0, start - matchCount);
         const le = Math.min(perCat, end - matchCount);
@@ -1681,6 +1760,7 @@ export interface ProStudioFeatureTool {
     | 'filters'
     | 'colorStudio'
     | 'chromaStudio'
+    | 'dualDialogue'
     | 'text'
     | 'captions'
     | 'motion'
@@ -1708,10 +1788,10 @@ const TOOL_GROUPS_SPEC: Array<{ group: string; target: ProStudioFeatureTool['tar
     group: 'Timeline & Premiere Edit (16 Tools)',
     target: 'continuity',
     names: [
-      'Selection Tool (V)', 'Razor / Split Cut (C)', 'Auto Scene Continuity', 'Ripple Delete Clip',
-      'Duplicate Clip Layer', 'Delete Selected Item', 'Add Video/VFX Track Line', 'Add Audio/Music Track Line',
+      'Selection Tool (V)', 'Razor / Split Cut (C)', 'Auto Scene Continuity', '1-Click Color & Position Match Join',
+      'Freeze Frame Capture', 'Delete Selected Item', 'Add Video/VFX Track Line', 'Add Audio/Music Track Line',
       '16:9 Widescreen Lock', 'Undo / Redo History', 'Jump to Start (Home)', 'Track Mute Toggle',
-      'Micro-Trim Start/End', 'Multi-Track Sync', 'Clear Track Lane', 'Save Project Meta',
+      'Micro-Trim Start/End', 'Multi-Track Sync', 'Ripple Delete Clip', 'Duplicate Clip Layer',
     ],
   },
   {
@@ -1725,13 +1805,13 @@ const TOOL_GROUPS_SPEC: Array<{ group: string; target: ProStudioFeatureTool['tar
     ],
   },
   {
-    group: 'Masking, Erase & Character Studio · 30,000+ (15 Tools)',
+    group: 'Dual Dialogue, Masking & Character · 30,000+ (15 Tools)',
     target: 'masking',
     names: [
-      'Isolate Character Mask', 'Erase / Mask Out Object', 'Nested Double Mask (Mask in Mask)', 'Feather Blur Edge Mask',
-      'Circle & Oval Spotlight Mask', 'Split Vertical / Diagonal Mask', 'Add Shooter Character', 'Add Villain / Target Character',
-      'Flip Character Side (Left/Right)', 'Sword Warrior Character', 'Pursuit Car / Bike / Chopper', 'Keyframe Motion Graph Editor',
-      'Bullet Path Graph (A to B)', 'Character Walk & Dodge Graph', 'Draggable Bezier Curve Handles',
+      'Dual Face-to-Face Dialogue Studio', 'Isolate Character Mask', 'Erase / Mask Out Object', 'Nested Double Mask (Mask in Mask)',
+      'Feather Blur Edge Mask', 'Circle & Oval Spotlight Mask', 'Split Vertical / Diagonal Mask', 'Add Shooter Character',
+      'Add Villain / Target Character', 'Flip Character Side (Left/Right)', 'Sword Warrior Character', 'Pursuit Car / Bike / Chopper',
+      'Keyframe Motion Graph Editor', 'Bullet Path Graph (A to B)', 'Draggable Bezier Curve Handles',
     ],
   },
   {
@@ -1775,13 +1855,13 @@ const TOOL_GROUPS_SPEC: Array<{ group: string; target: ProStudioFeatureTool['tar
     ],
   },
   {
-    group: 'Pro Audio, SFX & 4K Export · 30,000+ (14 Tools)',
+    group: 'Pro Audio, Foley SFX & 4K Export · 30,000+ (14 Tools)',
     target: 'audio',
     names: [
-      'Gunshot & Reload Foley', 'Sword & Blood Impact SFX', 'Cinema Whoosh Swipes', 'Sub Bass Trailer Booms',
-      'Crime Tension & Sirens', 'Thunder & Weather SFX', 'Sci-Fi Laser Presets', '15,000+ Music & Scores',
-      'Import Phone/PC Audio', 'Live Mic Voiceover REC', 'Audio Track Fade & Mix', 'Interactive Screen Doodles',
-      'Sticker Emoji Overlays', '4K UHD 60fps MP4 Export & History',
+      'SFX Joint Chain Stitcher', 'Door Knock, Open & Key Lock SFX', 'Car Start & Vehicle Foley SFX', 'Thunder, Lightning & Rain SFX',
+      'Gunshot & Reload Foley', 'Footsteps, Glass Break & Phone SFX', 'Cinema Whoosh Swipes', 'Sub Bass Booms & Sirens',
+      '15,000+ Music & Scores', 'Import Phone/PC Audio', 'Live Mic Voiceover REC', 'Audio Track Fade & Mix',
+      'Interactive Screen Doodles', '4K UHD 60fps MP4 Export & History',
     ],
   },
 ];
@@ -1793,7 +1873,9 @@ export const PRO_121_FEATURES: ProStudioFeatureTool[] = (() => {
     for (const nm of grp.names) {
       let t = grp.target;
       const l = nm.toLowerCase();
-      if (l.includes('character') || l.includes('shooter') || l.includes('villain') || l.includes('warrior') || l.includes('car / bike')) {
+      if (l.includes('face-to-face') || l.includes('dual dialogue')) {
+        t = 'dualDialogue';
+      } else if (l.includes('character') || l.includes('shooter') || l.includes('villain') || l.includes('warrior') || l.includes('car / bike')) {
         t = 'character';
       } else if (l.includes('graph') || l.includes('bezier') || l.includes('bullet path')) {
         t = 'graph';
@@ -1805,7 +1887,7 @@ export const PRO_121_FEATURES: ProStudioFeatureTool[] = (() => {
         t = 'sticker';
       } else if (l.includes('voice')) {
         t = 'voice';
-      } else if (l.includes('sfx') || l.includes('foley') || l.includes('gunshot') || l.includes('boom') || l.includes('siren') || l.includes('whoosh') || l.includes('laser') || l.includes('thunder')) {
+      } else if (l.includes('sfx') || l.includes('foley') || l.includes('gunshot') || l.includes('boom') || l.includes('siren') || l.includes('whoosh') || l.includes('laser') || l.includes('thunder') || l.includes('door') || l.includes('car start') || l.includes('footsteps')) {
         t = 'sfx';
       } else if (l.includes('export')) {
         t = 'export';

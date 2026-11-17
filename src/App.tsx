@@ -30,6 +30,9 @@ import {
   Heart,
   History,
   Scissors,
+  LogIn,
+  Trash2,
+  Calendar,
 } from 'lucide-react';
 import {
   getRedirectResult,
@@ -75,7 +78,7 @@ import {
   InFeedBannerAd,
 } from './components/AdsterraAds';
 import { AdminDashboard } from './components/AdminDashboard';
-import { SavedStoriesModal, type SavedStoryItem } from './components/SavedStoriesModal';
+import { type SavedStoryItem } from './components/SavedStoriesModal';
 import { VideoEditorStudio } from './components/VideoEditorStudio';
 import {
   initGuestSession,
@@ -149,11 +152,12 @@ function isLongParagraphBlock(text: string, lineThreshold = 8, charThreshold = 4
 }
 
 export default function App() {
-  const [lang, setLang] = useState<AppLang>('ml');
+  const [lang, setLang] = useState<AppLang>('en');
   const t = UI_TRANSLATIONS[lang];
 
-  // Navigation Step: 'input' (Page 1) | 'options' (Page 2) | 'prompts' (Page 3) | 'editor' (4K Video Studio)
-  const [activeStep, setActiveStep] = useState<'input' | 'options' | 'prompts' | 'editor'>('input');
+  // Navigation Step: 'input' | 'options' | 'prompts' | 'editor' | 'history' | 'login'
+  const [activeStep, setActiveStep] = useState<'input' | 'options' | 'prompts' | 'editor' | 'history' | 'login'>('input');
+  const [lastStoryStep, setLastStoryStep] = useState<'input' | 'options' | 'prompts'>('input');
   const [premise, setPremise] = useState<string>('');
   const [shotDurationSec, setShotDurationSec] = useState<number>(8);
 
@@ -203,7 +207,7 @@ export default function App() {
       return [];
     }
   });
-  const [showSavedStoriesModal, setShowSavedStoriesModal] = useState<boolean>(false);
+  const [historyFilterMode, setHistoryFilterMode] = useState<'all' | 'loved'>('all');
   const [continuationBadge, setContinuationBadge] = useState<string | null>(null);
   const [saveSuccessMessage, setSaveSuccessMessage] = useState<string | null>(null);
 
@@ -218,7 +222,6 @@ export default function App() {
   const ttsCacheRef = useRef<Map<string, string>>(new Map());
   const speechSessionRef = useRef<number>(0);
   const optionClickCountRef = useRef<number>(0);
-  const gmailSectionRef = useRef<HTMLDivElement | null>(null);
   const savedStoriesRef = useRef<SavedStoryItem[]>(savedStories);
   savedStoriesRef.current = savedStories;
 
@@ -424,7 +427,8 @@ export default function App() {
 
   useEffect(() => {
     stopAllSpeech();
-    if (activeStep !== 'editor') {
+    if (activeStep === 'input' || activeStep === 'options' || activeStep === 'prompts') {
+      setLastStoryStep(activeStep);
       trackStepChange(activeStep);
     }
     if (typeof window !== 'undefined') {
@@ -1070,7 +1074,6 @@ export default function App() {
 
     setPremise(continuationPrompt);
     setContinuationBadge(storyTitle);
-    setShowSavedStoriesModal(false);
     setActiveStep('input');
     if (typeof window !== 'undefined') {
       window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -1078,7 +1081,6 @@ export default function App() {
   };
 
   const handleLoadSavedStory = (story: SavedStoryItem) => {
-    setShowSavedStoriesModal(false);
     if (story.shots && story.shots.length > 0) {
       setSelectedAngle(story.angle);
       setShots(story.shots);
@@ -1129,67 +1131,30 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-[#090a0f] text-zinc-100 flex flex-col font-sans selection:bg-amber-500 selection:text-black max-w-full overflow-x-clip touch-pan-y">
-      {/* Top Global Language Switcher Bar (Always Unobstructed) */}
-      <div className="bg-[#07080d] border-b border-zinc-800/80 px-3.5 sm:px-6 lg:px-8 py-2">
-        <div className="max-w-7xl mx-auto flex items-center justify-between gap-2.5">
-          <div className="flex items-center gap-1.5 text-xs font-bold text-amber-400 shrink-0">
-            <Globe className="w-3.5 h-3.5 shrink-0" />
-            <span className="hidden sm:inline">{t.languageLabel}:</span>
+      {/* Top Global Language Switcher Bar (Clean Dropdown Card) */}
+      <div className="bg-[#07080d] border-b border-zinc-800/80 px-3.5 sm:px-6 lg:px-8 py-2.5">
+        <div className="max-w-7xl mx-auto flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 text-xs font-bold text-amber-400">
+            <Globe className="w-4 h-4" />
+            <span>{t.languageLabel}:</span>
           </div>
-          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar whitespace-nowrap sm:flex-wrap py-0.5">
-            {LANGUAGE_OPTIONS.map((option) => {
-              const isSelected = lang === option.code;
-              return (
-                <button
-                  key={option.code}
-                  type="button"
-                  onClick={() => handleLanguageChange(option.code)}
-                  className={`px-2.5 py-1.5 sm:py-1 rounded-lg text-xs font-bold transition-all cursor-pointer shrink-0 ${
-                    isSelected
-                      ? 'bg-amber-500 text-black font-extrabold shadow-sm shadow-amber-500/20'
-                      : 'bg-zinc-900 text-zinc-300 hover:text-white hover:bg-zinc-800 border border-zinc-800'
-                  }`}
-                >
-                  {option.nativeName}
-                </button>
-              );
-            })}
-          </div>
-
-          {!showAdminPanel && (
-            <button
-              type="button"
-              onClick={() => {
-                if (currentUser) {
-                  setShowSavedStoriesModal(true);
-                } else {
-                  gmailSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                }
-              }}
-              className={`hidden md:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold border transition-all cursor-pointer shrink-0 ${
-                currentUser
-                  ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/20'
-                  : 'bg-zinc-900 border-amber-500/30 text-amber-300 hover:bg-zinc-800'
-              }`}
-              title={currentUser?.email || 'Google Gmail Auto-Sync'}
+          <div className="relative">
+            <select
+              value={lang}
+              onChange={(e) => handleLanguageChange(e.target.value as AppLang)}
+              className="bg-zinc-900 border border-amber-500/40 text-amber-300 rounded-xl px-3.5 py-1.5 text-xs font-bold font-sans cursor-pointer focus:outline-none focus:border-amber-400 shadow-sm"
             >
-              {currentUser ? (
-                <>
-                  <Cloud className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                  <span className="max-w-[140px] truncate">{currentUser.email}</span>
-                </>
-              ) : (
-                <>
-                  <Mail className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                  <span>{lang === 'ml' ? 'Gmail സേവ്' : 'Gmail Sync'}</span>
-                </>
-              )}
-            </button>
-          )}
+              {LANGUAGE_OPTIONS.map((opt) => (
+                <option key={opt.code} value={opt.code} className="bg-zinc-900 text-white">
+                  {opt.nativeName} ({opt.label})
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
       </div>
 
-      {/* App Header with Desktop Breadcrumb Step Indicator (unobstructed at top) */}
+      {/* App Header with Desktop Breadcrumb Step Indicator & Profile Avatar */}
       <header className="border-b border-zinc-800/80 px-3.5 sm:px-6 lg:px-8 py-3 sm:py-4 bg-[#0d0f17]/95 sm:sticky sm:top-0 z-30 backdrop-blur-md">
         <div className="max-w-7xl mx-auto flex items-center justify-between gap-3">
           <div className="flex items-center gap-2.5 min-w-0">
@@ -1204,6 +1169,14 @@ export default function App() {
                 {activeStep === 'input' && t.page1Subtitle}
                 {activeStep === 'options' && t.page2Subtitle(totalAngleCountDisplay)}
                 {activeStep === 'prompts' && t.page3Subtitle(formatDurationDisplay(), calculatedShotCount)}
+                {activeStep === 'history' &&
+                  (lang === 'ml'
+                    ? 'സേവ് ചെയ്ത കഥകളും ❤️ പ്രിയപ്പെട്ട പ്രോംപ്റ്റുകളും'
+                    : 'Saved Story History & ❤️ Favorites')}
+                {activeStep === 'login' &&
+                  (lang === 'ml'
+                    ? 'Google / ജിമെയിൽ ലോഗിൻ & ഓട്ടോ ക്ലൗഡ് സേവ്'
+                    : 'Google / Gmail Account Login & Auto Cloud Sync')}
                 {activeStep === 'editor' &&
                   (lang === 'ml'
                     ? '4K വീഡിയോ എഡിറ്റിംഗ് സ്റ്റുഡിയോ · കട്ടിംഗ്, ഫിൽട്ടർ, മ്യൂസിക് & 4K എക്സ്പോർട്ട്'
@@ -1212,97 +1185,91 @@ export default function App() {
             </div>
           </div>
 
-          {/* Mobile Compact 4K Video Editor Shortcut */}
-          <button
-            type="button"
-            onClick={() => {
-              setShowAdminPanel(false);
-              setActiveStep('editor');
-            }}
-            className={`sm:hidden px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1 whitespace-nowrap shrink-0 ${
-              !showAdminPanel && activeStep === 'editor'
-                ? 'bg-amber-500 text-black font-extrabold'
-                : 'bg-zinc-900 text-amber-300 border border-amber-500/40'
-            }`}
-          >
-            <Scissors className="w-3.5 h-3.5" />
-            <span>{lang === 'ml' ? '4K എഡിറ്റ്' : '4K Edit'}</span>
-          </button>
+          <div className="flex items-center gap-2.5 shrink-0">
+            {/* Desktop / Tablet Story Sub-Steps Indicator (Story steps only) */}
+            {(activeStep === 'input' || activeStep === 'options' || activeStep === 'prompts') && (
+              <div className="hidden sm:flex items-center gap-1.5 text-xs font-mono shrink-0">
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowAdminPanel(false);
+                      setActiveStep('input');
+                    }}
+                    className={`px-2.5 py-1 rounded-lg cursor-pointer transition-all whitespace-nowrap shrink-0 ${
+                      !showAdminPanel && activeStep === 'input'
+                        ? 'bg-amber-500 text-black font-extrabold'
+                        : 'bg-zinc-900 text-zinc-400 hover:text-white border border-zinc-800'
+                    }`}
+                  >
+                    {t.step1}
+                  </button>
+                  <ChevronRight className="w-3.5 h-3.5 text-zinc-600" />
+                  <button
+                    type="button"
+                    disabled={storyAngles.length === 0}
+                    onClick={() => {
+                      if (storyAngles.length > 0) {
+                        setShowAdminPanel(false);
+                        setActiveStep('options');
+                      }
+                    }}
+                    className={`px-2.5 py-1 rounded-lg transition-all whitespace-nowrap shrink-0 ${
+                      storyAngles.length === 0 ? 'opacity-40 cursor-not-allowed text-zinc-600' : 'cursor-pointer'
+                    } ${
+                      !showAdminPanel && activeStep === 'options'
+                        ? 'bg-amber-500 text-black font-extrabold'
+                        : 'bg-zinc-900 text-zinc-400 hover:text-white border border-zinc-800'
+                    }`}
+                  >
+                    {t.step2(storyAngles.length)}
+                  </button>
+                  <ChevronRight className="w-3.5 h-3.5 text-zinc-600" />
+                  <button
+                    type="button"
+                    disabled={!selectedAngle || shots.length === 0}
+                    onClick={() => {
+                      if (selectedAngle && shots.length > 0) {
+                        setShowAdminPanel(false);
+                        setActiveStep('prompts');
+                      }
+                    }}
+                    className={`px-2.5 py-1 rounded-lg transition-all whitespace-nowrap shrink-0 ${
+                      !selectedAngle ? 'opacity-40 cursor-not-allowed text-zinc-600' : 'cursor-pointer'
+                    } ${
+                      !showAdminPanel && activeStep === 'prompts'
+                        ? 'bg-amber-500 text-black font-extrabold'
+                        : 'bg-zinc-900 text-zinc-400 hover:text-white border border-zinc-800'
+                    }`}
+                  >
+                    {t.step3}
+                  </button>
+                </div>
+              </div>
+            )}
 
-          {/* Desktop / Tablet Breadcrumb Steps Navigation */}
-          <div className="hidden sm:flex items-center gap-1.5 text-xs font-mono shrink-0">
-            <div className="flex items-center gap-1.5">
-              <button
-                type="button"
-                onClick={() => {
-                  setShowAdminPanel(false);
-                  setActiveStep('input');
-                }}
-                className={`px-2.5 py-1 rounded-lg cursor-pointer transition-all whitespace-nowrap shrink-0 ${
-                  !showAdminPanel && activeStep === 'input'
-                    ? 'bg-amber-500 text-black font-extrabold'
-                    : 'bg-zinc-900 text-zinc-400 hover:text-white border border-zinc-800'
-                }`}
-              >
-                {t.step1}
-              </button>
-              <ChevronRight className="w-3.5 h-3.5 text-zinc-600" />
-              <button
-                type="button"
-                disabled={storyAngles.length === 0}
-                onClick={() => {
-                  if (storyAngles.length > 0) {
-                    setShowAdminPanel(false);
-                    setActiveStep('options');
-                  }
-                }}
-                className={`px-2.5 py-1 rounded-lg transition-all whitespace-nowrap shrink-0 ${
-                  storyAngles.length === 0 ? 'opacity-40 cursor-not-allowed text-zinc-600' : 'cursor-pointer'
-                } ${
-                  !showAdminPanel && activeStep === 'options'
-                    ? 'bg-amber-500 text-black font-extrabold'
-                    : 'bg-zinc-900 text-zinc-400 hover:text-white border border-zinc-800'
-                }`}
-              >
-                {t.step2(storyAngles.length)}
-              </button>
-              <ChevronRight className="w-3.5 h-3.5 text-zinc-600" />
-              <button
-                type="button"
-                disabled={!selectedAngle || shots.length === 0}
-                onClick={() => {
-                  if (selectedAngle && shots.length > 0) {
-                    setShowAdminPanel(false);
-                    setActiveStep('prompts');
-                  }
-                }}
-                className={`px-2.5 py-1 rounded-lg transition-all whitespace-nowrap shrink-0 ${
-                  !selectedAngle ? 'opacity-40 cursor-not-allowed text-zinc-600' : 'cursor-pointer'
-                } ${
-                  !showAdminPanel && activeStep === 'prompts'
-                    ? 'bg-amber-500 text-black font-extrabold'
-                    : 'bg-zinc-900 text-zinc-400 hover:text-white border border-zinc-800'
-                }`}
-              >
-                {t.step3}
-              </button>
-              <ChevronRight className="w-3.5 h-3.5 text-zinc-600" />
-              <button
-                type="button"
-                onClick={() => {
-                  setShowAdminPanel(false);
-                  setActiveStep('editor');
-                }}
-                className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap shrink-0 ${
-                  !showAdminPanel && activeStep === 'editor'
-                    ? 'bg-amber-500 text-black font-extrabold'
-                    : 'bg-zinc-900 text-amber-300 hover:text-white border border-amber-500/35'
-                }`}
-              >
-                <Scissors className="w-3.5 h-3.5" />
-                <span>{lang === 'ml' ? '4K വീഡിയോ എഡിറ്റർ' : '4K Video Editor'}</span>
-              </button>
-            </div>
+            {/* Profile Avatar / Login Button on Top Header */}
+            <button
+              type="button"
+              onClick={() => setActiveStep('login')}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-xs font-bold transition-all cursor-pointer shrink-0"
+              title={currentUser?.email || 'Login / Profile'}
+            >
+              {currentUser?.photoURL ? (
+                <img
+                  src={currentUser.photoURL}
+                  alt={currentUser.displayName || 'User'}
+                  className="w-7 h-7 rounded-full object-cover border border-amber-500/50"
+                />
+              ) : (
+                <div className="w-7 h-7 rounded-full bg-amber-500/20 text-amber-400 font-bold flex items-center justify-center shrink-0 border border-amber-500/30">
+                  {(currentUser?.email || 'U').charAt(0).toUpperCase()}
+                </div>
+              )}
+              <span className="max-w-[110px] truncate hidden sm:inline text-zinc-200">
+                {currentUser?.displayName || currentUser?.email || (lang === 'ml' ? 'ലോഗിൻ' : 'Login')}
+              </span>
+            </button>
           </div>
         </div>
       </header>
@@ -1323,8 +1290,8 @@ export default function App() {
         />
       ) : (
         <>
-          {/* Main Container (Safe bottom clearance above mobile bottom nav so no buttons are covered) */}
-          <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-6 pb-24 sm:pb-10 overflow-x-clip touch-pan-y">
+          {/* Main Container (Safe bottom clearance above fixed 4-tab bottom nav on both mobile & desktop) */}
+          <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-6 pb-24 overflow-x-clip touch-pan-y">
             {/* Top In-Flow Banner placed cleanly below Language Bar & Header */}
             <TopBannerAd />
 
@@ -1351,37 +1318,23 @@ export default function App() {
                   <BookOpen className="w-4 h-4 shrink-0" />
                   <span>{t.premiseLabel}</span>
                 </label>
-                <div className="flex items-center gap-2 flex-wrap">
+                {premise.length > 0 && (
                   <button
                     type="button"
-                    onClick={() => setShowSavedStoriesModal(true)}
-                    className="flex items-center gap-1.5 text-xs text-amber-400 hover:text-black hover:bg-amber-500 bg-zinc-900 border border-amber-500/30 px-2.5 py-1 rounded-lg transition-all cursor-pointer font-bold"
+                    onClick={() => {
+                      setPremise('');
+                      setStoryAngles([]);
+                      setSelectedAngle(null);
+                      setShots([]);
+                      setContinuationBadge(null);
+                    }}
+                    className="flex items-center gap-1 text-xs text-amber-400 hover:text-amber-300 bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 px-2.5 py-1 rounded-lg transition-colors cursor-pointer"
+                    title={t.clearBtn}
                   >
-                    <History className="w-3.5 h-3.5" />
-                    <span>
-                      {lang === 'ml'
-                        ? `ഹിസ്റ്ററി & ❤️ സേവ് (${savedStories.length})`
-                        : `History (${savedStories.length})`}
-                    </span>
+                    <X className="w-3.5 h-3.5" />
+                    <span>{t.clearBtn}</span>
                   </button>
-                  {premise.length > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setPremise('');
-                        setStoryAngles([]);
-                        setSelectedAngle(null);
-                        setShots([]);
-                        setContinuationBadge(null);
-                      }}
-                      className="flex items-center gap-1 text-xs text-amber-400 hover:text-amber-300 bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 px-2.5 py-1 rounded-lg transition-colors cursor-pointer"
-                      title={t.clearBtn}
-                    >
-                      <X className="w-3.5 h-3.5" />
-                      <span>{t.clearBtn}</span>
-                    </button>
-                  )}
-                </div>
+                )}
               </div>
 
               {continuationBadge && (
@@ -1648,19 +1601,6 @@ export default function App() {
                     ))}
                   </div>
                 </div>
-
-                <button
-                  type="button"
-                  onClick={() => setShowSavedStoriesModal(true)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-900 hover:bg-amber-500 hover:text-black text-rose-400 border border-rose-500/30 text-xs font-bold transition-all cursor-pointer"
-                >
-                  <History className="w-3.5 h-3.5" />
-                  <span>
-                    {lang === 'ml'
-                      ? `ഹിസ്റ്ററി (${savedStories.length})`
-                      : `History (${savedStories.length})`}
-                  </span>
-                </button>
 
                 <span className="text-xs font-mono text-zinc-300 bg-amber-500/10 px-3 py-1.5 rounded-lg border border-amber-500/20">
                   {t.selectedTimeLabel} <strong className="text-amber-400 font-bold">{formatDurationDisplay()}</strong> ({calculatedShotCount} {t.clipsWord})
@@ -2540,32 +2480,6 @@ ${imgPromptText}`;
                       <span>{lang === 'ml' ? '💾 കഥയും പ്രോംപ്റ്റുകളും സേവ് ചെയ്യുക' : 'Save Story & Prompts'}</span>
                     </button>
                   </div>
-
-                    {/* Open 4K Video Editor Studio Button */}
-                    <button
-                      type="button"
-                      onClick={() => setActiveStep('editor')}
-                      className="w-full sm:w-auto px-5 py-3 rounded-xl bg-zinc-900 hover:bg-amber-500 hover:text-black border border-amber-500/40 text-amber-300 font-extrabold text-xs uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-2"
-                    >
-                      <Scissors className="w-4 h-4" />
-                      <span>{lang === 'ml' ? '🎬 4K വീഡിയോ എഡിറ്റർ തുറക്കുക' : 'Open 4K Video Editor'}</span>
-                    </button>
-
-                    {/* Open Story History Button */}
-                    {savedStories.length > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => setShowSavedStoriesModal(true)}
-                        className="w-full sm:w-auto px-5 py-3 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-zinc-300 font-bold text-xs uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-2"
-                      >
-                        <History className="w-4 h-4 text-amber-400" />
-                        <span>
-                          {lang === 'ml'
-                            ? `സ്റ്റോറി ഹിസ്റ്ററി (${savedStories.length})`
-                            : `Story History (${savedStories.length})`}
-                        </span>
-                      </button>
-                    )}
                 </div>
               </div>
               );
@@ -2583,290 +2497,447 @@ ${imgPromptText}`;
           />
         )}
 
+        {/* ================================================================= */}
+        {/* PAGE 5: DEDICATED STORY HISTORY PAGE (`activeStep === 'history'`) */}
+        {/* ================================================================= */}
+        {activeStep === 'history' && (() => {
+          const isMl = lang === 'ml';
+          const lovedStories = savedStories.filter((s) => s.isLoved);
+          const displayedStories = (historyFilterMode === 'loved' ? lovedStories : savedStories)
+            .slice()
+            .sort((a, b) => {
+              if (Boolean(a.isLoved) !== Boolean(b.isLoved)) {
+                return a.isLoved ? -1 : 1;
+              }
+              return (b.savedAt || 0) - (a.savedAt || 0);
+            });
+
+          const formatSavedDate = (ms: number) => {
+            try {
+              const d = new Date(ms);
+              return d.toLocaleDateString(isMl ? 'ml-IN' : 'en-IN', {
+                day: '2-digit',
+                month: 'short',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+              });
+            } catch {
+              return '';
+            }
+          };
+
+          return (
+            <div className="max-w-4xl mx-auto space-y-5">
+              {/* History Header & Filter Tabs */}
+              <div className="bg-[#11131f] border border-zinc-800 rounded-2xl p-4 sm:p-5 shadow-2xl space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2.5 rounded-xl bg-amber-500 text-black shadow-md shadow-amber-500/20 shrink-0">
+                      <History className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h2 className="text-sm sm:text-base font-extrabold text-white uppercase tracking-wider flex items-center gap-2">
+                        <span>
+                          {isMl ? 'സ്റ്റോറി ഹിസ്റ്ററി & ❤️ സേവ് ചെയ്തവ' : 'Story History & ❤️ Saved Stories'}
+                        </span>
+                        <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400 text-xs font-mono">
+                          {savedStories.length}
+                        </span>
+                      </h2>
+                      <p className="text-xs text-zinc-400 mt-0.5">
+                        {isMl
+                          ? 'നിങ്ങൾ തിരഞ്ഞെടുത്തതും ❤️ ലൈക്ക് ചെയ്തതുമായ കഥകൾ ഇവിടെ കാണാം. ഏത് കഥയിലും അമർത്തി പഴയ പ്രോംപ്റ്റുകൾ വീണ്ടും എടുക്കാം.'
+                          : 'Your generated & ❤️ favorited stories history. Tap any story to jump straight back to its prompts.'}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 pt-2 border-t border-zinc-800/80">
+                  <button
+                    type="button"
+                    onClick={() => setHistoryFilterMode('all')}
+                    className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                      historyFilterMode === 'all'
+                        ? 'bg-amber-500 text-black font-extrabold shadow-sm'
+                        : 'bg-zinc-900 text-zinc-300 border border-zinc-800 hover:text-white'
+                    }`}
+                  >
+                    {isMl ? `എല്ലാ കഥകളും (${savedStories.length})` : `All Stories (${savedStories.length})`}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setHistoryFilterMode('loved')}
+                    className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                      historyFilterMode === 'loved'
+                        ? 'bg-rose-500 text-white font-extrabold shadow-sm'
+                        : 'bg-zinc-900 text-zinc-300 border border-zinc-800 hover:text-white'
+                    }`}
+                  >
+                    <Heart
+                      className={`w-3.5 h-3.5 ${
+                        historyFilterMode === 'loved' ? 'fill-white' : 'text-rose-400 fill-rose-400'
+                      }`}
+                    />
+                    <span>{isMl ? `❤️ പ്രിയപ്പെട്ടവ (${lovedStories.length})` : `Loved (${lovedStories.length})`}</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Stories List / Empty State */}
+              {displayedStories.length === 0 ? (
+                <div className="bg-[#11131f] border border-zinc-800 rounded-2xl text-center py-14 px-4 space-y-4 shadow-xl">
+                  <div className="w-14 h-14 rounded-2xl bg-zinc-900 border border-zinc-800 flex items-center justify-center mx-auto text-amber-400">
+                    <BookOpen className="w-7 h-7" />
+                  </div>
+                  <p className="text-zinc-200 font-bold text-sm sm:text-base">
+                    {historyFilterMode === 'loved'
+                      ? isMl
+                        ? '❤️ ലൗ ചിഹ്നം നൽകിയ കഥകളൊന്നും ഇതുവരെ ഇല്ല'
+                        : 'No ❤️ loved stories yet'
+                      : isMl
+                      ? 'ഇതുവരെ കഥകളൊന്നും ഹിസ്റ്ററിയിൽ സേവ് ചെയ്തിട്ടില്ല'
+                      : 'No stories in history yet'}
+                  </p>
+                  <p className="text-xs text-zinc-400 max-w-md mx-auto leading-relaxed">
+                    {isMl
+                      ? 'സ്റ്റോറി ടാബിൽ പോയി കഥാ ഓപ്ഷനുകളിൽ ❤️ ലൗ ചിഹ്നത്തിൽ അമർത്തുകയോ പ്രോംപ്റ്റുകൾ തയ്യാറാക്കുകയോ ചെയ്താൽ അവ ഓട്ടോമാറ്റിക്കായി ഇവിടെ സേവ് ആകും.'
+                      : 'Go to the Story tab, generate story options, or tap the ❤️ heart icon to save stories here automatically.'}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setActiveStep('input')}
+                    className="px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-extrabold text-xs uppercase tracking-wider cursor-pointer inline-flex items-center gap-2 shadow-lg shadow-amber-500/20"
+                  >
+                    <Sparkles className="w-4 h-4" />
+                    <span>{isMl ? 'പുതിയ കഥ എഴുതി തുടങ്ങുക' : 'Write a New Story'}</span>
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {displayedStories.map((story, idx) => (
+                    <div
+                      key={story.id || idx}
+                      className={`bg-[#11131f] border rounded-2xl p-4 sm:p-5 transition-all shadow-xl space-y-3 ${
+                        story.isLoved
+                          ? 'border-rose-500/40 hover:border-rose-400/70'
+                          : 'border-zinc-800 hover:border-amber-500/40'
+                      }`}
+                    >
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-zinc-800/70 pb-3">
+                        <div className="min-w-0 flex items-center gap-2 flex-wrap">
+                          <button
+                            type="button"
+                            onClick={() => handleToggleLoveSavedStory(story)}
+                            className={`p-1.5 rounded-lg border transition-all cursor-pointer shrink-0 ${
+                              story.isLoved
+                                ? 'bg-rose-500/20 border-rose-500/40 text-rose-400'
+                                : 'bg-zinc-900 border-zinc-800 text-zinc-500 hover:text-rose-400'
+                            }`}
+                            title={
+                              story.isLoved
+                                ? isMl
+                                  ? '❤️ പ്രിയപ്പെട്ടത്'
+                                  : 'Loved'
+                                : isMl
+                                ? 'ലൗ ചിഹ്നം നൽകുക'
+                                : 'Love story'
+                            }
+                          >
+                            <Heart className={`w-4 h-4 ${story.isLoved ? 'fill-rose-500 text-rose-500' : ''}`} />
+                          </button>
+                          <span className="px-2 py-0.5 rounded-md bg-amber-500/10 border border-amber-500/30 text-amber-400 font-mono text-[11px] font-bold">
+                            {story.genre || 'Cinematic'}
+                          </span>
+                          {story.partNumber && (
+                            <span className="px-2 py-0.5 rounded-md bg-blue-500/10 border border-blue-500/30 text-blue-400 font-mono text-[11px] font-bold">
+                              Part {story.partNumber}
+                            </span>
+                          )}
+                          {story.syncedToGmail && (
+                            <span className="px-2 py-0.5 rounded-md bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 font-mono text-[10px] font-bold">
+                              ☁️ {story.syncedToGmail}
+                            </span>
+                          )}
+                          <h3 className="text-sm sm:text-base font-bold text-white tracking-wide truncate">
+                            {story.title}
+                          </h3>
+                        </div>
+                        <div className="flex items-center gap-3 text-[11px] font-mono text-zinc-400 shrink-0">
+                          <span className="flex items-center gap-1">
+                            <Clock className="w-3.5 h-3.5 text-amber-400/80" />
+                            {story.durationDisplay}
+                          </span>
+                          <span className="flex items-center gap-1">
+                            <Film className="w-3.5 h-3.5 text-amber-400/80" />
+                            {story.shotCount} {isMl ? 'ഷോട്ടുകൾ' : 'shots'}
+                          </span>
+                          <span className="text-zinc-500 flex items-center gap-1">
+                            <Calendar className="w-3.5 h-3.5" />
+                            {formatSavedDate(story.savedAt)}
+                          </span>
+                        </div>
+                      </div>
+
+                      <p className="text-xs sm:text-sm text-zinc-300 leading-relaxed line-clamp-3 bg-[#0a0c14] p-3 rounded-xl border border-zinc-800/80">
+                        {story.storySummary}
+                      </p>
+
+                      <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleLoadSavedStory(story)}
+                            className="px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-extrabold text-xs uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1.5 shadow-sm"
+                          >
+                            <PlayCircle className="w-4 h-4" />
+                            <span>
+                              {story.shots && story.shots.length > 0
+                                ? isMl
+                                  ? 'പ്രോംപ്റ്റുകൾ എടുക്കുക'
+                                  : 'Open Prompts'
+                                : isMl
+                                ? 'പ്രോംപ്റ്റുകൾ നിർമ്മിച്ച് തുറക്കുക'
+                                : 'Generate & Open Prompts'}
+                            </span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const lastShot = story.shots[story.shots.length - 1];
+                              handleContinueFromStory(story.title, story.storySummary, lastShot?.action);
+                            }}
+                            className="px-4 py-2.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-bold text-xs uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1.5 border border-zinc-700"
+                          >
+                            <PlusCircle className="w-4 h-4 text-amber-400" />
+                            <span>{isMl ? '➕ തുടരുക' : 'Continue Story'}</span>
+                          </button>
+
+                          {story.shots && story.shots.length > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => handleDownloadStoryTxt(story)}
+                              className="px-3.5 py-2.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-zinc-300 font-bold text-xs transition-all cursor-pointer flex items-center gap-1.5 border border-zinc-800"
+                              title={isMl ? 'ടെക്സ്റ്റ് ഫയൽ ഡൗൺലോഡ് ചെയ്യുക' : 'Download TXT'}
+                            >
+                              <Download className="w-4 h-4 text-zinc-400" />
+                              <span>.TXT</span>
+                            </button>
+                          )}
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteSavedStory(story.id)}
+                          className="p-2.5 text-zinc-500 hover:text-red-400 hover:bg-red-500/10 rounded-xl transition-colors cursor-pointer"
+                          title={isMl ? 'ഈ കഥ നീക്കം ചെയ്യുക' : 'Delete Story'}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div className="p-3.5 rounded-xl bg-[#11131f] border border-zinc-800 text-xs text-zinc-400 flex items-center justify-between gap-3 flex-wrap">
+                <span>
+                  {currentUser?.email
+                    ? isMl
+                      ? `☁️ ${currentUser.email} അക്കൗണ്ടിൽ ഓട്ടോമാറ്റിക്കായി സേവ് ചെയ്യപ്പെടുന്നു`
+                      : `☁️ Auto-synced to ${currentUser.email}`
+                    : isMl
+                    ? 'ബ്രൗസറിൽ സേവ് ചെയ്യപ്പെടുന്നു (ലോഗിൻ ടാബിൽ Google ലോഗിൻ ചെയ്താൽ ജിമെയിലിൽ സുരക്ഷിതമാകും)'
+                    : 'Saved locally (Sign in on the Login tab to auto-sync across devices)'}
+                </span>
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* ================================================================= */}
+        {/* PAGE 6: DEDICATED LOGIN & ACCOUNT PAGE (`activeStep === 'login'`)  */}
+        {/* ================================================================= */}
+        {activeStep === 'login' && (
+          <div className="max-w-3xl mx-auto space-y-5">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* CARD 1: Direct Phone Google / Gmail Sign-In */}
+              <div className="bg-[#11131f] border border-zinc-800 hover:border-amber-500/40 rounded-2xl p-5 flex flex-col justify-between space-y-5 shadow-2xl transition-all">
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2.5 text-amber-400">
+                      <div className="p-2.5 rounded-xl bg-amber-500/15 border border-amber-500/30">
+                        <Mail className="w-5 h-5" />
+                      </div>
+                      <h2 className="text-base font-extrabold text-white">
+                        {lang === 'ml' ? 'Google / ജിമെയിൽ ലോഗിൻ' : 'Google / Gmail Login'}
+                      </h2>
+                    </div>
+                    {currentUser && (
+                      <span className="px-2.5 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-[11px] font-bold">
+                        {lang === 'ml' ? 'സേവ് സജീവം' : 'Synced'}
+                      </span>
+                    )}
+                  </div>
+
+                  {currentUser ? (
+                    <div className="p-3.5 rounded-xl bg-[#0a0b12] border border-emerald-500/25 flex items-center gap-3">
+                      {currentUser.photoURL ? (
+                        <img
+                          src={currentUser.photoURL}
+                          alt={currentUser.displayName || 'User'}
+                          className="w-11 h-11 rounded-full border border-emerald-500/40 object-cover shrink-0"
+                          referrerPolicy="no-referrer"
+                        />
+                      ) : (
+                        <div className="w-11 h-11 rounded-full bg-emerald-500/20 text-emerald-300 font-bold flex items-center justify-center shrink-0">
+                          {(currentUser.email || 'G').charAt(0).toUpperCase()}
+                        </div>
+                      )}
+                      <div className="min-w-0">
+                        <p className="text-sm font-bold text-white truncate">
+                          {currentUser.displayName || 'Google User'}
+                        </p>
+                        <p className="text-xs font-mono text-emerald-400 truncate">
+                          {currentUser.email}
+                        </p>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-xs sm:text-sm text-zinc-400 leading-relaxed">
+                      {lang === 'ml'
+                        ? 'നിങ്ങളുടെ ഫോണിലെയും ബ്രൗസറിലെയും Google (Gmail) ഉപയോഗിച്ച് നേരിട്ട് ലോഗിൻ ചെയ്താൽ ജിമെയിൽ ഐഡി സേവ് ആകുകയും കഥകളും പ്രോംപ്റ്റുകളും ഓട്ടോമാറ്റിക്കായി അതിലേക്ക് സൂക്ഷിക്കുകയും ചെയ്യും.'
+                        : 'Sign in directly with your Google (Gmail) account. Your generated stories and prompts automatically save and sync across devices.'}
+                    </p>
+                  )}
+
+                  {userAuthError && (
+                    <p className="text-xs text-red-300 bg-red-500/10 border border-red-500/30 rounded-xl p-2.5">
+                      {userAuthError}
+                    </p>
+                  )}
+                </div>
+
+                <div className="space-y-2.5">
+                  {currentUser ? (
+                    <button
+                      type="button"
+                      onClick={handleUserGoogleSignOut}
+                      disabled={userAuthBusy}
+                      className="w-full py-3 px-4 rounded-xl bg-zinc-900 hover:bg-red-950/50 border border-zinc-700 hover:border-red-500/40 text-zinc-300 hover:text-red-300 text-xs font-bold flex items-center justify-center gap-2 cursor-pointer transition-all"
+                    >
+                      <LogOut className="w-4 h-4" />
+                      <span>{lang === 'ml' ? 'ജിമെയിൽ ലോഗ് ഔട്ട്' : 'Sign Out Gmail'}</span>
+                    </button>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        onClick={handleUserGoogleLogin}
+                        disabled={userAuthBusy}
+                        className="w-full py-3.5 px-4 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-extrabold text-xs uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-amber-500/20 transition-all disabled:opacity-50"
+                      >
+                        <ShieldCheck className="w-4 h-4 shrink-0" />
+                        <span>
+                          {userAuthBusy
+                            ? lang === 'ml'
+                              ? 'ലോഗിൻ ചെയ്യുന്നു...'
+                              : 'Signing in...'
+                            : lang === 'ml'
+                            ? 'Google വഴി ലോഗിൻ (Gmail സേവ്)'
+                            : 'Sign in with Google (Auto-Save)'}
+                        </span>
+                      </button>
+                      {isInIframe && typeof window !== 'undefined' && (
+                        <a
+                          href={window.location.href}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="w-full py-2.5 px-3 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-zinc-300 text-xs font-bold flex items-center justify-center gap-1.5"
+                        >
+                          <ExternalLink className="w-3.5 h-3.5 text-amber-400" />
+                          <span>{lang === 'ml' ? 'പുതിയ ടാബിൽ തുറന്ന് ലോഗിൻ ചെയ്യുക' : 'Open in New Tab to Sign In'}</span>
+                        </a>
+                      )}
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {/* CARD 2: Story & Prompts Cloud Auto-Save Vault */}
+              <div className="bg-[#11131f] border border-zinc-800 hover:border-amber-500/40 rounded-2xl p-5 flex flex-col justify-between space-y-5 shadow-2xl transition-all">
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2.5 text-amber-400">
+                      <div className="p-2.5 rounded-xl bg-sky-500/15 border border-sky-500/30 text-sky-400">
+                        <Cloud className="w-5 h-5" />
+                      </div>
+                      <h3 className="text-base font-extrabold text-white">
+                        {lang === 'ml' ? 'ക്ലൗഡ് ഓട്ടോ-സേവ് വോൾട്ട്' : 'Cloud Auto-Save Vault'}
+                      </h3>
+                    </div>
+                    {cloudSyncing && (
+                      <span className="text-[11px] font-mono text-amber-400 animate-pulse">
+                        Syncing...
+                      </span>
+                    )}
+                  </div>
+
+                  <p className="text-xs sm:text-sm text-zinc-400 leading-relaxed">
+                    {currentUser
+                      ? lang === 'ml'
+                        ? `നിങ്ങൾ തയ്യാറാക്കുന്ന എല്ലാ സ്റ്റോറികളും ഷോട്ട് പ്രോംപ്റ്റുകളും ${currentUser.email} എന്ന അക്കൗണ്ടിലേക്ക് ഓട്ടോമാറ്റിക്കായി സേവ് ആകുന്നതാണ്.`
+                        : `Every story and shot breakdown you generate automatically syncs to ${currentUser.email}.`
+                      : lang === 'ml'
+                      ? 'ലോഗിൻ ചെയ്യുമ്പോൾ തന്നെ നിങ്ങളുടെ സ്റ്റോറികളും വീഡിയോ/ഫോട്ടോ പ്രോംപ്റ്റുകളും ജിമെയിലിലേക്ക് ഓട്ടോമാറ്റിക് സേവ് ആകും.'
+                      : 'Sign in with Gmail to automatically back up generated stories and shot prompts into your personal cloud vault.'}
+                  </p>
+
+                  <div className="p-3 rounded-xl bg-[#0a0b12] border border-zinc-800 flex items-center justify-between text-xs font-mono">
+                    <span className="text-zinc-400">
+                      {lang === 'ml' ? 'സേവ് ആയ കഥകൾ:' : 'Saved Stories:'}
+                    </span>
+                    <span className="text-amber-400 font-extrabold text-sm">{savedStories.length}</span>
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-2">
+                  {selectedAngle && shots.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={handleSaveCurrentStory}
+                      className="w-full py-3 px-4 rounded-xl bg-zinc-900 hover:bg-amber-500 hover:text-black border border-amber-500/40 text-amber-300 font-extrabold text-xs uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer transition-all"
+                    >
+                      <Download className="w-4 h-4 shrink-0" />
+                      <span>
+                        {lang === 'ml' ? '💾 ഇപ്പോഴത്തെ കഥയും പ്രോംപ്റ്റും സേവ്' : 'Save Current Story & Prompts'}
+                      </span>
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setActiveStep('history')}
+                    className="w-full py-3 px-4 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-zinc-200 font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer transition-all"
+                  >
+                    <History className="w-4 h-4 text-amber-400 shrink-0" />
+                    <span>
+                      {lang === 'ml'
+                        ? `സ്റ്റോറി ഹിസ്റ്ററി കാണുക (${savedStories.length})`
+                        : `View Story History (${savedStories.length})`}
+                    </span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Compact In-Page 2-Second Skippable Video Ads Pair + Bottom Banner (never hides buttons) */}
         {activeStep !== 'input' && activeStep !== 'editor' && (
           <InlineVideoAdPair sectionId={`bottom-pair-${activeStep}`} />
         )}
-
-        {/* ================================================================= */}
-        {/* BOTTOM 3-CARD SECTION: Phone Google/Gmail Login + Story/Prompt Save + Library */}
-        {/* ================================================================= */}
-        <section
-          ref={gmailSectionRef}
-          className="mt-8 pt-6 border-t border-zinc-800/80 space-y-3"
-        >
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {/* CARD 1: Direct Phone Google / Gmail Sign-In (No manual phone file upload needed) */}
-            <div className="bg-[#11131f] border border-zinc-800 hover:border-amber-500/40 rounded-2xl p-4 sm:p-5 flex flex-col justify-between space-y-4 shadow-xl transition-all">
-              <div className="space-y-2.5">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2 text-amber-400">
-                    <div className="p-2 rounded-xl bg-amber-500/15 border border-amber-500/30">
-                      <Mail className="w-4 h-4" />
-                    </div>
-                    <h3 className="text-sm font-extrabold text-white">
-                      {lang === 'ml' ? 'Google / ജിമെയിൽ അക്കൗണ്ട്' : 'Google / Gmail Account'}
-                    </h3>
-                  </div>
-                  {currentUser && (
-                    <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-[10px] font-bold">
-                      {lang === 'ml' ? 'സേവ് സജീവം' : 'Synced'}
-                    </span>
-                  )}
-                </div>
-
-                {currentUser ? (
-                  <div className="p-3 rounded-xl bg-[#0a0b12] border border-emerald-500/25 flex items-center gap-3">
-                    {currentUser.photoURL ? (
-                      <img
-                        src={currentUser.photoURL}
-                        alt={currentUser.displayName || 'User'}
-                        className="w-9 h-9 rounded-full border border-emerald-500/40 object-cover shrink-0"
-                        referrerPolicy="no-referrer"
-                      />
-                    ) : (
-                      <div className="w-9 h-9 rounded-full bg-emerald-500/20 text-emerald-300 font-bold flex items-center justify-center shrink-0">
-                        {(currentUser.email || 'G').charAt(0).toUpperCase()}
-                      </div>
-                    )}
-                    <div className="min-w-0">
-                      <p className="text-xs font-bold text-white truncate">
-                        {currentUser.displayName || 'Google User'}
-                      </p>
-                      <p className="text-[11px] font-mono text-emerald-400 truncate">
-                        {currentUser.email}
-                      </p>
-                    </div>
-                  </div>
-                ) : (
-                  <p className="text-xs text-zinc-400 leading-relaxed">
-                    {lang === 'ml'
-                      ? 'ഫോണിൽ നിന്നും വേറെ ഫയലുകൾ എടുക്കേണ്ടതില്ല — നിങ്ങളുടെ ഫോണിലെ Google (Gmail) ഉപയോഗിച്ച് നേരിട്ട് ലോഗിൻ ചെയ്താൽ ജിമെയിൽ ഐഡി സേവ് ആകുകയും കഥകൾ ഓട്ടോമാറ്റിക്കായി അതിലേക്ക് സൂക്ഷിക്കുകയും ചെയ്യും.'
-                      : 'Sign in directly with your phone or browser Google (Gmail) account. Your stories and prompts automatically save to your Gmail across sessions.'}
-                  </p>
-                )}
-
-                {userAuthError && (
-                  <p className="text-[11px] text-red-300 bg-red-500/10 border border-red-500/30 rounded-lg p-2">
-                    {userAuthError}
-                  </p>
-                )}
-              </div>
-
-              <div className="space-y-2">
-                {currentUser ? (
-                  <button
-                    type="button"
-                    onClick={handleUserGoogleSignOut}
-                    disabled={userAuthBusy}
-                    className="w-full py-2.5 px-4 rounded-xl bg-zinc-900 hover:bg-red-950/50 border border-zinc-700 hover:border-red-500/40 text-zinc-300 hover:text-red-300 text-xs font-bold flex items-center justify-center gap-2 cursor-pointer transition-all"
-                  >
-                    <LogOut className="w-3.5 h-3.5" />
-                    <span>{lang === 'ml' ? 'ജിമെയിൽ ലോഗ് ഔട്ട്' : 'Sign Out Gmail'}</span>
-                  </button>
-                ) : (
-                  <>
-                    <button
-                      type="button"
-                      onClick={handleUserGoogleLogin}
-                      disabled={userAuthBusy}
-                      className="w-full py-3 px-4 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-extrabold text-xs uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-amber-500/20 transition-all disabled:opacity-50"
-                    >
-                      <ShieldCheck className="w-4 h-4 shrink-0" />
-                      <span>
-                        {userAuthBusy
-                          ? lang === 'ml'
-                            ? 'ലോഗിൻ ചെയ്യുന്നു...'
-                            : 'Signing in...'
-                          : lang === 'ml'
-                          ? 'Google വഴി ലോഗിൻ (Gmail സേവ്)'
-                          : 'Sign in with Google (Auto-Save)'}
-                      </span>
-                    </button>
-                    {isInIframe && typeof window !== 'undefined' && (
-                      <a
-                        href={window.location.href}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="w-full py-2 px-3 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-zinc-300 text-[11px] font-bold flex items-center justify-center gap-1.5"
-                      >
-                        <ExternalLink className="w-3 h-3 text-amber-400" />
-                        <span>{lang === 'ml' ? 'പുതിയ ടാബിൽ തുറന്ന് ലോഗിൻ ചെയ്യുക' : 'Open in New Tab to Sign In'}</span>
-                      </a>
-                    )}
-                  </>
-                )}
-              </div>
-            </div>
-
-            {/* CARD 2: Story & Prompts Auto-Save Vault */}
-            <div className="bg-[#11131f] border border-zinc-800 hover:border-amber-500/40 rounded-2xl p-4 sm:p-5 flex flex-col justify-between space-y-4 shadow-xl transition-all">
-              <div className="space-y-2.5">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2 text-amber-400">
-                    <div className="p-2 rounded-xl bg-sky-500/15 border border-sky-500/30 text-sky-400">
-                      <Cloud className="w-4 h-4" />
-                    </div>
-                    <h3 className="text-sm font-extrabold text-white">
-                      {lang === 'ml' ? 'സ്റ്റോറിയും പ്രോംപ്റ്റുകളും സേവ്' : 'Story & Prompt Auto-Save'}
-                    </h3>
-                  </div>
-                  {cloudSyncing && (
-                    <span className="text-[10px] font-mono text-amber-400 animate-pulse">
-                      Syncing...
-                    </span>
-                  )}
-                </div>
-
-                <p className="text-xs text-zinc-400 leading-relaxed">
-                  {currentUser
-                    ? lang === 'ml'
-                      ? `നിങ്ങൾ തയ്യാറാക്കുന്ന എല്ലാ സ്റ്റോറികളും ഷോട്ട് പ്രോംപ്റ്റുകളും ${currentUser.email} എന്ന അക്കൗണ്ടിലേക്ക് ഓട്ടോമാറ്റിക്കായി സേവ് ആകുന്നതാണ്.`
-                      : `Every story and shot breakdown you generate automatically syncs to ${currentUser.email}.`
-                    : lang === 'ml'
-                    ? 'ലോഗിൻ ചെയ്യുമ്പോൾ തന്നെ നിങ്ങളുടെ സ്റ്റോറികളും വീഡിയോ/ഫോട്ടോ പ്രോംപ്റ്റുകളും ജിമെയിലിലേക്ക് ഓട്ടോമാറ്റിക് സേവ് ആകും.'
-                    : 'Sign in with Gmail to automatically back up generated stories and shot prompts into your personal cloud vault.'}
-                </p>
-
-                <div className="p-2.5 rounded-xl bg-[#0a0b12] border border-zinc-800 flex items-center justify-between text-xs font-mono">
-                  <span className="text-zinc-400">
-                    {lang === 'ml' ? 'സേവ് ആയ കഥകൾ:' : 'Saved Stories:'}
-                  </span>
-                  <span className="text-amber-400 font-extrabold">{savedStories.length}</span>
-                </div>
-              </div>
-
-              <div>
-                {selectedAngle && shots.length > 0 ? (
-                  <button
-                    type="button"
-                    onClick={handleSaveCurrentStory}
-                    className="w-full py-3 px-4 rounded-xl bg-zinc-900 hover:bg-amber-500 hover:text-black border border-amber-500/40 text-amber-300 font-extrabold text-xs uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer transition-all"
-                  >
-                    <Download className="w-4 h-4 shrink-0" />
-                    <span>
-                      {lang === 'ml' ? '💾 ഇപ്പോഴത്തെ കഥയും പ്രോംപ്റ്റും സേവ്' : 'Save Current Story & Prompts'}
-                    </span>
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setActiveStep('input');
-                      if (typeof window !== 'undefined') {
-                        window.scrollTo({ top: 0, behavior: 'smooth' });
-                      }
-                    }}
-                    className="w-full py-3 px-4 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-zinc-200 font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer transition-all"
-                  >
-                    <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
-                    <span>{lang === 'ml' ? 'പുതിയ കഥ എഴുതി തുടങ്ങുക' : 'Write a New Story'}</span>
-                  </button>
-                )}
-              </div>
-            </div>
-
-            {/* CARD 3: Story History & ❤️ Favorites Library */}
-            <div className="bg-[#11131f] border border-zinc-800 hover:border-amber-500/40 rounded-2xl p-4 sm:p-5 flex flex-col justify-between space-y-4 shadow-xl transition-all">
-              <div className="space-y-2.5">
-                <div className="flex items-center gap-2">
-                  <div className="p-2 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-400">
-                    <History className="w-4 h-4" />
-                  </div>
-                  <h3 className="text-sm font-extrabold text-white">
-                    {lang === 'ml' ? 'സ്റ്റോറി ഹിസ്റ്ററി & ❤️ സേവ് ചെയ്തവ' : 'Story History & ❤️ Favorites'}
-                  </h3>
-                </div>
-
-                {savedStories.length > 0 ? (
-                  <div className="p-3 rounded-xl bg-[#0a0b12] border border-zinc-800 space-y-1">
-                    <span className="text-[10px] font-mono uppercase text-amber-400 font-bold flex items-center gap-1.5">
-                      <span>{lang === 'ml' ? 'അവസാനം ഹിസ്റ്ററിയിൽ വന്നത്' : 'Latest in History'}</span>
-                      {savedStories[0].isLoved && (
-                        <Heart className="w-3 h-3 fill-rose-500 text-rose-500 inline" />
-                      )}
-                    </span>
-                    <p className="text-xs font-bold text-white truncate">{savedStories[0].title}</p>
-                    <p className="text-[11px] text-zinc-400 font-mono">
-                      {savedStories[0].shotCount} {lang === 'ml' ? 'ഷോട്ടുകൾ' : 'shots'} · {savedStories[0].durationDisplay}
-                    </p>
-                  </div>
-                ) : (
-                  <p className="text-xs text-zinc-400 leading-relaxed">
-                    {lang === 'ml'
-                      ? 'ജനറേറ്റ് ചെയ്തതും ❤️ ലൗ ചിഹ്നം നൽകിയതുമായ കഥകൾ മാത്രം ഇവിടെ ഹിസ്റ്ററിയിൽ കാണാം. അമർത്തിയാൽ പഴയ പ്രോംപ്റ്റുകൾ വീണ്ടും തുറക്കാം.'
-                      : 'View your generated & ❤️ loved stories here anytime and jump straight back to their prompts.'}
-                  </p>
-                )}
-              </div>
-
-              <div className="flex flex-col sm:flex-row gap-2">
-                <button
-                  type="button"
-                  onClick={() => setShowSavedStoriesModal(true)}
-                  className="flex-1 py-2.5 px-3 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-zinc-200 font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer transition-all"
-                >
-                  <History className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                  <span>
-                    {lang === 'ml'
-                      ? `ഹിസ്റ്ററി (${savedStories.length})`
-                      : `History (${savedStories.length})`}
-                  </span>
-                </button>
-                {savedStories.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const latest = savedStories[0];
-                      const lastShot = latest.shots[latest.shots.length - 1];
-                      handleContinueFromStory(latest.title, latest.storySummary, lastShot?.action);
-                    }}
-                    className="flex-1 py-2.5 px-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-extrabold text-xs flex items-center justify-center gap-1.5 cursor-pointer transition-all"
-                  >
-                    <PlusCircle className="w-3.5 h-3.5 shrink-0" />
-                    <span>{lang === 'ml' ? 'തുടരുക' : 'Continue'}</span>
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* Centered Video + Small Banner directly underneath the 3 feature cards */}
-          <div className="pt-2">
-            <VideoWithSmallBannerAd slotId="bottom-3cards-center" slotIndex={2} startIndex={1} />
-          </div>
-
-          {/* 4K Video Editing Studio Section Banner */}
-          {activeStep !== 'editor' && (
-            <div className="bg-[#11131f] border border-zinc-800 hover:border-amber-500/40 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-xl transition-all">
-              <div className="flex items-start gap-3">
-                <div className="p-2.5 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-400 shrink-0">
-                  <Scissors className="w-5 h-5" />
-                </div>
-                <div className="space-y-1">
-                  <h3 className="text-sm sm:text-base font-extrabold text-white">
-                    {lang === 'ml'
-                      ? '🎬 4K പ്രോ വീഡിയോ എഡിറ്റിംഗ് സ്റ്റുഡിയോ (KineMaster / Filmora ശൈലി)'
-                      : '🎬 4K Pro Video Editing Studio (KineMaster / Filmora Style)'}
-                  </h3>
-                  <p className="text-xs text-zinc-400 leading-relaxed max-w-2xl">
-                    {lang === 'ml'
-                      ? 'വെബ്സൈറ്റിനുള്ളിൽ തന്നെ വീഡിയോകൾ കട്ട് ചെയ്യാനും സ്പ്ലിറ്റ് ചെയ്യാനും, സിനിമ ഫിൽട്ടറുകളും ടെക്സ്റ്റും ബാക്ക്ഗ്രൗണ്ട് മ്യൂസിക്കും ചേർത്ത് 4K Ultra HD ക്വാളിറ്റിയിൽ എക്സ്പോർട്ട് ചെയ്യാനും സാധിക്കും.'
-                      : 'Cut, trim, split clips, apply clean film color presets, add titles & background music, and export up to 4K Ultra HD directly in your browser.'}
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setActiveStep('editor')}
-                className="w-full sm:w-auto px-5 py-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-extrabold text-xs uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-amber-500/20 whitespace-nowrap shrink-0"
-              >
-                <Scissors className="w-4 h-4" />
-                <span>{lang === 'ml' ? '4K എഡിറ്റർ തുറക്കുക' : 'Open 4K Video Editor'}</span>
-              </button>
-            </div>
-          )}
-        </section>
 
         <BottomBannerAd />
       </main>
@@ -2882,103 +2953,163 @@ ${imgPromptText}`;
         </>
       )}
 
-      {/* Mobile Bottom App Navigation Bar (Positioned cleanly at bottom-0 with 100% direct button visibility) */}
-      <nav className="sm:hidden fixed bottom-0 inset-x-0 z-40 bg-[#0d0f17]/95 backdrop-blur-lg border-t border-zinc-800 px-2 py-2 grid grid-cols-4 gap-1 shadow-[0_-8px_30px_rgba(0,0,0,0.65)]">
-        <button
-          type="button"
-          onClick={() => {
-            setShowAdminPanel(false);
-            setActiveStep('input');
-          }}
-          className={`flex flex-col items-center justify-center gap-1 py-1.5 px-1 rounded-xl text-[10px] font-bold transition-all cursor-pointer ${
-            !showAdminPanel && activeStep === 'input'
-              ? 'bg-amber-500 text-black font-extrabold shadow-sm'
-              : 'text-zinc-400 hover:text-white bg-zinc-900/70'
-          }`}
-        >
-          <BookOpen className="w-4 h-4" />
-          <span className="truncate max-w-full">{t.step1}</span>
-        </button>
-
-        <button
-          type="button"
-          disabled={storyAngles.length === 0}
-          onClick={() => {
-            if (storyAngles.length > 0) {
+      {/* Unified 4-Tab Bottom App Navigation Bar (Mobile & Desktop with Rich Cinematic Photo Thumbnails) */}
+      <nav className="fixed bottom-0 inset-x-0 z-40 bg-[#0d0f17]/95 backdrop-blur-lg border-t border-zinc-800 px-2.5 py-2 shadow-[0_-8px_30px_rgba(0,0,0,0.7)]">
+        <div className="max-w-4xl mx-auto grid grid-cols-4 gap-2">
+          {/* Tab 1: Story */}
+          <button
+            type="button"
+            onClick={() => {
               setShowAdminPanel(false);
-              setActiveStep('options');
-            }
-          }}
-          className={`flex flex-col items-center justify-center gap-1 py-1.5 px-1 rounded-xl text-[10px] font-bold transition-all ${
-            storyAngles.length === 0 ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'
-          } ${
-            !showAdminPanel && activeStep === 'options'
-              ? 'bg-amber-500 text-black font-extrabold shadow-sm'
-              : 'text-zinc-400 hover:text-white bg-zinc-900/70'
-          }`}
-        >
-          <Layers className="w-4 h-4" />
-          <span className="truncate max-w-full">{t.step2(storyAngles.length)}</span>
-        </button>
+              if (activeStep === 'options' || activeStep === 'prompts') {
+                setActiveStep('input');
+              } else if (activeStep === 'input') {
+                if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' });
+              } else {
+                setActiveStep(lastStoryStep);
+              }
+            }}
+            className={`flex flex-col items-center justify-center gap-1 py-1.5 px-1 rounded-xl text-[11px] font-bold transition-all cursor-pointer ${
+              !showAdminPanel && (activeStep === 'input' || activeStep === 'options' || activeStep === 'prompts')
+                ? 'bg-amber-500 text-black font-extrabold shadow-md shadow-amber-500/30'
+                : 'text-zinc-300 hover:text-white bg-zinc-900/80 hover:bg-zinc-800'
+            }`}
+          >
+            <div className="relative w-6 h-6 rounded-lg overflow-hidden border border-amber-500/40 shrink-0 shadow-inner">
+              <img
+                src="https://images.unsplash.com/photo-1485846234645-a62644f84728?auto=format&fit=crop&w=100&q=80"
+                alt="Story"
+                className="w-full h-full object-cover"
+              />
+              <div className="absolute inset-0 bg-black/20" />
+            </div>
+            <span className="truncate max-w-full">
+              {lang === 'ml'
+                ? 'സ്റ്റോറി'
+                : lang === 'hi'
+                ? 'स्टोरी'
+                : lang === 'ta'
+                ? 'கதை'
+                : lang === 'kn'
+                ? 'ಕಥೆ'
+                : lang === 'te'
+                ? 'కథ'
+                : 'Story'}
+            </span>
+          </button>
 
-        <button
-          type="button"
-          disabled={!selectedAngle || shots.length === 0}
-          onClick={() => {
-            if (selectedAngle && shots.length > 0) {
+          {/* Tab 2: Editing */}
+          <button
+            type="button"
+            onClick={() => {
               setShowAdminPanel(false);
-              setActiveStep('prompts');
-            }
-          }}
-          className={`flex flex-col items-center justify-center gap-1 py-1.5 px-1 rounded-xl text-[10px] font-bold transition-all ${
-            !selectedAngle || shots.length === 0 ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'
-          } ${
-            !showAdminPanel && activeStep === 'prompts'
-              ? 'bg-amber-500 text-black font-extrabold shadow-sm'
-              : 'text-zinc-400 hover:text-white bg-zinc-900/70'
-          }`}
-        >
-          <Film className="w-4 h-4" />
-          <span className="truncate max-w-full">{t.step3}</span>
-        </button>
+              setActiveStep('editor');
+            }}
+            className={`flex flex-col items-center justify-center gap-1 py-1.5 px-1 rounded-xl text-[11px] font-bold transition-all cursor-pointer ${
+              !showAdminPanel && activeStep === 'editor'
+                ? 'bg-amber-500 text-black font-extrabold shadow-md shadow-amber-500/30'
+                : 'text-zinc-300 hover:text-white bg-zinc-900/80 hover:bg-zinc-800'
+            }`}
+          >
+            <div className="relative w-6 h-6 rounded-lg overflow-hidden border border-amber-500/40 shrink-0 shadow-inner">
+              <img
+                src="https://images.unsplash.com/photo-1574717024653-61fd2cf4d44d?auto=format&fit=crop&w=100&q=80"
+                alt="Editing"
+                className="w-full h-full object-cover"
+              />
+              <div className="absolute inset-0 bg-black/20" />
+            </div>
+            <span className="truncate max-w-full">
+              {lang === 'ml'
+                ? 'എഡിറ്റിംഗ്'
+                : lang === 'hi'
+                ? 'एडिटिंग'
+                : lang === 'ta'
+                ? 'எடிட்டிங்'
+                : lang === 'kn'
+                ? 'ಎಡಿಟಿಂಗ್'
+                : lang === 'te'
+                ? 'ఎడిటింగ్'
+                : 'Editing'}
+            </span>
+          </button>
 
-        <button
-          type="button"
-          onClick={() => {
-            setShowAdminPanel(false);
-            setActiveStep('editor');
-          }}
-          className={`flex flex-col items-center justify-center gap-1 py-1.5 px-1 rounded-xl text-[10px] font-bold transition-all cursor-pointer ${
-            !showAdminPanel && activeStep === 'editor'
-              ? 'bg-amber-500 text-black font-extrabold shadow-sm'
-              : 'text-amber-300 hover:text-white bg-zinc-900/70'
-          }`}
-        >
-          <Scissors className="w-4 h-4" />
-          <span className="truncate max-w-full">{lang === 'ml' ? '4K എഡിറ്റ്' : '4K Edit'}</span>
-        </button>
+          {/* Tab 3: History */}
+          <button
+            type="button"
+            onClick={() => {
+              setShowAdminPanel(false);
+              setActiveStep('history');
+            }}
+            className={`flex flex-col items-center justify-center gap-1 py-1.5 px-1 rounded-xl text-[11px] font-bold transition-all cursor-pointer ${
+              !showAdminPanel && activeStep === 'history'
+                ? 'bg-amber-500 text-black font-extrabold shadow-md shadow-amber-500/30'
+                : 'text-zinc-300 hover:text-white bg-zinc-900/80 hover:bg-zinc-800'
+            }`}
+          >
+            <div className="relative w-6 h-6 rounded-lg overflow-hidden border border-amber-500/40 shrink-0 shadow-inner">
+              <img
+                src="https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?auto=format&fit=crop&w=100&q=80"
+                alt="History"
+                className="w-full h-full object-cover"
+              />
+              <div className="absolute inset-0 bg-black/20" />
+            </div>
+            <span className="truncate max-w-full">
+              {lang === 'ml'
+                ? 'ഹിസ്റ്ററി'
+                : lang === 'hi'
+                ? 'हिस्ट्री'
+                : lang === 'ta'
+                ? 'ஹிஸ்டரி'
+                : lang === 'kn'
+                ? 'ಹಿಸ್ಟರಿ'
+                : lang === 'te'
+                ? 'హిస్టరీ'
+                : 'History'}
+            </span>
+          </button>
+
+          {/* Tab 4: Login */}
+          <button
+            type="button"
+            onClick={() => {
+              setShowAdminPanel(false);
+              setActiveStep('login');
+            }}
+            className={`relative flex flex-col items-center justify-center gap-1 py-1.5 px-1 rounded-xl text-[11px] font-bold transition-all cursor-pointer ${
+              !showAdminPanel && activeStep === 'login'
+                ? 'bg-amber-500 text-black font-extrabold shadow-md shadow-amber-500/30'
+                : 'text-zinc-300 hover:text-white bg-zinc-900/80 hover:bg-zinc-800'
+            }`}
+          >
+            <div className="relative w-6 h-6 rounded-lg overflow-hidden border border-amber-500/40 shrink-0 shadow-inner">
+              <img
+                src={currentUser?.photoURL || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=100&q=80"}
+                alt="Login"
+                className="w-full h-full object-cover"
+              />
+              <div className="absolute inset-0 bg-black/20" />
+              {currentUser && (
+                <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-400 border border-[#0d0f17]" />
+              )}
+            </div>
+            <span className="truncate max-w-full">
+              {lang === 'ml'
+                ? 'ലോഗിൻ'
+                : lang === 'hi'
+                ? 'लॉगिन'
+                : lang === 'ta'
+                ? 'லாகின்'
+                : lang === 'kn'
+                ? 'ಲಾಗಿನ್'
+                : lang === 'te'
+                ? 'లాగిన్'
+                : 'Login'}
+            </span>
+          </button>
+        </div>
       </nav>
-
-      {/* Story History & Saved Library Modal */}
-      <SavedStoriesModal
-        isOpen={showSavedStoriesModal}
-        onClose={() => setShowSavedStoriesModal(false)}
-        savedStories={savedStories}
-        onDeleteStory={handleDeleteSavedStory}
-        onLoadStory={handleLoadSavedStory}
-        onContinueStory={(story) => {
-          const lastShot = story.shots[story.shots.length - 1];
-          handleContinueFromStory(
-            story.title,
-            story.storySummary,
-            lastShot?.action
-          );
-        }}
-        onDownloadStory={handleDownloadStoryTxt}
-        onToggleLove={handleToggleLoveSavedStory}
-        lang={lang}
-        userEmail={currentUser?.email || null}
-      />
     </div>
   );
 }

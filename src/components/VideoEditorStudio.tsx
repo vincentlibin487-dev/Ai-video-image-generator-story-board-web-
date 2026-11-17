@@ -17,6 +17,7 @@ import {
   Loader2,
   Maximize2,
   Mic,
+  Minimize2,
   Move,
   Music,
   Pause,
@@ -59,6 +60,9 @@ import {
   TrendingUp,
   Users,
   Target,
+  Columns,
+  Link2,
+  Snowflake,
 } from 'lucide-react';
 import type { AppLang } from '../lib/i18n';
 import {
@@ -87,14 +91,19 @@ import {
   MUSIC_CATEGORIES,
   SFX_CATEGORIES,
   SFX_LIBRARY,
+  localizeSfxCategory,
+  localizeSfxName,
   previewFreeMusic,
+  previewJoinedSfxChain,
   previewSfx,
   renderFreeMusicToWavUrl,
+  renderJoinedSfxChainToWavUrl,
   renderSfxToWavUrl,
   type FreeMusicTrack,
   type MusicCategory,
   type SfxCategory,
   type SfxDefinition,
+  type SfxRecipeType,
 } from '../lib/sfxEngine';
 import {
   ACTION_VFX_CATEGORIES,
@@ -216,6 +225,21 @@ export interface TimelineClip {
   mask2Y?: number;
   mask2W?: number;
   mask2H?: number;
+
+  // Dual Face-to-Face Dialogue Studio (2 Videos / 2 Images / Video + Image Facing Each Other)
+  dualMode?: 'none' | 'split_v' | 'split_diag' | 'pip_dialogue';
+  dualUrl?: string;
+  dualType?: 'video' | 'image';
+  dualName?: string;
+  dualThumbnailUrl?: string;
+  dualFlipPrimary?: boolean;
+  dualFlipSecondary?: boolean;
+  dualZoomA?: number;
+  dualZoomB?: number;
+  dualPanAX?: number;
+  dualPanBX?: number;
+  dualActiveSpeaker?: 'both' | 'left' | 'right';
+  dualVolume?: number;
 }
 
 export interface ExportHistoryRecord {
@@ -368,6 +392,7 @@ type BottomTray =
   | 'character'
   | 'colorStudio'
   | 'chromaStudio'
+  | 'dualDialogue'
   | 'history'
   | 'motion'
   | 'continuity'
@@ -843,6 +868,66 @@ function drawClipVisualInner(
   }
 }
 
+function drawFramedSubject(
+  ctx: CanvasRenderingContext2D,
+  source: HTMLVideoElement | HTMLImageElement | null,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  flipH: boolean,
+  zoom: number,
+  panX: number,
+  filterCss: string
+) {
+  ctx.save();
+  ctx.filter = filterCss || 'none';
+  ctx.beginPath();
+  ctx.rect(x, y, w, h);
+  ctx.clip();
+
+  if (!source) {
+    ctx.fillStyle = '#111522';
+    ctx.fillRect(x, y, w, h);
+    ctx.restore();
+    return;
+  }
+
+  const srcW =
+    source instanceof HTMLVideoElement
+      ? source.videoWidth
+      : source.naturalWidth || source.width;
+  const srcH =
+    source instanceof HTMLVideoElement
+      ? source.videoHeight
+      : source.naturalHeight || source.height;
+  if (!srcW || !srcH) {
+    ctx.restore();
+    return;
+  }
+
+  const boxRatio = w / Math.max(1, h);
+  const srcRatio = srcW / srcH;
+  let drawW = w;
+  let drawH = h;
+  if (srcRatio > boxRatio) {
+    drawH = h;
+    drawW = h * srcRatio;
+  } else {
+    drawW = w;
+    drawH = w / srcRatio;
+  }
+  drawW *= zoom;
+  drawH *= zoom;
+
+  const cx = x + w / 2 + panX * w * 0.45;
+  const cy = y + h / 2;
+  ctx.translate(cx, cy);
+  if (flipH) ctx.scale(-1, 1);
+  ctx.drawImage(source, -drawW / 2, -drawH / 2, drawW, drawH);
+  ctx.restore();
+}
+
 function drawClipVisual(
   ctx: CanvasRenderingContext2D,
   clip: TimelineClip,
@@ -851,8 +936,81 @@ function drawClipVisual(
   height: number,
   clipProgress = 0,
   extraFilter = '',
-  qualityTier?: ExportResolutionId
+  qualityTier?: ExportResolutionId,
+  dualSource: HTMLVideoElement | HTMLImageElement | null = null
 ) {
+  if (clip.dualMode && clip.dualMode !== 'none') {
+    const qProf = qualityTier ? QUALITY_TIER_PROFILES[qualityTier] : null;
+    const filterCss = `${buildClipFilterCss(clip)} ${qProf?.clarityFilter || ''} ${extraFilter}`.trim();
+    const flipA = Boolean(clip.dualFlipPrimary);
+    const flipB = clip.dualFlipSecondary ?? true;
+    const zoomA = clip.dualZoomA ?? 1.06;
+    const zoomB = clip.dualZoomB ?? 1.06;
+    const panAX = clip.dualPanAX ?? 0;
+    const panBX = clip.dualPanBX ?? 0;
+    const speaker = clip.dualActiveSpeaker || 'both';
+
+    ctx.save();
+    if (clip.dualMode === 'split_v') {
+      const halfW = width / 2;
+      drawFramedSubject(ctx, source, 0, 0, halfW, height, flipA, zoomA, panAX, filterCss);
+      drawFramedSubject(ctx, dualSource, halfW, 0, halfW, height, flipB, zoomB, panBX, filterCss);
+
+      ctx.fillStyle = '#090b10';
+      ctx.fillRect(halfW - 3, 0, 6, height);
+      ctx.strokeStyle = 'rgba(251, 191, 36, 0.85)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(halfW, 0);
+      ctx.lineTo(halfW, height);
+      ctx.stroke();
+
+      if (speaker === 'left') {
+        ctx.strokeStyle = '#38bdf8';
+        ctx.lineWidth = Math.max(4, Math.round(height * 0.01));
+        ctx.strokeRect(3, 3, halfW - 6, height - 6);
+      } else if (speaker === 'right') {
+        ctx.strokeStyle = '#fbbf24';
+        ctx.lineWidth = Math.max(4, Math.round(height * 0.01));
+        ctx.strokeRect(halfW + 3, 3, halfW - 6, height - 6);
+      }
+    } else if (clip.dualMode === 'split_diag') {
+      drawFramedSubject(ctx, source, 0, 0, width * 0.65, height, flipA, zoomA, panAX, filterCss);
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(width * 0.56, 0);
+      ctx.lineTo(width, 0);
+      ctx.lineTo(width, height);
+      ctx.lineTo(width * 0.44, height);
+      ctx.closePath();
+      ctx.clip();
+      drawFramedSubject(ctx, dualSource, width * 0.42, 0, width * 0.58, height, flipB, zoomB, panBX, filterCss);
+      ctx.restore();
+
+      ctx.strokeStyle = '#fbbf24';
+      ctx.lineWidth = Math.max(3, Math.round(height * 0.007));
+      ctx.beginPath();
+      ctx.moveTo(width * 0.56, 0);
+      ctx.lineTo(width * 0.44, height);
+      ctx.stroke();
+    } else {
+      // pip_dialogue: Left Subject main cinema shot + Right Subject framed face-to-face callout window
+      drawFramedSubject(ctx, source, 0, 0, width, height, flipA, zoomA, panAX, filterCss);
+      const pw = Math.round(width * 0.41);
+      const ph = Math.round(height * 0.68);
+      const px = width - pw - Math.round(width * 0.035);
+      const py = Math.round((height - ph) / 2);
+      ctx.fillStyle = 'rgba(0,0,0,0.65)';
+      ctx.fillRect(px - 6, py - 6, pw + 12, ph + 12);
+      drawFramedSubject(ctx, dualSource, px, py, pw, ph, flipB, zoomB, panBX, filterCss);
+      ctx.strokeStyle = speaker === 'right' ? '#fbbf24' : '#ffffff';
+      ctx.lineWidth = 3;
+      ctx.strokeRect(px, py, pw, ph);
+    }
+    ctx.restore();
+    return;
+  }
+
   if (!clip.maskEnabled || typeof document === 'undefined') {
     drawClipVisualInner(ctx, clip, source, width, height, clipProgress, extraFilter, qualityTier);
     return;
@@ -1477,7 +1635,8 @@ function renderCompositeFrame(
   getLayerImage?: (url: string) => HTMLImageElement | null,
   activeSelectedLayerId?: string | null,
   editorGuide?: { mode: 'mask' | 'graph' | null; clip?: TimelineClip | null; layer?: LayerItem | null },
-  qualityTier?: ExportResolutionId
+  qualityTier?: ExportResolutionId,
+  getDualSource?: (clip: TimelineClip) => HTMLVideoElement | HTMLImageElement | null
 ) {
   const qProf = qualityTier ? QUALITY_TIER_PROFILES[qualityTier] : null;
   ctx.save();
@@ -1501,7 +1660,9 @@ function renderCompositeFrame(
     const progress = easeInOutCubic(rawProgress);
 
     const activeSrc = getSource(clip);
+    const activeDualSrc = getDualSource ? getDualSource(clip) : null;
     const prevSrc = prevPlacement ? getSource(prevPlacement.clip) : null;
+    const prevDualSrc = prevPlacement && getDualSource ? getDualSource(prevPlacement.clip) : null;
 
     if (inTransition && prevPlacement) {
       if (transId === 'zoom_flow' || transId === 'zoom_match_out') {
@@ -1513,7 +1674,7 @@ function renderCompositeFrame(
         ctx.translate(width / 2, height / 2);
         ctx.scale(outScale, outScale);
         ctx.translate(-width / 2, -height / 2);
-        drawClipVisual(ctx, prevPlacement.clip, prevSrc, width, height, prevProg);
+        drawClipVisual(ctx, prevPlacement.clip, prevSrc, width, height, prevProg, '', qualityTier, prevDualSrc);
         ctx.restore();
 
         ctx.save();
@@ -1521,7 +1682,7 @@ function renderCompositeFrame(
         ctx.translate(width / 2, height / 2);
         ctx.scale(inScale, inScale);
         ctx.translate(-width / 2, -height / 2);
-        drawClipVisual(ctx, clip, activeSrc, width, height, activeProg);
+        drawClipVisual(ctx, clip, activeSrc, width, height, activeProg, '', qualityTier, activeDualSrc);
         ctx.restore();
       } else if (
         transId === 'whip_pan_left' ||
@@ -1533,7 +1694,7 @@ function renderCompositeFrame(
         const dir = transId === 'whip_pan_left' || transId === 'whip_pan_up' ? -1 : 1;
         ctx.save();
         ctx.translate(isVert ? 0 : dir * progress * width, isVert ? dir * progress * height : 0);
-        drawClipVisual(ctx, prevPlacement.clip, prevSrc, width, height, prevProg, 'blur(4px)');
+        drawClipVisual(ctx, prevPlacement.clip, prevSrc, width, height, prevProg, 'blur(4px)', qualityTier, prevDualSrc);
         ctx.restore();
 
         ctx.save();
@@ -1545,14 +1706,16 @@ function renderCompositeFrame(
           width,
           height,
           activeProg,
-          progress < 0.7 ? 'blur(3px)' : ''
+          progress < 0.7 ? 'blur(3px)' : '',
+          qualityTier,
+          activeDualSrc
         );
         ctx.restore();
       } else if (transId === 'light_leak') {
-        drawClipVisual(ctx, prevPlacement.clip, prevSrc, width, height, prevProg);
+        drawClipVisual(ctx, prevPlacement.clip, prevSrc, width, height, prevProg, '', qualityTier, prevDualSrc);
         ctx.save();
         ctx.globalAlpha = progress;
-        drawClipVisual(ctx, clip, activeSrc, width, height, activeProg);
+        drawClipVisual(ctx, clip, activeSrc, width, height, activeProg, '', qualityTier, activeDualSrc);
         ctx.restore();
 
         const leakAlpha = Math.sin(rawProgress * Math.PI) * 0.72;
@@ -1568,36 +1731,36 @@ function renderCompositeFrame(
         const blurIn = Math.round((1 - progress) * 14);
         ctx.save();
         ctx.globalAlpha = 1 - progress;
-        drawClipVisual(ctx, prevPlacement.clip, prevSrc, width, height, prevProg, `blur(${blurOut}px)`);
+        drawClipVisual(ctx, prevPlacement.clip, prevSrc, width, height, prevProg, `blur(${blurOut}px)`, qualityTier, prevDualSrc);
         ctx.restore();
         ctx.save();
         ctx.globalAlpha = progress;
-        drawClipVisual(ctx, clip, activeSrc, width, height, activeProg, `blur(${blurIn}px)`);
+        drawClipVisual(ctx, clip, activeSrc, width, height, activeProg, `blur(${blurIn}px)`, qualityTier, activeDualSrc);
         ctx.restore();
       } else if (transId === 'fade') {
-        drawClipVisual(ctx, prevPlacement.clip, prevSrc, width, height, prevProg);
+        drawClipVisual(ctx, prevPlacement.clip, prevSrc, width, height, prevProg, '', qualityTier, prevDualSrc);
         ctx.save();
         ctx.globalAlpha = progress;
-        drawClipVisual(ctx, clip, activeSrc, width, height, activeProg);
+        drawClipVisual(ctx, clip, activeSrc, width, height, activeProg, '', qualityTier, activeDualSrc);
         ctx.restore();
       } else if (transId === 'black' || transId === 'white' || transId === 'dip_amber') {
         const flashColor =
           transId === 'white' ? '#ffffff' : transId === 'dip_amber' ? '#f59e0b' : '#000000';
         if (rawProgress < 0.5) {
-          drawClipVisual(ctx, prevPlacement.clip, prevSrc, width, height, prevProg);
+          drawClipVisual(ctx, prevPlacement.clip, prevSrc, width, height, prevProg, '', qualityTier, prevDualSrc);
           ctx.fillStyle = flashColor;
           ctx.globalAlpha = rawProgress * 2;
           ctx.fillRect(0, 0, width, height);
           ctx.globalAlpha = 1;
         } else {
-          drawClipVisual(ctx, clip, activeSrc, width, height, activeProg);
+          drawClipVisual(ctx, clip, activeSrc, width, height, activeProg, '', qualityTier, activeDualSrc);
           ctx.fillStyle = flashColor;
           ctx.globalAlpha = (1 - rawProgress) * 2;
           ctx.fillRect(0, 0, width, height);
           ctx.globalAlpha = 1;
         }
       } else if (transId.startsWith('slide_')) {
-        drawClipVisual(ctx, prevPlacement.clip, prevSrc, width, height, prevProg);
+        drawClipVisual(ctx, prevPlacement.clip, prevSrc, width, height, prevProg, '', qualityTier, prevDualSrc);
         ctx.save();
         const dx =
           transId === 'slide_left'
@@ -1612,7 +1775,7 @@ function renderCompositeFrame(
             ? -(1 - progress) * height
             : 0;
         ctx.translate(dx, dy);
-        drawClipVisual(ctx, clip, activeSrc, width, height, activeProg);
+        drawClipVisual(ctx, clip, activeSrc, width, height, activeProg, '', qualityTier, activeDualSrc);
         ctx.restore();
       } else if (
         transId === 'wipe_left' ||
@@ -1621,7 +1784,7 @@ function renderCompositeFrame(
         transId === 'wipe_down' ||
         transId === 'diagonal_wipe'
       ) {
-        drawClipVisual(ctx, prevPlacement.clip, prevSrc, width, height, prevProg);
+        drawClipVisual(ctx, prevPlacement.clip, prevSrc, width, height, prevProg, '', qualityTier, prevDualSrc);
         ctx.save();
         ctx.beginPath();
         if (transId === 'wipe_left') ctx.rect(width * (1 - progress), 0, width * progress, height);
@@ -1636,10 +1799,10 @@ function renderCompositeFrame(
           ctx.closePath();
         }
         ctx.clip();
-        drawClipVisual(ctx, clip, activeSrc, width, height, activeProg);
+        drawClipVisual(ctx, clip, activeSrc, width, height, activeProg, '', qualityTier, activeDualSrc);
         ctx.restore();
       } else if (transId === 'split_v' || transId === 'split_h') {
-        drawClipVisual(ctx, prevPlacement.clip, prevSrc, width, height, prevProg);
+        drawClipVisual(ctx, prevPlacement.clip, prevSrc, width, height, prevProg, '', qualityTier, prevDualSrc);
         ctx.save();
         ctx.beginPath();
         if (transId === 'split_v') {
@@ -1650,19 +1813,19 @@ function renderCompositeFrame(
           ctx.rect(0, (height - h) / 2, width, h);
         }
         ctx.clip();
-        drawClipVisual(ctx, clip, activeSrc, width, height, activeProg);
+        drawClipVisual(ctx, clip, activeSrc, width, height, activeProg, '', qualityTier, activeDualSrc);
         ctx.restore();
       } else if (transId === 'circle_open') {
-        drawClipVisual(ctx, prevPlacement.clip, prevSrc, width, height, prevProg);
+        drawClipVisual(ctx, prevPlacement.clip, prevSrc, width, height, prevProg, '', qualityTier, prevDualSrc);
         ctx.save();
         ctx.beginPath();
         const maxR = Math.hypot(width / 2, height / 2);
         ctx.arc(width / 2, height / 2, maxR * progress, 0, Math.PI * 2);
         ctx.clip();
-        drawClipVisual(ctx, clip, activeSrc, width, height, activeProg);
+        drawClipVisual(ctx, clip, activeSrc, width, height, activeProg, '', qualityTier, activeDualSrc);
         ctx.restore();
       } else if (transId === 'zoom_in' || transId === 'zoom_out' || transId === 'spin_in') {
-        drawClipVisual(ctx, prevPlacement.clip, prevSrc, width, height, prevProg);
+        drawClipVisual(ctx, prevPlacement.clip, prevSrc, width, height, prevProg, '', qualityTier, prevDualSrc);
         ctx.save();
         ctx.globalAlpha = progress;
         ctx.translate(width / 2, height / 2);
@@ -1675,20 +1838,20 @@ function renderCompositeFrame(
         ctx.scale(s, s);
         if (transId === 'spin_in') ctx.rotate((1 - progress) * Math.PI * 0.75);
         ctx.translate(-width / 2, -height / 2);
-        drawClipVisual(ctx, clip, activeSrc, width, height, activeProg);
+        drawClipVisual(ctx, clip, activeSrc, width, height, activeProg, '', qualityTier, activeDualSrc);
         ctx.restore();
       } else if (transId === 'glitch_flash') {
-        drawClipVisual(ctx, prevPlacement.clip, prevSrc, width, height, prevProg);
+        drawClipVisual(ctx, prevPlacement.clip, prevSrc, width, height, prevProg, '', qualityTier, prevDualSrc);
         ctx.save();
         ctx.globalAlpha = progress;
         ctx.translate(Math.sin(rawProgress * 45) * 14 * (1 - rawProgress), 0);
-        drawClipVisual(ctx, clip, activeSrc, width, height, activeProg);
+        drawClipVisual(ctx, clip, activeSrc, width, height, activeProg, '', qualityTier, activeDualSrc);
         ctx.restore();
       } else {
-        drawClipVisual(ctx, clip, activeSrc, width, height, activeProg, '', qualityTier);
+        drawClipVisual(ctx, clip, activeSrc, width, height, activeProg, '', qualityTier, activeDualSrc);
       }
     } else {
-      drawClipVisual(ctx, clip, activeSrc, width, height, activeProg, '', qualityTier);
+      drawClipVisual(ctx, clip, activeSrc, width, height, activeProg, '', qualityTier, activeDualSrc);
     }
 
     if (clip.vfxId && clip.vfxId !== 'none') {
@@ -2025,6 +2188,7 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
   const [projectName, setProjectName] = useState<string>('CinePro 16:9 Studio');
   const [aspectRatio, setAspectRatio] = useState<AspectRatioId>('16:9');
   const [autoPlay16x9, setAutoPlay16x9] = useState<boolean>(true);
+  const [isTheaterMonitor, setIsTheaterMonitor] = useState<boolean>(false);
   const [premiereTool, setPremiereTool] = useState<PremiereToolMode>('select');
   const [letterbox, setLetterbox] = useState<boolean>(false);
   const [clipsMuted, setClipsMuted] = useState<boolean>(false);
@@ -2101,6 +2265,11 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
   const [navCatFilter, setNavCatFilter] = useState<string>('All');
   const previewAnimRef = useRef<number | null>(null);
   const [loadingSfxId, setLoadingSfxId] = useState<string | null>(null);
+  const [sfxChain, setSfxChain] = useState<SfxDefinition[]>([]);
+  const [sfxChainGapSec, setSfxChainGapSec] = useState<number>(0.15);
+  const [isBuildingSfxChain, setIsBuildingSfxChain] = useState<boolean>(false);
+  const dualSlotTargetRef = useRef<'primary' | 'secondary'>('secondary');
+  const dualMediaInputRef = useRef<HTMLInputElement | null>(null);
 
   // Voiceover REC
   const [isRecordingVoice, setIsRecordingVoice] = useState<boolean>(false);
@@ -2291,6 +2460,12 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
     return null;
   }, []);
 
+  const getCachedDualSource = useCallback((clip: TimelineClip) => {
+    if (!clip.dualUrl) return null;
+    if (clip.dualType === 'video') return videoElementsRef.current.get(clip.dualUrl) || null;
+    return imageElementsRef.current.get(clip.dualUrl) || null;
+  }, []);
+
   const drawPreviewAt = useCallback(
     (t: number) => {
       const idx = findPlacementIndexAt(t);
@@ -2321,7 +2496,9 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
             letterbox,
             (url) => imageElementsRef.current.get(url) || null,
             selLayerForBox,
-            guide
+            guide,
+            undefined,
+            getCachedDualSource
           );
         }
       }
@@ -2342,7 +2519,9 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
             letterbox,
             (url) => imageElementsRef.current.get(url) || null,
             selLayerForBox,
-            guide
+            guide,
+            undefined,
+            getCachedDualSource
           );
 
           if (abCompare && activeP) {
@@ -2373,7 +2552,10 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
               layers,
               letterbox,
               (url) => imageElementsRef.current.get(url) || null,
-              null
+              null,
+              undefined,
+              undefined,
+              getCachedDualSource
             );
             sCtx.restore();
 
@@ -2397,7 +2579,7 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
         }
       }
     },
-    [findPlacementIndexAt, placements, getCachedSource, layers, letterbox, abCompare, selectedLayerId, isPlaying, bottomTray, selectedClip, selectedLayer]
+    [findPlacementIndexAt, placements, getCachedSource, getCachedDualSource, layers, letterbox, abCompare, selectedLayerId, isPlaying, bottomTray, selectedClip, selectedLayer]
   );
 
   // Ensure studio canvas redraws immediately whenever studio workspace opens or toggles A/B compare
@@ -2406,65 +2588,75 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
       bottomTray === 'colorStudio' ||
       bottomTray === 'chromaStudio' ||
       bottomTray === 'filters' ||
-      bottomTray === 'vfx';
+      bottomTray === 'vfx' ||
+      bottomTray === 'dualDialogue';
     if (inStudio) {
       const id = requestAnimationFrame(() => drawPreviewAt(playheadRef.current));
       return () => cancelAnimationFrame(id);
     }
   }, [bottomTray, studioTab, abCompare, clips, selectedClipId, drawPreviewAt]);
 
-  // Cache media elements & decode first frame immediately
+  // Cache media elements (including Dual Face-to-Face videos/images!) & decode first frame immediately
   useEffect(() => {
-    const activeClipUrls = new Set(clips.map((c) => c.url).filter(Boolean));
+    const activeUrls = new Set<string>();
+    clips.forEach((c) => {
+      if (c.url) activeUrls.add(c.url);
+      if (c.dualUrl) activeUrls.add(c.dualUrl);
+    });
     const activeLayerUrls = new Set(
       layers.filter((l) => l.kind === 'image' && l.imageUrl).map((l) => l.imageUrl as string)
     );
 
     for (const [url, v] of videoElementsRef.current.entries()) {
-      if (!activeClipUrls.has(url)) {
+      if (!activeUrls.has(url)) {
         v.pause();
         v.src = '';
         videoElementsRef.current.delete(url);
       }
     }
     for (const [url] of imageElementsRef.current.entries()) {
-      if (!activeClipUrls.has(url) && !activeLayerUrls.has(url)) {
+      if (!activeUrls.has(url) && !activeLayerUrls.has(url)) {
         imageElementsRef.current.delete(url);
       }
     }
 
+    const ensureVideoCached = (url: string, startAt = 0) => {
+      if (!url || videoElementsRef.current.has(url)) return;
+      const v = document.createElement('video');
+      v.src = url;
+      v.preload = 'auto';
+      v.playsInline = true;
+      v.crossOrigin = 'anonymous';
+      v.onloadeddata = () => {
+        try {
+          if (startAt > 0 && v.currentTime < startAt) v.currentTime = startAt;
+        } catch {}
+        drawPreviewAt(playheadRef.current);
+      };
+      v.onseeked = () => drawPreviewAt(playheadRef.current);
+      v.load();
+      videoElementsRef.current.set(url, v);
+    };
+
+    const ensureImageCached = (url: string) => {
+      if (!url || imageElementsRef.current.has(url)) return;
+      const img = new Image();
+      img.onload = () => drawPreviewAt(playheadRef.current);
+      img.src = url;
+      imageElementsRef.current.set(url, img);
+    };
+
     clips.forEach((c) => {
-      if (c.type === 'video' && c.url && !videoElementsRef.current.has(c.url)) {
-        const v = document.createElement('video');
-        v.src = c.url;
-        v.preload = 'auto';
-        v.playsInline = true;
-        v.crossOrigin = 'anonymous';
-        v.onloadeddata = () => {
-          try {
-            if (v.currentTime < c.trimStart) v.currentTime = c.trimStart;
-          } catch {}
-          drawPreviewAt(playheadRef.current);
-        };
-        v.onseeked = () => drawPreviewAt(playheadRef.current);
-        v.load();
-        videoElementsRef.current.set(c.url, v);
-      } else if (c.type === 'image' && c.url && !imageElementsRef.current.has(c.url)) {
-        const img = new Image();
-        img.onload = () => drawPreviewAt(playheadRef.current);
-        img.src = c.url;
-        imageElementsRef.current.set(c.url, img);
+      if (c.type === 'video' && c.url) ensureVideoCached(c.url, c.trimStart);
+      else if (c.type === 'image' && c.url) ensureImageCached(c.url);
+
+      if (c.dualUrl) {
+        if (c.dualType === 'video') ensureVideoCached(c.dualUrl, 0);
+        else ensureImageCached(c.dualUrl);
       }
     });
 
-    activeLayerUrls.forEach((url) => {
-      if (!imageElementsRef.current.has(url)) {
-        const img = new Image();
-        img.onload = () => drawPreviewAt(playheadRef.current);
-        img.src = url;
-        imageElementsRef.current.set(url, img);
-      }
-    });
+    activeLayerUrls.forEach((url) => ensureImageCached(url));
   }, [clips, layers, drawPreviewAt]);
 
   useEffect(() => {
@@ -2524,6 +2716,16 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
           } catch {}
         }
       }
+      if (activeP.clip.dualMode && activeP.clip.dualMode !== 'none' && activeP.clip.dualType === 'video' && activeP.clip.dualUrl) {
+        const dVid = videoElementsRef.current.get(activeP.clip.dualUrl);
+        if (dVid) {
+          const dDur = Math.max(1, dVid.duration || 6);
+          const dLocal = ((clamped - activeP.startTime) * activeP.clip.speed) % dDur;
+          try {
+            dVid.currentTime = dLocal;
+          } catch {}
+        }
+      }
       drawPreviewAt(clamped);
     },
     [totalDuration, findPlacementIndexAt, placements, drawPreviewAt, syncTimelineScrollToTime]
@@ -2538,7 +2740,7 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
     }
   }, [isPlaying, clips, layers, aspectRatio, letterbox, previewDims, selectedLayerId, bottomTray, drawPreviewAt]);
 
-  // True 60fps Zero-React-Churn Playback Loop (Mobile & Desktop Silky Smooth!)
+  // True 60fps Zero-React-Churn Playback Loop (Mobile & Desktop Silky Smooth + Dual Face-to-Face Sync!)
   useEffect(() => {
     if (!isPlaying || placements.length === 0 || totalDuration <= 0) {
       for (const v of videoElementsRef.current.values()) v.pause();
@@ -2592,6 +2794,9 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
 
       const playingUrls = new Set<string>();
       if (activeP?.clip.type === 'video') playingUrls.add(activeP.clip.url);
+      if (activeP?.clip.dualMode && activeP.clip.dualMode !== 'none' && activeP.clip.dualType === 'video' && activeP.clip.dualUrl) {
+        playingUrls.add(activeP.clip.dualUrl);
+      }
       if (inTransition && prevP?.clip.type === 'video') playingUrls.add(prevP.clip.url);
 
       for (const [url, v] of videoElementsRef.current.entries()) {
@@ -2608,6 +2813,17 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
           if (Math.abs(v.currentTime - targetLocal) > 0.55) {
             try {
               v.currentTime = targetLocal;
+            } catch {}
+          }
+          if (v.paused) v.play().catch(() => {});
+        } else if (activeP && activeP.clip.dualUrl === url) {
+          const dDur = Math.max(1, v.duration || 6);
+          const dTarget = ((currentT - activeP.startTime) * activeP.clip.speed) % dDur;
+          v.playbackRate = activeP.clip.speed;
+          v.volume = clipsMuted ? 0 : Math.min(1, Math.max(0, activeP.clip.dualVolume ?? 0.7));
+          if (Math.abs(v.currentTime - dTarget) > 0.55) {
+            try {
+              v.currentTime = dTarget;
             } catch {}
           }
           if (v.paused) v.play().catch(() => {});
@@ -2825,6 +3041,176 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
     window.setTimeout(() => setContinuityAppliedToast(null), 3500);
   };
 
+  // 1-Click Auto Continuity Position + Color Grading Match when Joining Two Videos/Images!
+  const handleAutoContinuityColorJoin = (targetClipId?: string) => {
+    if (clips.length === 0) return;
+    setIsPlaying(false);
+    pushUndo();
+
+    const refIndex = targetClipId
+      ? Math.max(0, clips.findIndex((c) => c.id === targetClipId) - 1)
+      : Math.max(0, clips.findIndex((c) => c.id === (selectedTransitionClipId || selectedClip?.id)) - 1);
+    const baseClip = clips[refIndex] || clips[0];
+
+    setClips((prev) =>
+      prev.map((c, idx) => {
+        const isMatched = !targetClipId || idx >= refIndex;
+        if (!isMatched) return c;
+        const nextMotion: MotionPresetId =
+          idx % 2 === 0 ? 'push_in' : 'pull_out';
+        return {
+          ...c,
+          fitMode: 'cover',
+          rotation: baseClip.rotation || 0,
+          motionPreset: c.motionPreset && c.motionPreset !== 'none' ? c.motionPreset : nextMotion,
+          transitionId: idx > 0 ? (c.transitionId !== 'none' ? c.transitionId : 'zoom_flow') : 'none',
+          transitionDuration: c.transitionDuration || 0.45,
+          colorGradeEnabled: true,
+          brightness: baseClip.brightness ?? 102,
+          contrast: baseClip.contrast ?? 108,
+          saturation: baseClip.saturation ?? 108,
+          temp: baseClip.temp ?? 4,
+          tint: baseClip.tint ?? 0,
+          exposure: baseClip.exposure ?? 2,
+          highlights: baseClip.highlights ?? -6,
+          shadows: baseClip.shadows ?? 8,
+          vibrance: baseClip.vibrance ?? 112,
+          colorLutId: baseClip.colorLutId && baseClip.colorLutId !== 'none' ? baseClip.colorLutId : 'arri_logc',
+        };
+      })
+    );
+
+    setContinuityAppliedToast(
+      isMl
+        ? '✨ ഒറ്റ ക്ലിക്കിൽ രണ്ടു വീഡിയോയും ഒരേ പൊസിഷൻ & കളർ ഗ്രേഡിങ് മാച്ച് ചെയ്തു ജോയിൻ ആക്കി!'
+        : '✨ 1-Click Continuity Position + Color Grading Match Joined Across Scenes!'
+    );
+    window.setTimeout(() => setContinuityAppliedToast(null), 3600);
+  };
+
+  // Pro Freeze Frame Capture right at current playhead!
+  const handleFreezeFrameAtPlayhead = () => {
+    const c = previewCanvasRef.current;
+    const activeIdx = findPlacementIndexAt(playheadRef.current);
+    const curClip = activeIdx >= 0 ? placements[activeIdx]?.clip : selectedClip;
+    if (!c || !curClip) return;
+    setIsPlaying(false);
+    pushUndo();
+    const snapUrl = c.toDataURL('image/png');
+    const frozenClip: TimelineClip = {
+      ...curClip,
+      id: `freeze_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`,
+      type: 'image',
+      name: `${curClip.name.slice(0, 14)} [Freeze]`,
+      url: snapUrl,
+      thumbnailUrl: snapUrl,
+      mediaDuration: 2.5,
+      trimStart: 0,
+      trimEnd: 2.5,
+      speed: 1,
+      transitionId: 'none',
+      transitionDuration: 0.35,
+      dualMode: 'none',
+    };
+    const insertAt = activeIdx >= 0 ? activeIdx + 1 : clips.length;
+    setClips((prev) => {
+      const next = [...prev];
+      next.splice(insertAt, 0, frozenClip);
+      return next;
+    });
+    setSelectedClipId(frozenClip.id);
+    setContinuityAppliedToast(
+      isMl ? '🧊 ഫ്രീസ് ഫ്രെയിം ക്ലിപ്പ് ചേർത്തു!' : '🧊 Freeze Frame Captured onto Timeline!'
+    );
+    window.setTimeout(() => setContinuityAppliedToast(null), 3000);
+  };
+
+  // Upload Video or Image straight into Dual Face-to-Face Studio Slot (Left or Right)
+  const handleDualSlotMediaUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const probed = await probeMediaFile(file);
+    const slot = dualSlotTargetRef.current;
+    const cleanName = file.name.replace(/\.[^.]+$/, '').slice(0, 22) || 'Dialogue Media';
+
+    if (clips.length === 0) {
+      pushUndo();
+      const firstClip: TimelineClip = {
+        id: `dual_${Date.now()}`,
+        type: probed.type,
+        name: cleanName,
+        url: probed.url,
+        mediaDuration: probed.duration,
+        trimStart: 0,
+        trimEnd: Math.max(4, probed.duration),
+        speed: 1,
+        volume: 0.85,
+        filterId: 'none',
+        vfxId: 'none',
+        vfxIntensity: 100,
+        motionPreset: 'none',
+        brightness: 100,
+        contrast: 100,
+        saturation: 100,
+        vignette: 0,
+        rotation: 0,
+        flipH: false,
+        fitMode: 'cover',
+        transitionId: 'none',
+        transitionDuration: 0.4,
+        thumbnailUrl: probed.thumbnailUrl,
+        dualMode: slot === 'secondary' ? 'split_v' : 'split_v',
+        dualUrl: slot === 'secondary' ? probed.url : undefined,
+        dualType: slot === 'secondary' ? probed.type : undefined,
+        dualName: slot === 'secondary' ? cleanName : undefined,
+        dualFlipPrimary: false,
+        dualFlipSecondary: true,
+        dualZoomA: 1.08,
+        dualZoomB: 1.08,
+        dualPanAX: 0,
+        dualPanBX: 0,
+        dualActiveSpeaker: 'both',
+        dualVolume: 0.8,
+      };
+      setClips([firstClip]);
+      setSelectedClipId(firstClip.id);
+      e.target.value = '';
+      return;
+    }
+
+    const target = selectedClip || clips[0];
+    if (!target) {
+      e.target.value = '';
+      return;
+    }
+    pushUndo();
+    if (slot === 'primary') {
+      updateClip(target.id, {
+        type: probed.type,
+        url: probed.url,
+        name: cleanName,
+        thumbnailUrl: probed.thumbnailUrl,
+        mediaDuration: probed.duration,
+        trimStart: 0,
+        trimEnd: Math.max(target.trimEnd, Math.min(12, probed.duration)),
+        dualMode: target.dualMode && target.dualMode !== 'none' ? target.dualMode : 'split_v',
+      });
+    } else {
+      updateClip(target.id, {
+        dualMode: target.dualMode && target.dualMode !== 'none' ? target.dualMode : 'split_v',
+        dualUrl: probed.url,
+        dualType: probed.type,
+        dualName: cleanName,
+        dualThumbnailUrl: probed.thumbnailUrl,
+        dualFlipSecondary: target.dualFlipSecondary ?? true,
+        dualZoomA: target.dualZoomA ?? 1.06,
+        dualZoomB: target.dualZoomB ?? 1.06,
+        dualVolume: target.dualVolume ?? 0.85,
+      });
+    }
+    e.target.value = '';
+  };
+
   // Add Device Song
   const handleMusicUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const fileList = e.target.files;
@@ -2912,17 +3298,18 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
     }
   };
 
-  // Add 1 of 12,000+ SFX
+  // Add 1 of 15,000+ SFX
   const handleAddSfxToTimeline = async (sfx: SfxDefinition) => {
     setLoadingSfxId(sfx.id);
     try {
       const { url, duration } = await renderSfxToWavUrl(sfx);
       pushUndo();
       const targetSfxTrack = Math.min(Math.max(1, activeAudioTrackIdx), extraAudioTrackCount - 1);
+      const localTitle = localizeSfxName(sfx.name, sfx.recipe, lang);
       const item: AudioTimelineItem = {
         id: `sfx_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`,
         kind: 'sfx',
-        name: sfx.name,
+        name: localTitle,
         url,
         startTime: Number(playheadRef.current.toFixed(2)),
         duration,
@@ -2938,23 +3325,71 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
     }
   };
 
-  // Synthesize & Add any of 12,000+ Pro SFX items (Gunshots, Sword, Booms, Sirens)
+  // Join Multiple Chained SFX Sequentially into ONE Connected Audio File!
+  const handleAddJoinedSfxChain = async () => {
+    if (sfxChain.length === 0) return;
+    setIsBuildingSfxChain(true);
+    try {
+      const nodes = sfxChain.map((s) => ({ sfx: s, gapSec: sfxChainGapSec }));
+      const { url, duration } = await renderJoinedSfxChainToWavUrl(nodes);
+      pushUndo();
+      const targetSfxTrack = Math.min(Math.max(1, activeAudioTrackIdx), extraAudioTrackCount - 1);
+      const chainTitle = sfxChain
+        .map((s) => localizeSfxName(s.name, s.recipe, lang).slice(0, 12))
+        .join(' + ');
+      const item: AudioTimelineItem = {
+        id: `sfxchain_${Date.now()}`,
+        kind: 'sfx',
+        name: `🔗 ${chainTitle}`.slice(0, 28),
+        url,
+        startTime: Number(playheadRef.current.toFixed(2)),
+        duration,
+        trimStart: 0,
+        volume: 0.92,
+        trackIndex: targetSfxTrack,
+      };
+      setAudioItems((prev) => [...prev, item]);
+      setSelectedAudioId(item.id);
+      void previewJoinedSfxChain(nodes);
+      setContinuityAppliedToast(
+        isMl
+          ? `🔗 ${sfxChain.length} സൗണ്ടുകൾ ഒറ്റ കണക്റ്റഡ് ഓഡിയോ ആയി ചേർത്തു!`
+          : `🔗 Joined ${sfxChain.length} SFX Seamlessly onto Timeline!`
+      );
+      window.setTimeout(() => setContinuityAppliedToast(null), 3000);
+    } finally {
+      setIsBuildingSfxChain(false);
+    }
+  };
+
+  // Synthesize & Add any of 15,000+ Pro SFX items (Thunder, Gunshots, Doors, Keys, Car Start & More)
   const buildSfxDefFromCatalog = (item: ProCatalogItem): SfxDefinition => {
-    const validRecipes: Array<SfxDefinition['recipe']> = [
+    const validRecipes: SfxRecipeType[] = [
       'whoosh', 'boom', 'riser', 'glitch', 'pop', 'thunder', 'laser', 'chime', 'heartbeat', 'siren',
+      'door_knock', 'door_open', 'key_unlock', 'car_start', 'gunshot', 'rain_thunder', 'footstep',
+      'glass_break', 'sword_slash', 'phone_ring', 'clock_tick',
     ];
-    const recipe = validRecipes.includes(item.engineId as SfxDefinition['recipe'])
-      ? (item.engineId as SfxDefinition['recipe'])
+    const recipe: SfxRecipeType = validRecipes.includes(item.engineId as SfxRecipeType)
+      ? (item.engineId as SfxRecipeType)
       : 'boom';
+    const dur =
+      recipe === 'car_start' || recipe === 'rain_thunder' || recipe === 'thunder'
+        ? 1.45
+        : recipe === 'gunshot'
+        ? 0.55
+        : recipe === 'door_open' || recipe === 'door_knock' || recipe === 'key_unlock' || recipe === 'footstep'
+        ? 0.95
+        : 0.78;
     return {
       id: item.id,
       name: item.name,
       category: 'Foley & Action',
-      durationSec: recipe === 'boom' || recipe === 'thunder' ? 1.15 : 0.75,
+      durationSec: dur,
       recipe,
       baseFreq: item.freq || 140,
       endFreq: Math.max(40, (item.freq || 140) * 1.6),
-      noiseMix: recipe === 'whoosh' || recipe === 'thunder' ? 0.72 : 0.4,
+      noiseMix: recipe === 'whoosh' || recipe === 'thunder' || recipe === 'rain_thunder' ? 0.75 : 0.45,
+      pulseCount: recipe === 'gunshot' ? 1 : 3,
     };
   };
 
@@ -3839,7 +4274,10 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
       await audioCtx.resume().catch(() => {});
 
       const uniqueVideoUrls = Array.from(
-        new Set(clips.filter((c) => c.type === 'video' && c.url).map((c) => c.url))
+        new Set([
+          ...clips.filter((c) => c.type === 'video' && c.url).map((c) => c.url),
+          ...clips.filter((c) => c.dualMode && c.dualMode !== 'none' && c.dualType === 'video' && c.dualUrl).map((c) => c.dualUrl as string),
+        ])
       );
       for (const url of uniqueVideoUrls) {
         const vid = document.createElement('video');
@@ -3863,6 +4301,7 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
 
       const allImageUrls = [
         ...clips.filter((x) => x.type === 'image' && x.url).map((x) => x.url),
+        ...clips.filter((x) => x.dualMode && x.dualMode !== 'none' && x.dualType !== 'video' && x.dualUrl).map((x) => x.dualUrl as string),
         ...layers.filter((l) => l.kind === 'image' && l.imageUrl).map((l) => l.imageUrl as string),
       ];
       for (const imgUrl of allImageUrls) {
@@ -3931,6 +4370,13 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
           ? exportImages.get(clip.url) || null
           : null;
 
+      const getDualExportSrc = (clip: TimelineClip) =>
+        !clip.dualUrl
+          ? null
+          : clip.dualType === 'video'
+          ? exportVideos.get(clip.dualUrl)?.el || null
+          : exportImages.get(clip.dualUrl) || null;
+
       // Pre-seek first clip if trimStart > 0
       if (placements[0]?.clip.type === 'video') {
         const firstEntry = exportVideos.get(placements[0].clip.url);
@@ -3954,7 +4400,8 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
         (url) => exportImages.get(url) || null,
         null,
         undefined,
-        exportResolution
+        exportResolution,
+        getDualExportSrc
       );
 
       recorder.start(250);
@@ -3994,9 +4441,15 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
 
           for (const [url, item] of exportVideos.entries()) {
             const isCurr = activeP?.clip.type === 'video' && activeP.clip.url === url;
+            const isDualCurr = Boolean(
+              activeP?.clip.dualMode &&
+                activeP.clip.dualMode !== 'none' &&
+                activeP.clip.dualType === 'video' &&
+                activeP.clip.dualUrl === url
+            );
             const isOut = inTransition && prevP?.clip.type === 'video' && prevP.clip.url === url;
 
-            if (!isCurr && !isOut) {
+            if (!isCurr && !isDualCurr && !isOut) {
               item.gain.gain.value = 0;
               if (!item.el.paused) item.el.pause();
               continue;
@@ -4011,6 +4464,17 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                 lastClipId = activeP.clip.id;
                 try {
                   item.el.currentTime = targetLocal;
+                } catch {}
+              }
+              if (item.el.paused) item.el.play().catch(() => {});
+            } else if (isDualCurr && activeP) {
+              const dDur = Math.max(1, item.el.duration || 6);
+              const dTarget = ((elapsed - activeP.startTime) * activeP.clip.speed) % dDur;
+              item.el.playbackRate = activeP.clip.speed;
+              item.gain.gain.value = clipsMuted ? 0 : (activeP.clip.dualVolume ?? 0.7);
+              if (Math.abs(item.el.currentTime - dTarget) > 0.3) {
+                try {
+                  item.el.currentTime = dTarget;
                 } catch {}
               }
               if (item.el.paused) item.el.play().catch(() => {});
@@ -4054,7 +4518,8 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
             (url) => exportImages.get(url) || null,
             null,
             undefined,
-            exportResolution
+            exportResolution,
+            getDualExportSrc
           );
 
           const monCanvas = exportMonitorCanvasRef.current;
@@ -4219,10 +4684,17 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
     const q = sfxSearch.trim().toLowerCase();
     return SFX_LIBRARY.filter((s) => {
       const catOk = sfxCategory === 'All' || s.category === sfxCategory;
-      const qOk = !q || s.name.toLowerCase().includes(q) || s.category.toLowerCase().includes(q);
+      const localNm = localizeSfxName(s.name, s.recipe, lang).toLowerCase();
+      const localCat = localizeSfxCategory(s.category, lang).toLowerCase();
+      const qOk =
+        !q ||
+        s.name.toLowerCase().includes(q) ||
+        s.category.toLowerCase().includes(q) ||
+        localNm.includes(q) ||
+        localCat.includes(q);
       return catOk && qOk;
     });
-  }, [sfxCategory, sfxSearch]);
+  }, [sfxCategory, sfxSearch, lang]);
 
   const filteredMusic = useMemo(() => {
     const q = musicSearch.trim().toLowerCase();
@@ -4251,7 +4723,7 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
     if (navCatFilter === 'All') return PRO_121_FEATURES;
     return PRO_121_FEATURES.filter((t) => {
       const g = t.group.toLowerCase();
-      if (navCatFilter === 'Masking') return t.target === 'masking';
+      if (navCatFilter === 'Masking') return t.target === 'masking' || t.target === 'dualDialogue';
       if (navCatFilter === 'Characters') return t.target === 'character';
       if (navCatFilter === 'Graph') return t.target === 'graph' || t.target === 'motion';
       if (navCatFilter === 'Action VFX') return t.target === 'vfx' || g.includes('vfx');
@@ -4268,6 +4740,14 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
 
     if (lower.includes('selection tool')) {
       setPremiereTool('select');
+      return;
+    }
+    if (lower.includes('color & position match') || lower.includes('match join')) {
+      handleAutoContinuityColorJoin();
+      return;
+    }
+    if (lower.includes('freeze frame')) {
+      handleFreezeFrameAtPlayhead();
       return;
     }
     if (lower.includes('razor') || lower.includes('split')) {
@@ -4303,6 +4783,11 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
     }
     if (lower.includes('synced shoot')) {
       handleCreateShootScene();
+      return;
+    }
+    if (tool.target === 'dualDialogue') {
+      setIsPlaying(false);
+      setBottomTray('dualDialogue');
       return;
     }
     if (lower.includes('flip character')) {
@@ -4439,20 +4924,20 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
     bottomTray === 'vfx';
 
   return (
-    <div className="fixed inset-0 z-50 bg-[#08090c] text-zinc-100 flex flex-col overflow-hidden select-none">
-      {/* 1. PREMIERE PRO / DAVINCI RESOLVE TOP STUDIO MENU BAR */}
-      <header className="h-14 px-2.5 sm:px-3.5 flex items-center justify-between gap-1.5 bg-[#08090c] border-b border-zinc-900 shrink-0 relative z-40">
-        <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
+    <div className="fixed inset-0 z-50 bg-[#08090c] text-zinc-100 flex flex-col overflow-y-auto overflow-x-hidden select-none">
+      {/* 1. BIG TOUCH & DESKTOP-MODE STUDIO MENU BAR */}
+      <header className="min-h-[60px] px-3 sm:px-4 py-2 flex flex-wrap items-center justify-between gap-2 bg-[#0b0d14] border-b border-zinc-800 shrink-0 sticky top-0 z-40">
+        <div className="flex flex-wrap items-center gap-2 min-w-0">
           <button
             type="button"
             onClick={() => {
               setIsPlaying(false);
               onBackToStoryboard();
             }}
-            className="px-2.5 sm:px-3 py-1.5 rounded-full bg-zinc-900 hover:bg-amber-400 hover:text-black border border-zinc-700 text-white font-extrabold text-xs flex items-center gap-1 cursor-pointer shrink-0 transition-colors"
+            className="px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-full bg-zinc-900 hover:bg-amber-400 hover:text-black border border-zinc-700 text-white font-extrabold text-xs sm:text-sm md:text-base flex items-center gap-1.5 cursor-pointer shrink-0 transition-colors"
             title={isMl ? 'എഡിറ്റിംഗ് പൂർത്തിയാക്കി തിരികെ പോകുക' : 'Back to Main Page'}
           >
-            <ArrowLeft className="w-4 h-4 shrink-0" />
+            <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5 shrink-0" />
             <span>{isMl ? 'തിരികെ' : 'Back'}</span>
           </button>
 
@@ -4461,15 +4946,15 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
             <button
               type="button"
               onClick={() => setShowFileMenu((s) => !s)}
-              className={`px-2.5 py-1.5 rounded-xl text-xs font-extrabold border flex items-center gap-1 cursor-pointer ${
+              className={`px-3.5 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm md:text-base font-extrabold border flex items-center gap-1.5 cursor-pointer ${
                 showFileMenu
                   ? 'bg-amber-500 text-black border-amber-500'
-                  : 'bg-zinc-900 border-zinc-800 text-zinc-100 hover:border-zinc-600'
+                  : 'bg-zinc-900 border-zinc-700 text-zinc-100 hover:border-zinc-500'
               }`}
             >
-              <FileText className="w-3.5 h-3.5" />
+              <FileText className="w-4 h-4 sm:w-5 sm:h-5" />
               <span>File</span>
-              <ChevronDown className="w-3 h-3" />
+              <ChevronDown className="w-4 h-4" />
             </button>
 
             {showFileMenu && (
@@ -4478,11 +4963,11 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                   className="fixed inset-0 z-40"
                   onClick={() => setShowFileMenu(false)}
                 />
-                <div className="absolute left-0 top-11 z-50 w-60 rounded-2xl bg-[#121520] border border-zinc-700 shadow-2xl p-1.5 space-y-0.5 text-xs">
+                <div className="absolute left-0 top-12 z-50 w-72 rounded-2xl bg-[#121520] border border-zinc-700 shadow-2xl p-2 space-y-1 text-sm">
                   <button
                     type="button"
                     onClick={handleSaveProject}
-                    className="w-full px-3 py-2 rounded-xl hover:bg-amber-500 hover:text-black text-left font-bold flex items-center gap-2 cursor-pointer"
+                    className="w-full px-3.5 py-2.5 rounded-xl hover:bg-amber-500 hover:text-black text-left font-bold flex items-center gap-2.5 cursor-pointer"
                   >
                     <Save className="w-4 h-4" />
                     <span>{isMl ? 'സേവ് ചെയ്യുക (Save Project)' : 'Save Project'}</span>
@@ -4493,7 +4978,7 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                       setShowFileMenu(false);
                       mediaFileInputRef.current?.click();
                     }}
-                    className="w-full px-3 py-2 rounded-xl hover:bg-zinc-800 text-left font-bold flex items-center gap-2 cursor-pointer"
+                    className="w-full px-3.5 py-2.5 rounded-xl hover:bg-zinc-800 text-left font-bold flex items-center gap-2.5 cursor-pointer"
                   >
                     <Video className="w-4 h-4 text-sky-400" />
                     <span>{isMl ? 'വീഡിയോ / ഫോട്ടോ ഇംപോർട്ട്' : 'Import Video / Photo'}</span>
@@ -4504,7 +4989,7 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                       setShowFileMenu(false);
                       audioFileInputRef.current?.click();
                     }}
-                    className="w-full px-3 py-2 rounded-xl hover:bg-zinc-800 text-left font-bold flex items-center gap-2 cursor-pointer"
+                    className="w-full px-3.5 py-2.5 rounded-xl hover:bg-zinc-800 text-left font-bold flex items-center gap-2.5 cursor-pointer"
                   >
                     <Music className="w-4 h-4 text-fuchsia-400" />
                     <span>{isMl ? 'ഓഡിയോ / മ്യൂസിക് ഇംപോർട്ട്' : 'Import Music / Audio'}</span>
@@ -4515,7 +5000,7 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                       setExtraVfxTrackCount((c) => Math.min(6, c + 1));
                       setShowFileMenu(false);
                     }}
-                    className="w-full px-3 py-2 rounded-xl hover:bg-zinc-800 text-left font-bold flex items-center gap-2 cursor-pointer"
+                    className="w-full px-3.5 py-2.5 rounded-xl hover:bg-zinc-800 text-left font-bold flex items-center gap-2.5 cursor-pointer"
                   >
                     <FolderPlus className="w-4 h-4 text-rose-400" />
                     <span>{isMl ? '+ പുതിയ VFX/വീഡിയോ ലൈൻ ചേർക്കൂ' : '+ Add Video / VFX Track Line'}</span>
@@ -4526,7 +5011,7 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                       setExtraAudioTrackCount((c) => Math.min(6, c + 1));
                       setShowFileMenu(false);
                     }}
-                    className="w-full px-3 py-2 rounded-xl hover:bg-zinc-800 text-left font-bold flex items-center gap-2 cursor-pointer"
+                    className="w-full px-3.5 py-2.5 rounded-xl hover:bg-zinc-800 text-left font-bold flex items-center gap-2.5 cursor-pointer"
                   >
                     <FolderPlus className="w-4 h-4 text-emerald-400" />
                     <span>{isMl ? '+ പുതിയ മ്യൂസിക്/ഓഡിയോ ലൈൻ' : '+ Add Audio / Music Track Line'}</span>
@@ -4539,7 +5024,7 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                       setAspectRatio('16:9');
                       setBottomTray('projectSetup');
                     }}
-                    className="w-full px-3 py-2 rounded-xl hover:bg-zinc-800 text-left font-bold flex items-center gap-2 cursor-pointer"
+                    className="w-full px-3.5 py-2.5 rounded-xl hover:bg-zinc-800 text-left font-bold flex items-center gap-2.5 cursor-pointer"
                   >
                     <Maximize2 className="w-4 h-4 text-amber-400" />
                     <span>{isMl ? 'പ്രോജക്റ്റ് & 16:9 സെറ്റിംഗ്സ്' : 'Project Settings (16:9)'}</span>
@@ -4550,7 +5035,7 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                       setShowFileMenu(false);
                       setBottomTray('history');
                     }}
-                    className="w-full px-3 py-2 rounded-xl hover:bg-zinc-800 text-left font-bold flex items-center gap-2 cursor-pointer"
+                    className="w-full px-3.5 py-2.5 rounded-xl hover:bg-zinc-800 text-left font-bold flex items-center gap-2.5 cursor-pointer"
                   >
                     <HistoryIcon className="w-4 h-4 text-zinc-300" />
                     <span>{isMl ? 'എക്സ്പോർട്ട് ഹിസ്റ്ററി' : 'Export History'}</span>
@@ -4561,7 +5046,7 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                       setShowFileMenu(false);
                       handleCreateBlank16x9Scene();
                     }}
-                    className="w-full px-3 py-2 rounded-xl hover:bg-zinc-800 text-left font-bold flex items-center gap-2 cursor-pointer"
+                    className="w-full px-3.5 py-2.5 rounded-xl hover:bg-zinc-800 text-left font-bold flex items-center gap-2.5 cursor-pointer"
                   >
                     <Film className="w-4 h-4 text-sky-400" />
                     <span>{isMl ? '+ 16:9 ബ്ലാങ്ക് സീൻ ചേർക്കൂ' : '+ Add 16:9 Cinema Scene'}</span>
@@ -4580,7 +5065,7 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                       setSelectedAudioId(null);
                       setPlayhead(0);
                     }}
-                    className="w-full px-3 py-2 rounded-xl hover:bg-red-500/20 text-red-300 text-left font-bold flex items-center gap-2 cursor-pointer"
+                    className="w-full px-3.5 py-2.5 rounded-xl hover:bg-red-500/20 text-red-300 text-left font-bold flex items-center gap-2.5 cursor-pointer"
                   >
                     <Trash2 className="w-4 h-4" />
                     <span>{isMl ? 'എല്ലാം ഡിലീറ്റ് / പുതിയ പ്രോജക്റ്റ്' : 'Clear All / New Project'}</span>
@@ -4593,11 +5078,11 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
           <button
             type="button"
             onClick={handleSaveProject}
-            className="px-2.5 py-1.5 rounded-xl text-xs font-extrabold border bg-emerald-500/15 border-emerald-500/40 text-emerald-300 hover:bg-emerald-500 hover:text-black flex items-center gap-1 cursor-pointer transition-colors"
+            className="px-3.5 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm md:text-base font-extrabold border bg-emerald-500/15 border-emerald-500/45 text-emerald-300 hover:bg-emerald-500 hover:text-black flex items-center gap-1.5 cursor-pointer transition-colors"
             title={isMl ? 'സേവ് ചെയ്യുക' : 'Save Project'}
           >
-            <Save className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">{isMl ? 'സേവ്' : 'Save'}</span>
+            <Save className="w-4 h-4 sm:w-5 sm:h-5" />
+            <span>{isMl ? 'സേവ്' : 'Save'}</span>
           </button>
 
           <button
@@ -4606,37 +5091,46 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
               setIsPlaying(false);
               setBottomTray('allTools');
             }}
-            className="px-2.5 py-1.5 rounded-xl text-xs font-extrabold border bg-amber-500/15 border-amber-500/45 text-amber-300 hover:bg-amber-500 hover:text-black flex items-center gap-1 cursor-pointer transition-colors"
+            className="px-3.5 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm md:text-base font-extrabold border bg-amber-500/20 border-amber-400/55 text-amber-300 hover:bg-amber-500 hover:text-black flex items-center gap-1.5 cursor-pointer transition-colors whitespace-nowrap"
             title={isMl ? '121 പ്രോ ടൂളുകൾ തുറക്കുക' : 'Open All 121 Pro Studio Tools'}
           >
-            <LayoutGrid className="w-3.5 h-3.5" />
-            <span>{isMl ? '121 ടൂൾ' : '121 Tools'}</span>
+            <LayoutGrid className="w-4 h-4 sm:w-5 sm:h-5 shrink-0" />
+            <span>{isMl ? '121 ടൂളുകൾ' : '121 Tools'}</span>
           </button>
 
           <button
             type="button"
-            onClick={() => setBottomTray('projectSetup')}
-            className="hidden md:flex items-center gap-1 text-sm font-bold text-white hover:text-amber-400 truncate cursor-pointer ml-1"
+            onClick={() => setIsTheaterMonitor((v) => !v)}
+            className={`px-3.5 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm md:text-base font-extrabold border flex items-center gap-1.5 cursor-pointer transition-colors whitespace-nowrap ${
+              isTheaterMonitor
+                ? 'bg-sky-400 text-black border-white shadow'
+                : 'bg-sky-500/15 border-sky-400/50 text-sky-300 hover:bg-sky-400 hover:text-black'
+            }`}
+            title={isMl ? 'വലിയ സ്ക്രീൻ മോഡ് ഓൺ/ഓഫ്' : 'Toggle Large Screen View'}
           >
-            <span className="truncate max-w-[140px]">{projectName}</span>
-            <ChevronDown className="w-4 h-4 text-zinc-400 shrink-0" />
+            {isTheaterMonitor ? (
+              <Minimize2 className="w-4 h-4 sm:w-5 sm:h-5 shrink-0" />
+            ) : (
+              <Maximize2 className="w-4 h-4 sm:w-5 sm:h-5 shrink-0" />
+            )}
+            <span>{isMl ? (isTheaterMonitor ? 'സാധാരണ സ്ക്രീൻ' : 'വലിയ സ്ക്രീൻ') : isTheaterMonitor ? 'Standard View' : 'Big Screen'}</span>
           </button>
         </div>
 
-        <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
+        <div className="flex flex-wrap items-center gap-2 shrink-0">
           <button
             type="button"
             onClick={() => {
               setIsPlaying(false);
               setBottomTray('history');
             }}
-            className="px-2 py-1.5 rounded-xl text-xs font-extrabold border bg-zinc-900 border-zinc-800 text-zinc-200 hover:border-amber-500/50 hover:text-amber-300 flex items-center gap-1 cursor-pointer"
+            className="px-3.5 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm md:text-base font-extrabold border bg-zinc-900 border-zinc-700 text-zinc-100 hover:border-amber-500/50 hover:text-amber-300 flex items-center gap-1.5 cursor-pointer"
             title={isMl ? 'എക്സ്പോർട്ട് ഹിസ്റ്ററി' : 'Export History'}
           >
-            <HistoryIcon className="w-3.5 h-3.5" />
-            <span className="hidden md:inline">{isMl ? 'ഹിസ്റ്ററി' : 'History'}</span>
+            <HistoryIcon className="w-4 h-4 sm:w-5 sm:h-5" />
+            <span>{isMl ? 'ഹിസ്റ്ററി' : 'History'}</span>
             {exportHistory.length > 0 && (
-              <span className="px-1 rounded bg-amber-500 text-black text-[9px] font-extrabold">
+              <span className="px-1.5 py-0.5 rounded bg-amber-500 text-black text-[11px] font-extrabold">
                 {exportHistory.length}
               </span>
             )}
@@ -4648,24 +5142,24 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
               setAspectRatio('16:9');
               setAutoPlay16x9((v) => !v);
             }}
-            className={`hidden sm:inline-flex items-center gap-1 text-[11px] font-mono font-extrabold px-2 py-1.5 rounded-xl border cursor-pointer ${
+            className={`inline-flex items-center gap-1.5 text-xs sm:text-sm md:text-base font-mono font-extrabold px-3 py-2 sm:py-2.5 rounded-xl border cursor-pointer ${
               autoPlay16x9
-                ? 'bg-emerald-500/20 border-emerald-400/50 text-emerald-300'
-                : 'bg-zinc-900 border-zinc-800 text-zinc-400'
+                ? 'bg-emerald-500/20 border-emerald-400/55 text-emerald-300'
+                : 'bg-zinc-900 border-zinc-700 text-zinc-400'
             }`}
             title={isMl ? '16:9 ഓട്ടോ പ്ലേ ഓൺ/ഓഫ്' : 'Auto 16:9 Play Mode'}
           >
-            <Zap className="w-3 h-3" />
+            <Zap className="w-4 h-4" />
             <span>Auto 16:9</span>
           </button>
 
           <button
             type="button"
             onClick={() => setBottomTray('projectSetup')}
-            className={`inline-flex text-[11px] sm:text-xs font-mono font-extrabold px-2 py-1.5 rounded-xl border cursor-pointer ${
+            className={`inline-flex text-xs sm:text-sm md:text-base font-mono font-extrabold px-3 py-2 sm:py-2.5 rounded-xl border cursor-pointer ${
               aspectRatio === '16:9'
-                ? 'bg-sky-500/20 border-sky-400/50 text-sky-300'
-                : 'bg-zinc-900 border-zinc-800 text-zinc-200'
+                ? 'bg-sky-500/20 border-sky-400/55 text-sky-300'
+                : 'bg-zinc-900 border-zinc-700 text-zinc-200'
             }`}
             title={isMl ? '16:9 ആസ്പെക്റ്റ് റേഷ്യോ' : 'Aspect Ratio'}
           >
@@ -4675,7 +5169,7 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
           <button
             type="button"
             onClick={cycleResolution}
-            className="text-[11px] sm:text-xs font-extrabold tracking-wide text-amber-400 px-2 py-1.5 rounded-xl bg-zinc-900 border border-zinc-800 cursor-pointer"
+            className="text-xs sm:text-sm md:text-base font-extrabold tracking-wide text-amber-300 px-3.5 py-2 sm:py-2.5 rounded-xl bg-zinc-900 border border-amber-400/45 hover:border-amber-400 cursor-pointer"
             title="Preview & Export Quality"
           >
             {resolutionLabel}
@@ -4689,59 +5183,70 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
               setExportError(null);
               setBottomTray('export');
             }}
-            className="px-3 sm:px-4 py-1.5 sm:py-2 rounded-full bg-white hover:bg-amber-400 disabled:opacity-40 text-black font-extrabold text-xs sm:text-sm flex items-center gap-1 cursor-pointer shadow-md transition-colors"
+            className="px-4 sm:px-5 py-2 sm:py-2.5 rounded-full bg-white hover:bg-amber-400 disabled:opacity-40 text-black font-black text-xs sm:text-sm md:text-base flex items-center gap-1.5 cursor-pointer shadow-lg transition-colors"
           >
             <span>Export</span>
-            <ChevronRight className="w-4 h-4" />
+            <ChevronRight className="w-4 h-4 sm:w-5 sm:h-5" />
           </button>
         </div>
       </header>
 
       {/* Continuity Status Toast */}
       {continuityAppliedToast && (
-        <div className="mx-3 mt-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/15 border border-emerald-500/40 text-emerald-300 text-xs font-bold text-center">
+        <div className="mx-3 mt-2 px-4 py-2 rounded-xl bg-emerald-500/15 border border-emerald-500/40 text-emerald-300 text-sm font-bold text-center shrink-0">
           {continuityAppliedToast}
         </div>
       )}
 
-      {/* 2. TOP ROUNDED PRO VIDEO PREVIEW CARD */}
-      <div className="flex-1 min-h-[34vh] px-3 py-1.5 flex items-center justify-center overflow-hidden">
+      {/* 2. LARGE CINEMA VIDEO PREVIEW STAGE (FULL-WIDTH / EXPANDABLE BIG SCREEN) */}
+      <div
+        className={`w-full px-2 sm:px-4 py-2 flex items-center justify-center shrink-0 ${
+          isTheaterMonitor
+            ? 'h-[66vh] min-h-[380px] sm:h-[72vh]'
+            : 'h-[44vh] min-h-[260px] sm:h-[50vh] md:h-[54vh]'
+        }`}
+      >
         <div
-          className={`relative bg-[#11131a] border border-zinc-800/80 rounded-2xl overflow-hidden shadow-2xl flex items-center justify-center max-h-full max-w-full ${
+          className={`relative bg-[#11131a] border border-zinc-700/80 rounded-2xl overflow-hidden shadow-2xl flex items-center justify-center w-full h-full ${
             bottomTray === 'doodles' ? 'ring-2 ring-amber-400 cursor-crosshair' : ''
           }`}
-          style={{
-            aspectRatio: `${aspectSpec.dims['720p'].width} / ${aspectSpec.dims['720p'].height}`,
-            height:
-              aspectRatio === '9:16' || aspectRatio === '3:4' || aspectRatio === '4:5'
-                ? '100%'
-                : 'auto',
-            width: aspectRatio === '16:9' || aspectRatio === '2.35:1' ? '100%' : 'auto',
-            maxHeight: '100%',
-            maxWidth: '100%',
-          }}
         >
+          {/* Floating Big-Screen Toggle inside Monitor Corner */}
+          <button
+            type="button"
+            onClick={() => setIsTheaterMonitor((v) => !v)}
+            className="absolute top-2.5 right-2.5 z-20 px-3 py-1.5 rounded-xl bg-black/80 hover:bg-amber-400 hover:text-black border border-white/25 text-white text-xs sm:text-sm font-extrabold flex items-center gap-1.5 cursor-pointer shadow-lg transition-colors"
+            title={isMl ? 'സ്ക്രീൻ വലുതാക്കൂ / ചെറുതാക്കൂ' : 'Expand / Shrink Video Screen'}
+          >
+            {isTheaterMonitor ? (
+              <Minimize2 className="w-4 h-4" />
+            ) : (
+              <Maximize2 className="w-4 h-4" />
+            )}
+            <span>{isMl ? (isTheaterMonitor ? 'ചെറുതാക്കൂ' : 'ഫുൾ വലുത്') : isTheaterMonitor ? 'Shrink' : 'Expand'}</span>
+          </button>
+
           {clips.length === 0 ? (
-            <div className="w-full h-full min-w-[210px] min-h-[210px] p-4 flex flex-col items-center justify-center gap-3 text-center">
+            <div className="w-full h-full p-5 flex flex-col items-center justify-center gap-4 text-center">
               <button
                 type="button"
                 onClick={() => mediaFileInputRef.current?.click()}
-                className="flex flex-col items-center justify-center gap-2.5 cursor-pointer group"
+                className="flex flex-col items-center justify-center gap-3 cursor-pointer group"
               >
-                <div className="w-14 h-14 rounded-full bg-white group-hover:bg-amber-400 text-black flex items-center justify-center shadow-lg transition-colors">
+                <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-white group-hover:bg-amber-400 text-black flex items-center justify-center shadow-xl transition-colors">
                   {importingMedia ? (
-                    <Loader2 className="w-7 h-7 animate-spin" />
+                    <Loader2 className="w-8 h-8 sm:w-10 sm:h-10 animate-spin" />
                   ) : (
-                    <Plus className="w-7 h-7" />
+                    <Plus className="w-8 h-8 sm:w-10 sm:h-10 stroke-[2.75]" />
                   )}
                 </div>
-                <div className="space-y-0.5">
-                  <p className="text-xs sm:text-sm font-extrabold text-white">
+                <div className="space-y-1">
+                  <p className="text-sm sm:text-base md:text-lg font-black text-white">
                     {isMl
                       ? 'വീഡിയോ / ഫോട്ടോ അപ്ലോഡ് ചെയ്യൂ (ഓട്ടോ 16:9)'
                       : 'Upload Videos or Photos (Auto 16:9)'}
                   </p>
-                  <p className="text-[11px] text-zinc-400">
+                  <p className="text-xs sm:text-sm text-zinc-400">
                     {isMl
                       ? `121 പ്രോ ടൂളുകൾ · 98,000+ എഫക്റ്റുകൾ · 60fps സ്പീഡ്`
                       : `121 Pro Tools · 98,000+ VFX/Filters/Songs · 60fps Engine`}
@@ -4752,7 +5257,7 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
               <button
                 type="button"
                 onClick={handleCreateBlank16x9Scene}
-                className="px-3.5 py-1.5 rounded-full bg-sky-500/20 hover:bg-sky-500 hover:text-black border border-sky-400/50 text-sky-300 text-xs font-extrabold cursor-pointer transition-colors"
+                className="px-5 py-2.5 rounded-full bg-sky-500/20 hover:bg-sky-400 hover:text-black border border-sky-400/60 text-sky-200 text-xs sm:text-sm md:text-base font-extrabold cursor-pointer transition-colors"
               >
                 {isMl ? '+ 16:9 സിനിമ സീൻ ഇപ്പോൾ തുടങ്ങൂ' : '+ Start Blank 16:9 Cinema Canvas'}
               </button>
@@ -4818,29 +5323,35 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
         </div>
       </div>
 
-      {/* 3. PREMIERE TRANSPORT & TOOL MODE BAR */}
-      <div className="h-14 px-2.5 sm:px-3.5 flex items-center justify-between gap-2 bg-[#08090c] shrink-0">
-        <div className="flex items-center gap-1.5 sm:gap-2">
+      {/* 3. BIG PREMIERE TRANSPORT & TOOL MODE BAR */}
+      <div className="min-h-[70px] px-3 sm:px-5 py-2 flex flex-wrap items-center justify-between gap-2 bg-[#0b0d14] border-t border-zinc-800 shrink-0">
+        <div className="flex items-center gap-2 sm:gap-3">
           <button
             type="button"
             disabled={clips.length === 0 && audioItems.length === 0}
             onClick={() => setIsPlaying((p) => !p)}
-            className="w-10 h-10 sm:w-11 sm:h-11 rounded-full bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 disabled:opacity-35 text-white flex items-center justify-center cursor-pointer shadow-md shrink-0"
+            className="w-14 h-14 md:w-16 md:h-16 rounded-full bg-white hover:bg-amber-400 border-2 border-zinc-200 disabled:opacity-35 text-black flex items-center justify-center cursor-pointer shadow-xl shrink-0 transition-colors"
+            title={isPlaying ? 'Pause' : 'Play'}
           >
-            {isPlaying ? <Pause className="w-5 h-5 sm:w-6 sm:h-6 fill-white" /> : <Play className="w-5 h-5 sm:w-6 sm:h-6 fill-white ml-0.5" />}
+            {isPlaying ? (
+              <Pause className="w-7 h-7 md:w-8 md:h-8 fill-black" />
+            ) : (
+              <Play className="w-7 h-7 md:w-8 md:h-8 fill-black ml-0.5" />
+            )}
           </button>
 
-          {/* Premiere Quick Tool Modes: Select (V), Razor Cut (C), Type on Monitor (T) */}
-          <div className="flex items-center bg-zinc-900 border border-zinc-800 rounded-xl p-0.5">
+          {/* Large Touch-Friendly Quick Tool Modes: Select (V), Razor Cut (C), Type (T) */}
+          <div className="flex items-center bg-zinc-900 border border-zinc-700 rounded-2xl p-1 gap-1">
             <button
               type="button"
               onClick={() => setPremiereTool('select')}
-              className={`p-1.5 rounded-lg cursor-pointer ${
-                premiereTool === 'select' ? 'bg-white text-black' : 'text-zinc-300 hover:text-white'
+              className={`px-3 py-2 md:px-3.5 md:py-2.5 rounded-xl cursor-pointer flex items-center gap-1.5 text-xs sm:text-sm font-extrabold ${
+                premiereTool === 'select' ? 'bg-white text-black' : 'text-zinc-200 hover:text-white'
               }`}
               title="Selection & Drag Tool (V)"
             >
-              <MousePointer className="w-3.5 h-3.5" />
+              <MousePointer className="w-4 h-4 sm:w-5 sm:h-5" />
+              <span className="hidden sm:inline">Move</span>
             </button>
             <button
               type="button"
@@ -4849,52 +5360,55 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                 setPremiereTool('razor');
                 if (canSplit) handleSplitAtPlayhead();
               }}
-              className={`p-1.5 rounded-lg cursor-pointer disabled:opacity-35 ${
-                premiereTool === 'razor' ? 'bg-amber-400 text-black' : 'text-zinc-300 hover:text-white'
+              className={`px-3 py-2 md:px-3.5 md:py-2.5 rounded-xl cursor-pointer disabled:opacity-35 flex items-center gap-1.5 text-xs sm:text-sm font-extrabold ${
+                premiereTool === 'razor' ? 'bg-amber-400 text-black' : 'text-zinc-200 hover:text-white'
               }`}
               title={isMl ? 'റേസർ കട്ട് (C)' : 'Razor Cut at Needle (C)'}
             >
-              <Scissors className="w-3.5 h-3.5" />
+              <Scissors className="w-4 h-4 sm:w-5 sm:h-5" />
+              <span className="hidden sm:inline">{isMl ? 'കട്ട്' : 'Split'}</span>
             </button>
             <button
               type="button"
               onClick={() => setPremiereTool((m) => (m === 'type' ? 'select' : 'type'))}
-              className={`p-1.5 rounded-lg cursor-pointer ${
-                premiereTool === 'type' ? 'bg-amber-400 text-black' : 'text-zinc-300 hover:text-white'
+              className={`px-3 py-2 md:px-3.5 md:py-2.5 rounded-xl cursor-pointer flex items-center gap-1.5 text-xs sm:text-sm font-extrabold ${
+                premiereTool === 'type' ? 'bg-amber-400 text-black' : 'text-zinc-200 hover:text-white'
               }`}
               title={isMl ? 'സ്ക്രീനിൽ ടെക്സ്റ്റ് ടൈപ്പ് ടൂൾ (T)' : 'Type Text directly on Monitor (T)'}
             >
-              <Type className="w-3.5 h-3.5" />
+              <Type className="w-4 h-4 sm:w-5 sm:h-5" />
+              <span className="hidden sm:inline">{isMl ? 'ടെക്സ്റ്റ്' : 'Text'}</span>
             </button>
           </div>
         </div>
 
-        <div className="flex flex-col items-center leading-tight font-mono">
-          <span ref={playheadTimeRef} className="text-sm font-extrabold text-white tabular-nums">
+        <div className="flex flex-col items-center leading-tight font-mono px-2">
+          <span ref={playheadTimeRef} className="text-base md:text-lg font-black text-white tabular-nums">
             {formatMmSs(playhead)}
           </span>
-          <span className="text-[11px] text-zinc-400 tabular-nums">
+          <span className="text-xs md:text-sm text-zinc-400 font-bold tabular-nums">
             {formatMmSs(totalDuration)}
           </span>
         </div>
 
-        <div className="flex items-center gap-1 sm:gap-1.5">
+        <div className="flex items-center gap-1.5 sm:gap-2">
           <button
             type="button"
             disabled={clips.length === 0 && layers.length === 0 && audioItems.length === 0}
             onClick={handleDeleteSelected}
-            className="w-9 h-9 rounded-xl bg-red-500/15 hover:bg-red-500 hover:text-white border border-red-500/35 disabled:opacity-30 text-red-300 flex items-center justify-center cursor-pointer"
+            className="w-11 h-11 md:w-12 md:h-12 rounded-xl bg-red-500/20 hover:bg-red-500 hover:text-white border border-red-500/45 disabled:opacity-30 text-red-300 flex items-center justify-center cursor-pointer"
             title={isMl ? 'തിരഞ്ഞെടുത്തത് ഡിലീറ്റ്' : 'Delete Selected'}
           >
-            <Trash2 className="w-4 h-4" />
+            <Trash2 className="w-5 h-5 md:w-6 md:h-6" />
           </button>
           <button
             type="button"
             disabled={undoStack.length === 0}
             onClick={handleUndo}
-            className="w-9 h-9 rounded-xl bg-zinc-900/70 hover:bg-zinc-800 disabled:opacity-30 text-zinc-200 flex items-center justify-center cursor-pointer"
+            className="w-11 h-11 md:w-12 md:h-12 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 disabled:opacity-30 text-zinc-100 flex items-center justify-center cursor-pointer"
+            title="Undo"
           >
-            <Undo2 className="w-4 h-4 sm:w-5 sm:h-5" />
+            <Undo2 className="w-5 h-5 md:w-6 md:h-6" />
           </button>
           <button
             type="button"
@@ -4903,36 +5417,38 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
               setIsPlaying(false);
               seekAndDraw(0);
             }}
-            className="w-9 h-9 rounded-xl bg-zinc-900/70 hover:bg-zinc-800 disabled:opacity-30 text-zinc-300 flex items-center justify-center cursor-pointer"
+            className="w-11 h-11 md:w-12 md:h-12 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 disabled:opacity-30 text-zinc-100 flex items-center justify-center cursor-pointer"
+            title="Jump to Start"
           >
-            <SkipBack className="w-4 h-4 sm:w-5 sm:h-5" />
+            <SkipBack className="w-5 h-5 md:w-6 md:h-6" />
           </button>
           <button
             type="button"
             disabled={redoStack.length === 0}
             onClick={handleRedo}
-            className="w-9 h-9 rounded-xl bg-zinc-900/70 hover:bg-zinc-800 disabled:opacity-30 text-zinc-200 flex items-center justify-center cursor-pointer"
+            className="w-11 h-11 md:w-12 md:h-12 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 disabled:opacity-30 text-zinc-100 flex items-center justify-center cursor-pointer"
+            title="Redo"
           >
-            <Redo2 className="w-4 h-4 sm:w-5 sm:h-5" />
+            <Redo2 className="w-5 h-5 md:w-6 md:h-6" />
           </button>
         </div>
       </div>
 
-      {/* 4A. COLORFUL PREMIERE PRO / DAVINCI MULTI-TRACK TIMELINE OR 4B. LIVE INLINE BOTTOM STUDIO TRAY */}
+      {/* 4A. COLORFUL BIG-UI MULTI-TRACK TIMELINE OR 4B. LIVE INLINE BOTTOM STUDIO TRAY */}
       {!hasInlineBottomPanel ? (
-        <div className="h-[268px] sm:h-[300px] bg-[#0a0b10] border-t border-zinc-800 flex shrink-0 overflow-hidden">
-          {/* Left Colorful Premiere/DaVinci Track Headers & "+ Line" Controls */}
-          <div className="w-[78px] sm:w-[96px] bg-[#0d0f17] border-r border-zinc-800 flex flex-col justify-between py-1.5 px-1.5 z-30 shrink-0 overflow-y-auto no-scrollbar gap-1.5">
+        <div className="h-[320px] sm:h-[360px] md:h-[380px] bg-[#0a0b10] border-t border-zinc-800 flex shrink-0 overflow-hidden">
+          {/* Left Colorful Big Track Headers & "+ Line" Controls */}
+          <div className="w-[120px] sm:w-[148px] md:w-[168px] bg-[#0d0f17] border-r border-zinc-800 flex flex-col justify-between py-2 px-2 z-30 shrink-0 overflow-y-auto no-scrollbar gap-2">
             {/* Titles / Graphics Header */}
-            <div className="h-8 rounded-lg bg-emerald-500/15 border border-emerald-500/40 px-1.5 flex items-center justify-between text-[10px] font-extrabold text-emerald-300 shrink-0">
+            <div className="h-11 md:h-12 rounded-xl bg-emerald-500/15 border border-emerald-500/45 px-2.5 flex items-center justify-between text-xs md:text-sm font-extrabold text-emerald-300 shrink-0">
               <span className="truncate">T1 Title</span>
               <button
                 type="button"
                 onClick={() => createOrOpenTextLayer('text')}
-                className="w-4 h-4 rounded bg-emerald-500 text-black flex items-center justify-center cursor-pointer"
+                className="w-7 h-7 rounded-lg bg-emerald-500 text-black flex items-center justify-center cursor-pointer shrink-0"
                 title={isMl ? 'ടൈറ്റിൽ ചേർക്കൂ' : 'Add Title'}
               >
-                <Plus className="w-3 h-3" />
+                <Plus className="w-4 h-4 stroke-[2.75]" />
               </button>
             </div>
 
@@ -4940,10 +5456,10 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
             {Array.from({ length: extraVfxTrackCount }).map((_, tIdx) => (
               <div
                 key={`vfx_hdr_${tIdx}`}
-                className="h-8 rounded-lg bg-rose-500/15 border border-rose-500/40 px-1.5 flex items-center justify-between text-[10px] font-extrabold text-rose-300 shrink-0 gap-1"
+                className="h-11 md:h-12 rounded-xl bg-rose-500/15 border border-rose-500/45 px-2.5 flex items-center justify-between text-xs md:text-sm font-extrabold text-rose-300 shrink-0 gap-1"
               >
                 <span className="truncate">V{tIdx + 2} VFX</span>
-                <div className="flex items-center gap-0.5 shrink-0">
+                <div className="flex items-center gap-1 shrink-0">
                   <button
                     type="button"
                     onClick={() => {
@@ -4951,10 +5467,10 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                       setStudioTab('vfx');
                       setBottomTray('vfx');
                     }}
-                    className="w-4 h-4 rounded bg-rose-500 text-white flex items-center justify-center cursor-pointer"
+                    className="w-7 h-7 rounded-lg bg-rose-500 text-white flex items-center justify-center cursor-pointer"
                     title={isMl ? 'ഗൺ സ്മോക്ക് / ബ്ലഡ് VFX ചേർക്കൂ' : 'Place Action VFX'}
                   >
-                    <Plus className="w-3 h-3" />
+                    <Plus className="w-4 h-4 stroke-[2.75]" />
                   </button>
                   {tIdx > 0 && (
                     <button
@@ -4972,10 +5488,10 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                         );
                         setExtraVfxTrackCount((c) => Math.max(1, c - 1));
                       }}
-                      className="w-4 h-4 rounded bg-red-600/80 hover:bg-red-500 text-white flex items-center justify-center cursor-pointer"
+                      className="w-6 h-6 rounded-lg bg-red-600/90 hover:bg-red-500 text-white flex items-center justify-center cursor-pointer"
                       title={isMl ? 'ലൈൻ ഡിലീറ്റ്' : 'Delete VFX Line'}
                     >
-                      <X className="w-2.5 h-2.5" />
+                      <X className="w-3.5 h-3.5" />
                     </button>
                   )}
                 </div>
@@ -4983,22 +5499,22 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
             ))}
 
             {/* V1 Main Video Track Header */}
-            <div className="h-[72px] rounded-lg bg-sky-500/15 border border-sky-400/45 px-1.5 py-1 flex flex-col justify-between text-[10px] font-extrabold text-sky-300 shrink-0">
+            <div className="h-[88px] md:h-[96px] rounded-xl bg-sky-500/15 border border-sky-400/50 px-2.5 py-2 flex flex-col justify-between text-xs md:text-sm font-extrabold text-sky-300 shrink-0">
               <div className="flex items-center justify-between">
                 <span>V1 Video</span>
                 <button
                   type="button"
                   onClick={() => setClipsMuted((m) => !m)}
-                  className="p-0.5 rounded hover:bg-sky-500/20 cursor-pointer"
+                  className="p-1.5 rounded-lg hover:bg-sky-500/25 cursor-pointer"
                   title={clipsMuted ? 'Unmute Video' : 'Mute Video'}
                 >
-                  {clipsMuted ? <VolumeX className="w-3.5 h-3.5 text-rose-400" /> : <Volume2 className="w-3.5 h-3.5 text-sky-300" />}
+                  {clipsMuted ? <VolumeX className="w-4 h-4 text-rose-400" /> : <Volume2 className="w-4 h-4 text-sky-300" />}
                 </button>
               </div>
               <button
                 type="button"
                 onClick={() => setExtraVfxTrackCount((c) => Math.min(6, c + 1))}
-                className="w-full py-0.5 rounded bg-rose-500/25 hover:bg-rose-500/40 border border-rose-400/40 text-[9px] text-rose-200 font-bold cursor-pointer"
+                className="w-full py-1.5 rounded-lg bg-rose-500/25 hover:bg-rose-500/45 border border-rose-400/50 text-xs text-rose-200 font-extrabold cursor-pointer"
               >
                 + VFX Line
               </button>
@@ -5017,24 +5533,24 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                 <div
                   key={`aud_hdr_${aIdx}`}
                   onClick={() => setActiveAudioTrackIdx(aIdx)}
-                  className={`h-9 rounded-lg border px-1.5 flex items-center justify-between text-[10px] font-extrabold cursor-pointer shrink-0 gap-1 ${palette} ${
-                    isSelAudioTrk ? 'ring-1 ring-white' : ''
+                  className={`h-11 md:h-12 rounded-xl border px-2.5 flex items-center justify-between text-xs md:text-sm font-extrabold cursor-pointer shrink-0 gap-1 ${palette} ${
+                    isSelAudioTrk ? 'ring-2 ring-white' : ''
                   }`}
                 >
                   <span className="truncate">
                     {aIdx === 0 ? 'A1 Music' : aIdx === 1 ? 'A2 SFX' : `A${aIdx + 1} Aud`}
                   </span>
-                  <div className="flex items-center gap-0.5 shrink-0">
+                  <div className="flex items-center gap-1 shrink-0">
                     <button
                       type="button"
                       onClick={(ev) => {
                         ev.stopPropagation();
                         setAudioMuted((m) => !m);
                       }}
-                      className="p-0.5 rounded cursor-pointer"
+                      className="p-1 rounded-lg cursor-pointer"
                       title={audioMuted ? 'Unmute Audio' : 'Mute Audio'}
                     >
-                      {audioMuted ? <VolumeX className="w-3 h-3 text-rose-400" /> : <Volume2 className="w-3 h-3" />}
+                      {audioMuted ? <VolumeX className="w-4 h-4 text-rose-400" /> : <Volume2 className="w-4 h-4" />}
                     </button>
                     {aIdx >= 2 && (
                       <button
@@ -5053,10 +5569,10 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                           setActiveAudioTrackIdx((cur) => Math.max(0, cur >= aIdx ? cur - 1 : cur));
                           setExtraAudioTrackCount((c) => Math.max(2, c - 1));
                         }}
-                        className="w-4 h-4 rounded bg-red-600/80 hover:bg-red-500 text-white flex items-center justify-center cursor-pointer"
+                        className="w-6 h-6 rounded-lg bg-red-600/90 hover:bg-red-500 text-white flex items-center justify-center cursor-pointer"
                         title={isMl ? 'ഓഡിയോ ലൈൻ ഡിലീറ്റ്' : 'Delete Audio Line'}
                       >
-                        <X className="w-2.5 h-2.5" />
+                        <X className="w-3.5 h-3.5" />
                       </button>
                     )}
                   </div>
@@ -5067,7 +5583,7 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
             <button
               type="button"
               onClick={() => setExtraAudioTrackCount((c) => Math.min(6, c + 1))}
-              className="py-1 rounded-lg bg-zinc-800 hover:bg-amber-500 hover:text-black border border-zinc-700 text-[9px] font-extrabold text-zinc-200 cursor-pointer shrink-0"
+              className="py-2 rounded-xl bg-zinc-800 hover:bg-amber-500 hover:text-black border border-zinc-700 text-xs font-extrabold text-zinc-100 cursor-pointer shrink-0"
             >
               + Audio Line
             </button>
@@ -5086,7 +5602,7 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
               className="flex-1 overflow-x-auto overflow-y-auto no-scrollbar relative"
             >
               <div
-                className="flex flex-col justify-between gap-1.5 py-1.5 min-h-full"
+                className="flex flex-col justify-between gap-2 py-2 min-h-full"
                 style={{
                   paddingLeft: '50%',
                   paddingRight: 'calc(50% + 140px)',
@@ -5094,12 +5610,12 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                 }}
               >
                 {/* T1 Titles, Captions, Stickers & Overlay Track */}
-                <div className="relative h-8 flex items-center bg-emerald-950/20 rounded-lg border border-emerald-500/15 min-w-[260px]">
+                <div className="relative h-11 md:h-12 flex items-center bg-emerald-950/20 rounded-xl border border-emerald-500/20 min-w-[260px]">
                   {layers.filter((l) => l.kind !== 'vfx_prop').length === 0 ? (
                     <button
                       type="button"
                       onClick={() => createOrOpenTextLayer('text')}
-                      className="px-3 text-[10px] font-bold text-emerald-300/80 hover:text-emerald-200 cursor-pointer"
+                      className="px-4 py-2 text-xs md:text-sm font-extrabold text-emerald-300 hover:text-emerald-200 cursor-pointer"
                     >
                       {isMl ? '+ സിനിമ ടൈറ്റിൽ / സബ്ടൈറ്റിൽ ചേർക്കൂ' : '+ Add Cinema Title / Caption'}
                     </button>
@@ -5108,7 +5624,7 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                       .filter((l) => l.kind !== 'vfx_prop')
                       .map((ly) => {
                         const leftPx = ly.startTime * PX_PER_SEC;
-                        const widthPx = Math.max(96, ly.duration * PX_PER_SEC);
+                        const widthPx = Math.max(110, ly.duration * PX_PER_SEC);
                         const isSel = selectedLayerId === ly.id;
                         return (
                           <div
@@ -5130,7 +5646,7 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                               }
                             }}
                             style={{ left: `${leftPx}px`, width: `${widthPx}px` }}
-                            className={`absolute top-0.5 bottom-0.5 rounded-lg pl-2 pr-1 text-xs font-bold flex items-center justify-between gap-1 cursor-pointer border ${
+                            className={`absolute top-1 bottom-1 rounded-xl pl-2.5 pr-1.5 text-xs md:text-sm font-extrabold flex items-center justify-between gap-1.5 cursor-pointer border ${
                               isSel
                                 ? 'bg-amber-400 text-black border-white'
                                 : 'bg-emerald-600/85 text-white border-emerald-300/60'
@@ -5145,10 +5661,10 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                                 setLayers((prev) => prev.filter((x) => x.id !== ly.id));
                                 if (selectedLayerId === ly.id) setSelectedLayerId(null);
                               }}
-                              className="w-4 h-4 rounded bg-black/45 hover:bg-red-600 text-white flex items-center justify-center shrink-0 cursor-pointer"
+                              className="w-5 h-5 rounded bg-black/50 hover:bg-red-600 text-white flex items-center justify-center shrink-0 cursor-pointer"
                               title={isMl ? 'ഡിലീറ്റ്' : 'Delete Layer'}
                             >
-                              <X className="w-2.5 h-2.5" />
+                              <X className="w-3 h-3" />
                             </button>
                           </div>
                         );
@@ -5164,7 +5680,7 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                   return (
                     <div
                       key={`vfx_lane_${tIdx}`}
-                      className="relative h-8 flex items-center bg-rose-950/20 rounded-lg border border-rose-500/20 min-w-[260px]"
+                      className="relative h-11 md:h-12 flex items-center bg-rose-950/20 rounded-xl border border-rose-500/20 min-w-[260px]"
                     >
                       {trackProps.length === 0 ? (
                         <button
@@ -5174,9 +5690,9 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                             setStudioTab('vfx');
                             setBottomTray('vfx');
                           }}
-                          className="px-3 text-[10px] font-bold text-rose-300/85 hover:text-rose-200 cursor-pointer flex items-center gap-1"
+                          className="px-4 py-2 text-xs md:text-sm font-extrabold text-rose-300 hover:text-rose-200 cursor-pointer flex items-center gap-1.5"
                         >
-                          <Crosshair className="w-3 h-3" />
+                          <Crosshair className="w-4 h-4" />
                           <span>
                             {isMl
                               ? `+ V${tIdx + 2}: ഗൺ സ്മോക്ക് / ബ്ലഡ് VFX വെക്കൂ`
@@ -5186,7 +5702,7 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                       ) : (
                         trackProps.map((ly) => {
                           const leftPx = ly.startTime * PX_PER_SEC;
-                          const widthPx = Math.max(106, ly.duration * PX_PER_SEC);
+                          const widthPx = Math.max(120, ly.duration * PX_PER_SEC);
                           const isSel = selectedLayerId === ly.id;
                           return (
                             <div
@@ -5201,14 +5717,14 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                                 setBottomTray('vfxProp');
                               }}
                               style={{ left: `${leftPx}px`, width: `${widthPx}px` }}
-                              className={`absolute top-0.5 bottom-0.5 rounded-lg pl-2 pr-1 text-[11px] font-extrabold flex items-center justify-between gap-1 cursor-pointer border ${
+                              className={`absolute top-1 bottom-1 rounded-xl pl-2.5 pr-1.5 text-xs md:text-sm font-extrabold flex items-center justify-between gap-1.5 cursor-pointer border ${
                                 isSel
                                   ? 'bg-amber-400 text-black border-white ring-1 ring-white'
                                   : 'bg-gradient-to-r from-rose-600 to-orange-600 text-white border-rose-300/70'
                               }`}
                             >
-                              <div className="flex items-center gap-1 min-w-0">
-                                <Crosshair className="w-3 h-3 shrink-0" />
+                              <div className="flex items-center gap-1.5 min-w-0">
+                                <Crosshair className="w-3.5 h-3.5 shrink-0" />
                                 <span className="truncate">{ly.name}</span>
                               </div>
                               <button
@@ -5219,10 +5735,10 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                                   setLayers((prev) => prev.filter((x) => x.id !== ly.id));
                                   if (selectedLayerId === ly.id) setSelectedLayerId(null);
                                 }}
-                                className="w-4 h-4 rounded bg-black/45 hover:bg-red-600 text-white flex items-center justify-center shrink-0 cursor-pointer"
+                                className="w-5 h-5 rounded bg-black/50 hover:bg-red-600 text-white flex items-center justify-center shrink-0 cursor-pointer"
                                 title={isMl ? 'ഡിലീറ്റ്' : 'Delete VFX'}
                               >
-                                <X className="w-2.5 h-2.5" />
+                                <X className="w-3 h-3" />
                               </button>
                             </div>
                           );
@@ -5233,10 +5749,10 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                 })}
 
                 {/* V1 Vibrant Sky-Blue Video / Photo Filmstrip Track + Transition Joins */}
-                <div className="flex items-center gap-1.5 h-[72px] bg-sky-950/20 rounded-xl px-1 border border-sky-500/20 min-w-[260px]">
+                <div className="flex items-center gap-2 h-[88px] md:h-[96px] bg-sky-950/20 rounded-xl px-1.5 border border-sky-500/20 min-w-[260px]">
                   {placements.map(({ clip, startTime, duration }, idx) => {
                     const isSel = selectedClip?.id === clip.id && !selectedLayerId && !selectedAudioId;
-                    const widthPx = Math.max(88, Math.round(duration * PX_PER_SEC));
+                    const widthPx = Math.max(98, Math.round(duration * PX_PER_SEC));
                     return (
                       <React.Fragment key={clip.id}>
                         {idx > 0 && (
@@ -5246,7 +5762,7 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                               setSelectedTransitionClipId(clip.id);
                               setBottomTray('transitions');
                             }}
-                            className={`w-7 h-14 rounded-lg border flex items-center justify-center font-mono text-xs font-black cursor-pointer shrink-0 z-10 ${
+                            className={`w-9 h-16 rounded-xl border flex items-center justify-center font-mono text-sm font-black cursor-pointer shrink-0 z-10 ${
                               clip.transitionId !== 'none'
                                 ? 'bg-amber-400 text-black border-white shadow'
                                 : 'bg-zinc-800 text-zinc-200 border-zinc-600'
@@ -5265,7 +5781,7 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                             if (!isPlaying) seekAndDraw(startTime + 0.05);
                           }}
                           style={{ width: `${widthPx}px` }}
-                          className={`h-[64px] rounded-xl overflow-hidden border-2 relative cursor-pointer shrink-0 flex bg-sky-950/60 ${
+                          className={`h-[76px] md:h-[82px] rounded-xl overflow-hidden border-2 relative cursor-pointer shrink-0 flex bg-sky-950/60 ${
                             isSel ? 'border-white ring-2 ring-sky-400' : 'border-sky-400/60'
                           }`}
                         >
@@ -5330,10 +5846,10 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                   <button
                     type="button"
                     onClick={() => mediaFileInputRef.current?.click()}
-                    className="w-12 h-14 ml-1 rounded-xl bg-sky-400 hover:bg-amber-400 text-black flex items-center justify-center shadow-lg cursor-pointer shrink-0 transition-colors"
+                    className="w-16 h-16 ml-1.5 rounded-2xl bg-sky-400 hover:bg-amber-400 text-black flex items-center justify-center shadow-lg cursor-pointer shrink-0 transition-colors"
                     title={isMl ? 'വീഡിയോ / ഫോട്ടോ ചേർക്കുക' : 'Add Video / Photo'}
                   >
-                    <Plus className="w-6 h-6 stroke-[2.75]" />
+                    <Plus className="w-7 h-7 stroke-[2.75]" />
                   </button>
                 </div>
 
@@ -5355,7 +5871,7 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                   return (
                     <div
                       key={`aud_lane_${aIdx}`}
-                      className={`relative h-9 flex items-center rounded-lg border min-w-[260px] ${laneBg}`}
+                      className={`relative h-11 md:h-12 flex items-center rounded-xl border min-w-[260px] ${laneBg}`}
                     >
                       {trackAudios.length === 0 ? (
                         <button
@@ -5364,9 +5880,9 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                             setActiveAudioTrackIdx(aIdx);
                             setBottomTray(aIdx === 1 ? 'sfx' : 'audio');
                           }}
-                          className="px-3 text-[10px] font-bold text-zinc-300/85 hover:text-white flex items-center gap-1.5 cursor-pointer"
+                          className="px-4 py-2 text-xs md:text-sm font-extrabold text-zinc-200 hover:text-white flex items-center gap-2 cursor-pointer"
                         >
-                          <Music className="w-3.5 h-3.5" />
+                          <Music className="w-4 h-4" />
                           <span>
                             {aIdx === 0
                               ? isMl
@@ -5441,6 +5957,7 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
               {bottomTray === 'masking' && (isMl ? `മാസ്കിംഗ് & ഒബ്ജക്റ്റ് റിമൂവ് (${TOTAL_PRO_MASKS_COUNT.toLocaleString()}+)` : `Pro Masking, Erase & Dual-Mask (${TOTAL_PRO_MASKS_COUNT.toLocaleString()}+)`)}
               {bottomTray === 'graph' && (isMl ? `കീഫ്രെയിം ഗ്രാഫ് & ബെസിയർ മോഷൻ (${TOTAL_PRO_GRAPHS_COUNT.toLocaleString()}+)` : `Keyframe Motion Graph Editor (${TOTAL_PRO_GRAPHS_COUNT.toLocaleString()}+)`)}
               {bottomTray === 'character' && (isMl ? `ആക്ഷൻ ക്യാരക്ടർ സ്റ്റുഡിയോ (${TOTAL_PRO_CHARACTERS_COUNT.toLocaleString()}+)` : `Character & Vehicle Studio (${TOTAL_PRO_CHARACTERS_COUNT.toLocaleString()}+)`)}
+              {bottomTray === 'dualDialogue' && (isMl ? '🎭 മുഖത്തോട് മുഖം സീൻ സ്റ്റുഡിയോ (2 വീഡിയോ / ഫോട്ടോ)' : '🎭 Face-to-Face Dual Dialogue Studio')}
               {bottomTray === 'motion' && (isMl ? `ക്യാമറ മോഷൻ (${TOTAL_PRO_MOTIONS_COUNT.toLocaleString()}+)` : `Cinema Camera Motion (${TOTAL_PRO_MOTIONS_COUNT.toLocaleString()}+)`)}
               {bottomTray === 'continuity' && (isMl ? 'സീൻ കണ്ടിന്യൂയിറ്റി & സ്മൂത്ത് കട്ട്' : 'Auto Scene Continuity Engine')}
               {bottomTray === 'vfxProp' && (isMl ? 'ആക്ഷൻ VFX പൊസിഷൻ & ലെവൽ (ബുള്ളറ്റ് / ബ്ലഡ്)' : 'Action VFX Position, Level & Graph')}
@@ -5449,10 +5966,10 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
               {bottomTray === 'captions' && (isMl ? 'സബ്ടൈറ്റിൽ / ക്യാപ്ഷൻ' : 'Captions (Live)')}
               {bottomTray === 'sticker' && (isMl ? 'സ്റ്റിക്കറുകൾ' : 'Stickers')}
               {bottomTray === 'doodles' && (isMl ? 'സ്ക്രീനിൽ വരയ്ക്കൂ' : 'Draw Doodles')}
-              {bottomTray === 'cutout' && (isMl ? 'ക്രോപ്പ് / ഫിറ്റ് / റൊട്ടേറ്റ്' : 'Fit, Rotate & Cinema Bars')}
+              {bottomTray === 'cutout' && (isMl ? 'ക്രോപ്പ് / ഫിറ്റ് / റൊട്ടേറ്റ് / ഫ്രീസ്' : 'Fit, Rotate, Cinema Bars & Freeze')}
               {bottomTray === 'speed' && (isMl ? 'സ്പീഡ് (0.5x - 2x)' : 'Playback Speed')}
               {bottomTray === 'audio' && (isMl ? `മ്യൂസിക് ലൈബ്രറി (${TOTAL_PRO_MUSIC_COUNT.toLocaleString()}+) & ഫോൺ പാട്ട്` : `Music Library (${TOTAL_PRO_MUSIC_COUNT.toLocaleString()}+) & Phone`)}
-              {bottomTray === 'sfx' && (isMl ? `സൗണ്ട് എഫക്റ്റുകൾ (${TOTAL_PRO_SFX_COUNT.toLocaleString()}+)` : `Sound Effects (${TOTAL_PRO_SFX_COUNT.toLocaleString()}+)`)}
+              {bottomTray === 'sfx' && (isMl ? `ഫിലിം സൗണ്ട് എഫക്റ്റുകൾ (${TOTAL_PRO_SFX_COUNT.toLocaleString()}+) & ജോയിന്റ് ചെയിൻ` : `Film Foley SFX (${TOTAL_PRO_SFX_COUNT.toLocaleString()}+) & Joint Chain`)}
               {bottomTray === 'voice' && (isMl ? 'ലൈവ് വോയിസ് റെക്കോർഡ്' : 'Voiceover Recorder')}
               {bottomTray === 'transitions' && (isMl ? `സീൻ ട്രാൻസിഷൻ (${TOTAL_PRO_TRANSITIONS_COUNT.toLocaleString()}+ Effects)` : `Continuity Transitions (${TOTAL_PRO_TRANSITIONS_COUNT.toLocaleString()}+)`)}
             </span>
@@ -5467,16 +5984,287 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
           </div>
 
           <div className="flex-1 overflow-y-auto p-3">
+            {/* FACE-TO-FACE DUAL DIALOGUE STUDIO */}
+            {bottomTray === 'dualDialogue' && (
+              <div className="space-y-2.5 text-xs">
+                {clips.length === 0 ? (
+                  <div className="p-4 rounded-xl bg-zinc-900 border border-zinc-800 text-center space-y-2.5">
+                    <p className="text-zinc-200 font-bold">
+                      {isMl
+                        ? 'രണ്ടു വ്യത്യസ്ത വീഡിയോകളോ ഫോട്ടോകളോ മുഖത്തോട് മുഖം നോക്കി സംസാരിക്കുന്ന രീതിയിൽ ഒറ്റ വീഡിയോ ആക്കാൻ ആദ്യം ഇടത്/വലത് മീഡിയ അപ്‌ലോഡ് ചെയ്യൂ:'
+                        : 'Upload Left & Right Videos or Photos to combine two separate subjects into one Face-to-Face Dialogue scene:'}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        dualSlotTargetRef.current = 'secondary';
+                        dualMediaInputRef.current?.click();
+                      }}
+                      className="px-4 py-2.5 rounded-xl bg-amber-500 text-black font-black cursor-pointer"
+                    >
+                      {isMl ? '+ ആദ്യ വീഡിയോ/ഫോട്ടോ തിരഞ്ഞെടുക്കൂ' : '+ Upload First Video / Photo'}
+                    </button>
+                  </div>
+                ) : selectedClip ? (
+                  <>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {/* LEFT SUBJECT */}
+                      <div className="p-2.5 rounded-xl bg-sky-500/10 border border-sky-400/40 flex items-center justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="text-[10px] font-black text-sky-300 uppercase">
+                            {isMl ? 'ഇടത് ആൾ / ഷോട്ട് (Left)' : 'Left Subject (Shot A)'}
+                          </p>
+                          <p className="font-bold text-white truncate">{selectedClip.name}</p>
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              updateClip(selectedClip.id, {
+                                dualMode: selectedClip.dualMode && selectedClip.dualMode !== 'none' ? selectedClip.dualMode : 'split_v',
+                                dualFlipPrimary: !selectedClip.dualFlipPrimary,
+                              })
+                            }
+                            className={`px-2 py-1.5 rounded-lg font-extrabold cursor-pointer border ${
+                              selectedClip.dualFlipPrimary
+                                ? 'bg-sky-400 text-black border-white'
+                                : 'bg-zinc-900 text-zinc-200 border-zinc-700'
+                            }`}
+                          >
+                            ↔ Flip L
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              dualSlotTargetRef.current = 'primary';
+                              dualMediaInputRef.current?.click();
+                            }}
+                            className="px-2.5 py-1.5 rounded-lg bg-sky-500 text-black font-extrabold cursor-pointer"
+                          >
+                            {isMl ? 'മാറ്റൂ' : 'Upload L'}
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* RIGHT SUBJECT */}
+                      <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-400/40 flex items-center justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="text-[10px] font-black text-amber-300 uppercase">
+                            {isMl ? 'വലത് ആൾ / ഷോട്ട് (Right · Face-to-Face)' : 'Right Subject (Shot B)'}
+                          </p>
+                          <p className="font-bold text-white truncate">
+                            {selectedClip.dualName || (isMl ? 'തിരഞ്ഞെടുത്തിട്ടില്ല' : 'Not picked yet')}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              updateClip(selectedClip.id, {
+                                dualMode: selectedClip.dualMode && selectedClip.dualMode !== 'none' ? selectedClip.dualMode : 'split_v',
+                                dualFlipSecondary: !(selectedClip.dualFlipSecondary ?? true),
+                              })
+                            }
+                            className={`px-2 py-1.5 rounded-lg font-extrabold cursor-pointer border ${
+                              (selectedClip.dualFlipSecondary ?? true)
+                                ? 'bg-amber-400 text-black border-white'
+                                : 'bg-zinc-900 text-zinc-200 border-zinc-700'
+                            }`}
+                          >
+                            ↔ Flip R
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              dualSlotTargetRef.current = 'secondary';
+                              dualMediaInputRef.current?.click();
+                            }}
+                            className="px-2.5 py-1.5 rounded-lg bg-amber-500 text-black font-extrabold cursor-pointer"
+                          >
+                            {isMl ? '+ ഫോണിൽ നിന്ന്' : '+ Upload R'}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Pick Right Subject directly from existing Timeline Clips! */}
+                    {clips.length > 1 && (
+                      <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+                        <span className="text-[10px] font-bold text-zinc-400 shrink-0">
+                          {isMl ? 'ടൈംലൈനിലെ ക്ലിപ്പ് വലതുവശത്ത് വെയ്ക്കൂ:' : 'Use Clip for Right Side:'}
+                        </span>
+                        {clips
+                          .filter((c) => c.id !== selectedClip.id && c.url)
+                          .map((c) => (
+                            <button
+                              key={`pick_r_${c.id}`}
+                              type="button"
+                              onClick={() =>
+                                updateClip(selectedClip.id, {
+                                  dualMode: selectedClip.dualMode && selectedClip.dualMode !== 'none' ? selectedClip.dualMode : 'split_v',
+                                  dualUrl: c.url,
+                                  dualType: c.type === 'video' ? 'video' : 'image',
+                                  dualName: c.name,
+                                  dualFlipSecondary: true,
+                                })
+                              }
+                              className={`px-2.5 py-1 rounded-lg text-[10px] font-bold border whitespace-nowrap cursor-pointer ${
+                                selectedClip.dualUrl === c.url
+                                  ? 'bg-amber-500 text-black border-white'
+                                  : 'bg-zinc-900 border-zinc-700 text-zinc-200'
+                              }`}
+                            >
+                              {c.name}
+                            </button>
+                          ))}
+                      </div>
+                    )}
+
+                    {/* Split Styles & Speaker Highlight */}
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      {[
+                        { id: 'split_v' as const, label: isMl ? '50/50 മുഖത്തോട് മുഖം' : '50/50 Face-to-Face' },
+                        { id: 'split_diag' as const, label: isMl ? 'ഡയഗണൽ സ്പ്ലിറ്റ്' : 'Diagonal Split' },
+                        { id: 'pip_dialogue' as const, label: isMl ? 'PiP ഡയലോഗ് ഫ്രെയിം' : 'PiP Dialogue Box' },
+                        { id: 'none' as const, label: isMl ? 'ഓഫ് (സാധാരണ)' : 'Off (Normal)' },
+                      ].map((md) => (
+                        <button
+                          key={md.id}
+                          type="button"
+                          onClick={() => updateClip(selectedClip.id, { dualMode: md.id })}
+                          className={`px-3 py-1.5 rounded-lg font-extrabold cursor-pointer border ${
+                            (selectedClip.dualMode || 'none') === md.id
+                              ? 'bg-white text-black border-white'
+                              : 'bg-zinc-900 border-zinc-700 text-zinc-300'
+                          }`}
+                        >
+                          {md.label}
+                        </button>
+                      ))}
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          updateClip(selectedClip.id, {
+                            dualMode: selectedClip.dualMode && selectedClip.dualMode !== 'none' ? selectedClip.dualMode : 'split_v',
+                            dualFlipPrimary: false,
+                            dualFlipSecondary: true,
+                            dualZoomA: 1.08,
+                            dualZoomB: 1.08,
+                          })
+                        }
+                        className="ml-auto px-3 py-1.5 rounded-lg bg-emerald-500 text-black font-black cursor-pointer"
+                      >
+                        {isMl ? '⚡ ഓട്ടോ മുഖത്തോട് മുഖം' : '⚡ Auto Face Each Other'}
+                      </button>
+                    </div>
+
+                    {/* Fine Zoom / Pan / Audio Balance */}
+                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                      <div className="p-2 rounded-lg bg-zinc-900 border border-zinc-800">
+                        <div className="flex justify-between text-[10px]">
+                          <span className="text-sky-300 font-bold">Left Zoom</span>
+                          <span className="font-mono">{(selectedClip.dualZoomA ?? 1.06).toFixed(2)}x</span>
+                        </div>
+                        <input
+                          type="range"
+                          min={0.8}
+                          max={2.2}
+                          step={0.04}
+                          value={selectedClip.dualZoomA ?? 1.06}
+                          onChange={(e) => updateClip(selectedClip.id, { dualZoomA: Number(e.target.value) })}
+                          className="w-full accent-sky-400"
+                        />
+                      </div>
+                      <div className="p-2 rounded-lg bg-zinc-900 border border-zinc-800">
+                        <div className="flex justify-between text-[10px]">
+                          <span className="text-amber-300 font-bold">Right Zoom</span>
+                          <span className="font-mono">{(selectedClip.dualZoomB ?? 1.06).toFixed(2)}x</span>
+                        </div>
+                        <input
+                          type="range"
+                          min={0.8}
+                          max={2.2}
+                          step={0.04}
+                          value={selectedClip.dualZoomB ?? 1.06}
+                          onChange={(e) => updateClip(selectedClip.id, { dualZoomB: Number(e.target.value) })}
+                          className="w-full accent-amber-400"
+                        />
+                      </div>
+                      <div className="p-2 rounded-lg bg-zinc-900 border border-zinc-800">
+                        <div className="flex justify-between text-[10px]">
+                          <span className="text-sky-300 font-bold">Left Pan X</span>
+                          <span className="font-mono">{Math.round((selectedClip.dualPanAX ?? 0) * 100)}%</span>
+                        </div>
+                        <input
+                          type="range"
+                          min={-0.6}
+                          max={0.6}
+                          step={0.04}
+                          value={selectedClip.dualPanAX ?? 0}
+                          onChange={(e) => updateClip(selectedClip.id, { dualPanAX: Number(e.target.value) })}
+                          className="w-full accent-sky-400"
+                        />
+                      </div>
+                      <div className="p-2 rounded-lg bg-zinc-900 border border-zinc-800">
+                        <div className="flex justify-between text-[10px]">
+                          <span className="text-amber-300 font-bold">Right Pan X</span>
+                          <span className="font-mono">{Math.round((selectedClip.dualPanBX ?? 0) * 100)}%</span>
+                        </div>
+                        <input
+                          type="range"
+                          min={-0.6}
+                          max={0.6}
+                          step={0.04}
+                          value={selectedClip.dualPanBX ?? 0}
+                          onChange={(e) => updateClip(selectedClip.id, { dualPanBX: Number(e.target.value) })}
+                          className="w-full accent-amber-400"
+                        />
+                      </div>
+                      <div className="p-2 rounded-lg bg-zinc-900 border border-zinc-800">
+                        <div className="flex justify-between text-[10px]">
+                          <span className="text-emerald-300 font-bold">Right Vol</span>
+                          <span className="font-mono">{Math.round((selectedClip.dualVolume ?? 0.7) * 100)}%</span>
+                        </div>
+                        <input
+                          type="range"
+                          min={0}
+                          max={1}
+                          step={0.05}
+                          value={selectedClip.dualVolume ?? 0.7}
+                          onChange={(e) => updateClip(selectedClip.id, { dualVolume: Number(e.target.value) })}
+                          className="w-full accent-emerald-400"
+                        />
+                      </div>
+                    </div>
+                  </>
+                ) : null}
+              </div>
+            )}
+
             {/* CONTINUITY ENGINE */}
             {bottomTray === 'continuity' && (
               <div className="space-y-3">
                 <p className="text-xs text-zinc-300 leading-relaxed">
                   {isMl
-                    ? 'ഒരു സീനിൽ നിന്നും അടുത്ത സീനിലേക്ക് ബോറടിക്കാതെ സിനിമ പോലെ ഒഴുകിയെത്താൻ — എല്ലാ ക്ലിപ്പുകളിലും ഓട്ടോമാറ്റിക് ക്യാമറ ചലനങ്ങളും (Push/Pan/Pull), സ്മൂത്ത് ട്രാൻസിഷനുകളും (Zoom Flow, Light Leak, Focus Pull) സെറ്റ് ചെയ്യാം.'
-                    : 'Make every scene flow seamlessly into the next without boring flat cuts using automatic camera motion presets, smooth Zoom/Light-Leak transitions, and micro-trimmed pacing.'}
+                    ? 'ഒരു സീനിൽ നിന്നും അടുത്ത സീനിലേക്ക് ബോറടിക്കാതെ സിനിമ പോലെ ഒഴുകിയെത്താൻ — എല്ലാ ക്ലിപ്പുകളിലും ഓട്ടോമാറ്റിക് ക്യാമറ ചലനങ്ങളും (Push/Pan/Pull), സ്മൂത്ത് ട്രാൻസിഷനുകളും ഒറ്റ ക്ലിക്ക് പൊസിഷൻ & കളർ ഗ്രേഡിങ് മാച്ചും സെറ്റ് ചെയ്യാം.'
+                    : 'Make every scene flow seamlessly into the next using automatic camera motion presets, smooth Zoom/Light-Leak transitions, and 1-Click Color & Position Continuity Matching.'}
                 </p>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                  <button
+                    type="button"
+                    onClick={() => handleAutoContinuityColorJoin()}
+                    className="p-3 rounded-xl bg-gradient-to-r from-emerald-400 to-teal-400 hover:brightness-110 text-black font-black text-xs flex items-center justify-center gap-2 cursor-pointer shadow-lg"
+                  >
+                    <Palette className="w-4 h-4" />
+                    <span>
+                      {isMl
+                        ? '🎨 ഒറ്റ ക്ലിക്ക് കളർ & പൊസിഷൻ മാച്ച് ജോയിൻ'
+                        : '🎨 1-Click Color & Position Match Join'}
+                    </span>
+                  </button>
+
                   <button
                     type="button"
                     onClick={() => handleApplyAutoContinuity(false)}
@@ -5991,9 +6779,9 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
               </div>
             )}
 
-            {/* CUTOUT / ROTATE / FIT / LETTERBOX */}
+            {/* CUTOUT / ROTATE / FIT / LETTERBOX / FREEZE FRAME */}
             {bottomTray === 'cutout' && selectedClip && (
-              <div className="grid grid-cols-4 gap-2">
+              <div className="grid grid-cols-5 gap-2">
                 <button
                   type="button"
                   onClick={() => updateClip(selectedClip.id, { rotation: (selectedClip.rotation + 90) % 360 })}
@@ -6031,6 +6819,14 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                 >
                   <Layers className="w-5 h-5" />
                   <span>Cinema</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleFreezeFrameAtPlayhead}
+                  className="p-3 rounded-xl bg-cyan-500/15 border border-cyan-400/50 text-cyan-200 flex flex-col items-center gap-1.5 text-xs font-bold cursor-pointer"
+                >
+                  <Snowflake className="w-5 h-5" />
+                  <span>{isMl ? 'ഫ്രീസ്' : 'Freeze'}</span>
                 </button>
               </div>
             )}
@@ -6254,11 +7050,100 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
               </div>
             )}
 
-            {/* 12,000+ SOUND FX (GUNSHOTS, SWORD, FOLEY, SIRENS) */}
+            {/* 15,000+ LOCALIZED FILM FOLEY SFX + MULTI-SFX JOINT CHAIN STITCHER */}
             {bottomTray === 'sfx' && (
               <div className="space-y-2.5">
+                {/* SFX Joint Chain Builder Strip */}
+                <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/40 space-y-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-1.5 text-xs font-black text-amber-300">
+                      <Link2 className="w-4 h-4" />
+                      <span>
+                        {isMl
+                          ? `സൗണ്ട് ജോയിന്റ് ചെയിൻ (${sfxChain.length} എണ്ണം) — പല സൗണ്ടുകൾ ഒരുമിച്ച് ജോയിൻ ചെയ്യൂ`
+                          : `SFX Joint Chain Stitcher (${sfxChain.length} Queued)`}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1.5 text-[10px]">
+                      <span className="text-zinc-300 font-bold">{isMl ? 'ഗ്യാപ്പ്:' : 'Gap:'}</span>
+                      {[0, 0.15, 0.45].map((g) => (
+                        <button
+                          key={`gap_${g}`}
+                          type="button"
+                          onClick={() => setSfxChainGapSec(g)}
+                          className={`px-2 py-0.5 rounded font-mono font-bold cursor-pointer ${
+                            sfxChainGapSec === g ? 'bg-amber-400 text-black' : 'bg-zinc-900 text-zinc-300'
+                          }`}
+                        >
+                          {g}s
+                        </button>
+                      ))}
+                      {sfxChain.length > 0 && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => previewJoinedSfxChain(sfxChain.map((s) => ({ sfx: s, gapSec: sfxChainGapSec })))}
+                            className="px-2.5 py-1 rounded-lg bg-zinc-900 border border-zinc-600 text-white font-bold cursor-pointer"
+                          >
+                            ▶ {isMl ? 'കേൾക്കൂ' : 'Preview'}
+                          </button>
+                          <button
+                            type="button"
+                            disabled={isBuildingSfxChain}
+                            onClick={handleAddJoinedSfxChain}
+                            className="px-3 py-1 rounded-lg bg-amber-400 hover:bg-amber-300 text-black font-black cursor-pointer"
+                          >
+                            {isBuildingSfxChain ? '...' : isMl ? '🔗 ജോയിൻ ചെയ്ത് ചേർക്കൂ' : '🔗 Join & Add Audio'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setSfxChain([])}
+                            className="px-2 py-1 rounded-lg bg-red-600/80 text-white font-bold cursor-pointer"
+                          >
+                            ✕
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                  {sfxChain.length > 0 && (
+                    <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+                      {sfxChain.map((node, idx) => (
+                        <div
+                          key={`chain_${node.id}_${idx}`}
+                          className="px-2.5 py-1 rounded-lg bg-zinc-950 border border-amber-400/50 text-[11px] font-bold text-white flex items-center gap-1.5 whitespace-nowrap shrink-0"
+                        >
+                          <span className="text-amber-400 font-mono">{idx + 1}.</span>
+                          <span>{localizeSfxName(node.name, node.recipe, lang)}</span>
+                          <button
+                            type="button"
+                            onClick={() => setSfxChain((prev) => prev.filter((_, i) => i !== idx))}
+                            className="text-red-400 hover:text-red-300 font-black cursor-pointer ml-1"
+                          >
+                            ×
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2 mb-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSfxCategory('Funny & Comedy Memes');
+                      setSfxPage(0);
+                    }}
+                    className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-rose-500 text-black font-black text-xs uppercase tracking-wider flex items-center gap-1.5 shadow-lg shadow-amber-500/25 cursor-pointer hover:scale-[1.02] transition-transform"
+                  >
+                    <span>😂</span>
+                    <span>{isMl ? 'റീൽസ് & ഷോർട്സ് കോമഡി മീംസ് (12,000+ SFX)' : 'Reels & Shorts Funny Comedy (12k+ SFX)'}</span>
+                  </button>
+                </div>
+
                 <div className="flex items-center gap-2">
-                  <div className="relative w-44 shrink-0">
+                  <div className="relative w-48 shrink-0">
                     <Search className="w-3.5 h-3.5 text-zinc-500 absolute left-2.5 top-1/2 -translate-y-1/2" />
                     <input
                       type="text"
@@ -6267,12 +7152,16 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                         setSfxSearch(e.target.value);
                         setSfxPage(0);
                       }}
-                      placeholder={`Search ${TOTAL_PRO_SFX_COUNT.toLocaleString()} SFX...`}
-                      className="w-full bg-zinc-900 border border-zinc-700 rounded-lg pl-8 pr-2 py-1 text-xs text-white"
+                      placeholder={
+                        isMl
+                          ? `ഇടിമിന്നൽ, തോക്ക്, വാതിൽ, താക്കോൽ, കാർ...`
+                          : `Search ${TOTAL_PRO_SFX_COUNT.toLocaleString()} Foley SFX...`
+                      }
+                      className="w-full bg-zinc-900 border border-zinc-700 rounded-lg pl-8 pr-2 py-1.5 text-xs text-white"
                     />
                   </div>
-                  <div className="flex items-center gap-1 overflow-x-auto no-scrollbar">
-                    {Array.from(new Set([...SFX_CATEGORIES, ...PRO_SFX_CATEGORIES])).map((cat) => (
+                  <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+                    {Array.from(new Set([...PRO_SFX_CATEGORIES, ...SFX_CATEGORIES])).map((cat) => (
                       <button
                         key={cat}
                         type="button"
@@ -6280,11 +7169,11 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                           setSfxCategory(cat);
                           setSfxPage(0);
                         }}
-                        className={`px-2 py-1 rounded-md text-[10px] font-bold whitespace-nowrap cursor-pointer ${
-                          sfxCategory === cat ? 'bg-white text-black' : 'bg-zinc-900 text-zinc-400'
+                        className={`px-2.5 py-1.5 rounded-lg text-[11px] font-extrabold whitespace-nowrap cursor-pointer ${
+                          sfxCategory === cat ? 'bg-white text-black' : 'bg-zinc-900 text-zinc-300 border border-zinc-800'
                         }`}
                       >
-                        {cat}
+                        {localizeSfxCategory(cat, lang)}
                       </button>
                     ))}
                   </div>
@@ -6292,31 +7181,46 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
 
                 {sfxPage === 0 && filteredSfx.length > 0 && (
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5">
-                    {filteredSfx.slice(0, 12).map((sfx) => (
-                      <div
-                        key={sfx.id}
-                        className="p-2 rounded-lg bg-zinc-900 border border-zinc-800 flex items-center justify-between gap-2"
-                      >
-                        <span className="text-[11px] font-bold truncate">{sfx.name}</span>
-                        <div className="flex items-center gap-1 shrink-0">
-                          <button
-                            type="button"
-                            onClick={() => previewSfx(sfx)}
-                            className="p-1.5 rounded bg-zinc-800 text-zinc-200 cursor-pointer"
-                          >
-                            <Play className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            type="button"
-                            disabled={loadingSfxId === sfx.id}
-                            onClick={() => handleAddSfxToTimeline(sfx)}
-                            className="px-2.5 py-1 rounded bg-white text-black text-[10px] font-extrabold cursor-pointer"
-                          >
-                            {loadingSfxId === sfx.id ? '...' : '+ Add'}
-                          </button>
+                    {filteredSfx.slice(0, 12).map((sfx) => {
+                      const localTitle = localizeSfxName(sfx.name, sfx.recipe, lang);
+                      return (
+                        <div
+                          key={sfx.id}
+                          className="p-2 rounded-lg bg-zinc-900 border border-zinc-800 flex items-center justify-between gap-2"
+                        >
+                          <div className="min-w-0">
+                            <p className="text-[11px] font-bold text-white truncate">{localTitle}</p>
+                            <p className="text-[9px] text-zinc-400 truncate">{localizeSfxCategory(sfx.category, lang)}</p>
+                          </div>
+                          <div className="flex items-center gap-1 shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => previewSfx(sfx)}
+                              className="p-1.5 rounded bg-zinc-800 text-zinc-200 cursor-pointer"
+                              title={isMl ? 'കേൾക്കൂ' : 'Preview'}
+                            >
+                              <Play className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setSfxChain((prev) => [...prev, sfx])}
+                              className="px-2 py-1 rounded bg-amber-500/20 border border-amber-400/50 text-amber-300 text-[10px] font-extrabold cursor-pointer"
+                              title={isMl ? 'ജോയിന്റ് ചെയിനിൽ ചേർക്കൂ' : 'Add to Joint Chain'}
+                            >
+                              + Chain
+                            </button>
+                            <button
+                              type="button"
+                              disabled={loadingSfxId === sfx.id}
+                              onClick={() => handleAddSfxToTimeline(sfx)}
+                              className="px-2.5 py-1 rounded bg-white text-black text-[10px] font-extrabold cursor-pointer"
+                            >
+                              {loadingSfxId === sfx.id ? '...' : '+ Add'}
+                            </button>
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
 
@@ -6344,34 +7248,48 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5">
-                  {proSfxResult.items.map((item) => (
-                    <div
-                      key={item.id}
-                      className="p-2 rounded-lg bg-zinc-900 border border-zinc-800 flex items-center justify-between gap-2"
-                    >
-                      <div className="min-w-0">
-                        <p className="text-[11px] font-bold text-white truncate">{item.name}</p>
-                        <p className="text-[9px] text-zinc-400 truncate">{item.sub}</p>
+                  {proSfxResult.items.map((item) => {
+                    const builtDef = buildSfxDefFromCatalog(item);
+                    const numMatch = item.name.match(/#(\d+)/);
+                    const numTag = numMatch ? Number(numMatch[1]) : undefined;
+                    const localName = localizeSfxName(item.name, builtDef.recipe, lang, numTag);
+                    const localCat = localizeSfxCategory(item.category, lang);
+                    return (
+                      <div
+                        key={item.id}
+                        className="p-2 rounded-lg bg-zinc-900 border border-zinc-800 flex items-center justify-between gap-2"
+                      >
+                        <div className="min-w-0">
+                          <p className="text-[11px] font-bold text-white truncate">{localName}</p>
+                          <p className="text-[9px] text-zinc-400 truncate">{localCat}</p>
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => previewSfx(builtDef)}
+                            className="p-1.5 rounded bg-zinc-800 text-zinc-200 cursor-pointer"
+                          >
+                            <Play className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setSfxChain((prev) => [...prev, builtDef])}
+                            className="px-2 py-1 rounded bg-amber-500/20 border border-amber-400/50 text-amber-300 text-[10px] font-extrabold cursor-pointer"
+                          >
+                            + Chain
+                          </button>
+                          <button
+                            type="button"
+                            disabled={loadingSfxId === item.id}
+                            onClick={() => handleAddProSfxItem(item)}
+                            className="px-2.5 py-1 rounded bg-white text-black text-[10px] font-extrabold cursor-pointer"
+                          >
+                            {loadingSfxId === item.id ? '...' : '+ Add'}
+                          </button>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-1 shrink-0">
-                        <button
-                          type="button"
-                          onClick={() => previewSfx(buildSfxDefFromCatalog(item))}
-                          className="p-1.5 rounded bg-zinc-800 text-zinc-200 cursor-pointer"
-                        >
-                          <Play className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          disabled={loadingSfxId === item.id}
-                          onClick={() => handleAddProSfxItem(item)}
-                          className="px-2.5 py-1 rounded bg-white text-black text-[10px] font-extrabold cursor-pointer"
-                        >
-                          {loadingSfxId === item.id ? '...' : '+ Add'}
-                        </button>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -6405,9 +7323,24 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
               </div>
             )}
 
-            {/* 12,000+ CONTINUITY & CINEMA TRANSITIONS */}
+            {/* 15,000+ CONTINUITY & CINEMA TRANSITIONS + 1-CLICK COLOR/POSITION MATCH */}
             {bottomTray === 'transitions' && (
               <div className="space-y-2.5">
+                {clips.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => handleAutoContinuityColorJoin(selectedTransitionClip?.id)}
+                    className="w-full py-2.5 px-3 rounded-xl bg-gradient-to-r from-emerald-400 to-teal-400 text-black font-black text-xs flex items-center justify-center gap-2 cursor-pointer shadow"
+                  >
+                    <Palette className="w-4 h-4" />
+                    <span>
+                      {isMl
+                        ? '✨ ഒറ്റ ക്ലിക്കിൽ രണ്ടു വീഡിയോയുടെയും പൊസിഷൻ & കളർ ഗ്രേഡിങ് മാച്ച് ചെയ്ത് ജോയിൻ ആക്കൂ!'
+                        : '✨ 1-Click Color Grading & Position Continuity Match on Joined Clips'}
+                    </span>
+                  </button>
+                )}
+
                 {selectedTransitionClip ? (
                   <>
                     <div className="flex items-center gap-2">
@@ -6512,8 +7445,8 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                 ) : (
                   <p className="text-xs text-zinc-400">
                     {isMl
-                      ? '2 ക്ലിപ്പുകൾക്കിടയിലുള്ള "|" ബട്ടൺ ടാപ്പ് ചെയ്ത് ട്രാൻസിഷൻ മാറ്റാം, അല്ലെങ്കിൽ ഓട്ടോ കണ്ടിന്യൂയിറ്റി ഉപയോഗിക്കൂ.'
-                      : 'Tap "|" between two clips to change transition, or use Auto Continuity.'}
+                      ? '2 ക്ലിപ്പുകൾക്കിടയിലുള്ള "|" ബട്ടൺ ടാപ്പ് ചെയ്ത് ട്രാൻസിഷൻ മാറ്റാം, അല്ലെങ്കിൽ മുകളിലെ ഒറ്റ ക്ലിക്ക് കളർ മാച്ച് ഉപയോഗിക്കൂ.'
+                      : 'Tap "|" between two clips to change transition, or click 1-Click Color Match above.'}
                   </p>
                 )}
               </div>
@@ -7273,29 +8206,68 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
         </div>
       )}
 
-      {/* 5. ALL 121 PRO FEATURES BAR DIRECTLY UNDER THE TIMELINE (MOBILE & DESKTOP 1-TAP PARITY) */}
+      {/* 5. BIG FULL-SIZED 121 PRO FEATURES BAR DIRECTLY UNDER THE TIMELINE (MOBILE & DESKTOP-MODE LARGE BUTTONS) */}
       <div className="bg-[#08090c] border-t border-zinc-800 shrink-0 flex flex-col">
-        {/* Category Quick-Filter Strip for Instant Jump across 121 Tools */}
-        <div className="px-2.5 pt-1.5 pb-1 flex items-center gap-1 overflow-x-auto no-scrollbar border-b border-zinc-900/80">
+        {/* Large Category Quick-Filter Strip + Full-Grid Expand Button */}
+        <div className="px-3 pt-2.5 pb-2 flex items-center gap-2 overflow-x-auto no-scrollbar border-b border-zinc-900">
+          <button
+            type="button"
+            onClick={() => {
+              setIsPlaying(false);
+              setBottomTray('allTools');
+            }}
+            className="px-4 py-2 md:py-2.5 rounded-xl text-xs sm:text-sm md:text-base font-black whitespace-nowrap cursor-pointer bg-white hover:bg-amber-400 text-black flex items-center gap-1.5 shadow shrink-0"
+          >
+            <LayoutGrid className="w-4 h-4 sm:w-5 sm:h-5" />
+            <span>{isMl ? '121 ഫീച്ചറുകൾ വലുതായി തുറക്കൂ' : 'All 121 Features Grid'}</span>
+          </button>
+
           {['All', 'Action VFX', 'Masking', 'Characters', 'Graph', 'Color/LUT', 'Titles', 'Audio'].map((cat) => (
             <button
               key={cat}
               type="button"
               onClick={() => setNavCatFilter(cat)}
-              className={`px-2 py-0.5 rounded-md text-[10px] font-extrabold whitespace-nowrap cursor-pointer transition-colors ${
+              className={`px-3.5 py-2 md:py-2.5 rounded-xl text-xs sm:text-sm md:text-base font-extrabold whitespace-nowrap cursor-pointer transition-colors shrink-0 ${
                 navCatFilter === cat
                   ? 'bg-amber-500 text-black'
-                  : 'bg-zinc-900 text-zinc-400 hover:text-white border border-zinc-800'
+                  : 'bg-zinc-900 text-zinc-200 hover:text-white border border-zinc-700'
               }`}
             >
-              {cat === 'All' ? `All 121 Features` : cat}
+              {cat === 'All' ? `All 121` : cat}
             </button>
           ))}
         </div>
 
-        {/* Scrollable 121-Feature Bottom Toolbar right below the Timeline */}
-        <nav className="px-2 py-2 flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+        {/* Scrollable BIG 121-Feature Bottom Toolbar right below the Timeline */}
+        <nav className="px-3 py-3 flex items-center gap-2.5 overflow-x-auto no-scrollbar">
           {[
+            {
+              id: 'quick_dual',
+              icon: Columns,
+              badge: '2-FACE',
+              label: isMl ? 'മുഖത്തോട് മുഖം' : 'Face-to-Face',
+              active: bottomTray === 'dualDialogue',
+              disabled: false,
+              onClick: () => setBottomTray(bottomTray === 'dualDialogue' ? null : 'dualDialogue'),
+            },
+            {
+              id: 'quick_color_join',
+              icon: Palette,
+              badge: 'MATCH',
+              label: isMl ? 'കളർ മാച്ച് ജോയിൻ' : 'Color Match Join',
+              active: false,
+              disabled: clips.length === 0,
+              onClick: () => handleAutoContinuityColorJoin(),
+            },
+            {
+              id: 'quick_freeze',
+              icon: Snowflake,
+              badge: 'STILL',
+              label: isMl ? 'ഫ്രീസ്' : 'Freeze',
+              active: false,
+              disabled: clips.length === 0,
+              onClick: handleFreezeFrameAtPlayhead,
+            },
             {
               id: 'quick_shoot',
               icon: Target,
@@ -7358,19 +8330,19 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                 type="button"
                 disabled={btn.disabled}
                 onClick={btn.onClick}
-                className={`min-w-[74px] py-2 px-2 rounded-xl flex flex-col items-center justify-center gap-1 cursor-pointer shrink-0 border transition-colors disabled:opacity-30 ${
+                className={`min-w-[126px] sm:min-w-[144px] md:min-w-[162px] py-3.5 px-4 rounded-2xl flex flex-col items-center justify-center gap-1.5 cursor-pointer shrink-0 border-2 transition-colors disabled:opacity-30 ${
                   btn.active
-                    ? 'bg-white text-black border-white font-extrabold'
-                    : 'bg-zinc-900/90 border-zinc-700/80 text-zinc-100 hover:border-amber-400'
+                    ? 'bg-white text-black border-white font-black'
+                    : 'bg-zinc-900 border-zinc-700 text-zinc-100 hover:border-amber-400'
                 }`}
               >
-                <div className="flex items-center gap-1">
-                  <Icon className="w-4 h-4" />
-                  <span className="text-[8px] font-mono px-1 rounded bg-amber-500/20 text-amber-300 font-bold">
+                <div className="flex items-center gap-1.5">
+                  <Icon className="w-5 h-5 sm:w-6 sm:h-6" />
+                  <span className="text-[11px] font-mono px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 font-extrabold">
                     {btn.badge}
                   </span>
                 </div>
-                <span className="text-[10px] font-bold whitespace-nowrap">{btn.label}</span>
+                <span className="text-xs sm:text-sm md:text-[15px] font-extrabold whitespace-nowrap">{btn.label}</span>
               </button>
             );
           })}
@@ -7417,20 +8389,20 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                 key={`nav121_${tool.id}`}
                 type="button"
                 onClick={() => handleLaunch121Tool(tool)}
-                className={`min-w-[82px] max-w-[110px] py-2 px-2 rounded-xl flex flex-col items-center justify-center gap-1 cursor-pointer shrink-0 border transition-colors ${
+                className={`min-w-[134px] sm:min-w-[154px] md:min-w-[172px] max-w-[210px] py-3.5 px-4 rounded-2xl flex flex-col items-center justify-center gap-1.5 cursor-pointer shrink-0 border-2 transition-colors ${
                   isActive
-                    ? 'bg-amber-500 text-black border-white font-extrabold'
-                    : 'bg-[#10121a] border-zinc-800 text-zinc-200 hover:border-amber-400/70'
+                    ? 'bg-amber-500 text-black border-white font-black'
+                    : 'bg-[#111420] border-zinc-700 text-zinc-100 hover:border-amber-400'
                 }`}
                 title={`${tool.name} (${tool.group})`}
               >
-                <div className="flex items-center gap-1">
-                  <Icon className="w-4 h-4 shrink-0" />
-                  <span className={`text-[8px] font-mono font-bold ${isActive ? 'text-black' : 'text-amber-400'}`}>
+                <div className="flex items-center gap-1.5">
+                  <Icon className="w-5 h-5 sm:w-6 sm:h-6 shrink-0" />
+                  <span className={`text-[11px] font-mono font-extrabold ${isActive ? 'text-black' : 'text-amber-400'}`}>
                     #{tool.id}
                   </span>
                 </div>
-                <span className="text-[10px] font-bold truncate max-w-[96px]">{tool.name}</span>
+                <span className="text-xs sm:text-sm md:text-[15px] font-extrabold truncate max-w-[165px]">{tool.name}</span>
               </button>
             );
           })}
@@ -8773,30 +9745,30 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
             </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-3 sm:p-5">
-            <div className="max-w-6xl mx-auto grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+          <div className="flex-1 overflow-y-auto p-3.5 sm:p-6">
+            <div className="max-w-7xl mx-auto grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
               {filtered121Tools.map((tool) => (
                 <button
                   key={tool.id}
                   type="button"
                   onClick={() => handleLaunch121Tool(tool)}
-                  className="p-3 rounded-2xl bg-[#11131b] hover:bg-[#191c28] border border-zinc-800 hover:border-amber-400/70 text-left cursor-pointer transition-all flex items-start justify-between gap-2 group"
+                  className="p-4 sm:p-5 rounded-2xl bg-[#11131b] hover:bg-[#191c28] border-2 border-zinc-800 hover:border-amber-400 text-left cursor-pointer transition-all flex items-center justify-between gap-3 group"
                 >
-                  <div className="min-w-0 space-y-1">
-                    <div className="flex items-center gap-1.5">
-                      <span className="px-1.5 py-0.5 rounded bg-zinc-800 text-[9px] font-mono text-amber-400 font-extrabold">
+                  <div className="min-w-0 space-y-1.5">
+                    <div className="flex items-center gap-2">
+                      <span className="px-2 py-0.5 rounded bg-zinc-800 text-xs font-mono text-amber-400 font-extrabold">
                         #{tool.id}
                       </span>
-                      <span className="text-[10px] font-mono text-zinc-400 truncate">{tool.group}</span>
+                      <span className="text-xs font-mono text-zinc-400 truncate">{tool.group}</span>
                     </div>
-                    <p className="text-xs font-extrabold text-white group-hover:text-amber-300 truncate">
+                    <p className="text-sm sm:text-base font-black text-white group-hover:text-amber-300 truncate">
                       {tool.name}
                     </p>
-                    <p className="text-[10px] text-emerald-400 font-bold uppercase tracking-wide">
+                    <p className="text-xs text-emerald-400 font-extrabold uppercase tracking-wide">
                       Open {tool.target}
                     </p>
                   </div>
-                  <ChevronRight className="w-4 h-4 text-zinc-500 group-hover:text-amber-400 shrink-0 mt-1" />
+                  <ChevronRight className="w-5 h-5 text-zinc-400 group-hover:text-amber-400 shrink-0" />
                 </button>
               ))}
             </div>
@@ -8971,6 +9943,13 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
         accept="audio/*"
         multiple
         onChange={handleMusicUpload}
+        className="hidden"
+      />
+      <input
+        ref={dualMediaInputRef}
+        type="file"
+        accept="video/*,image/*"
+        onChange={handleDualSlotMediaUpload}
         className="hidden"
       />
     </div>

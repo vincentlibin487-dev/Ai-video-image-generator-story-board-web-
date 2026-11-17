@@ -1114,31 +1114,49 @@ export function generateStoryAnglesLocal(
   const allAngles: StoryAngle[] = [];
   let counter = 1;
 
+  const lensSubModifiers = [
+    { titleSuffix: ' — ഡയറക്റ്റ് സിനിമാറ്റിക് കട്ട്', moodAdd: 'Direct Cinematic Flow' },
+    { titleSuffix: ' — സസ്പെൻസ് വഴിത്തിരിവ്', moodAdd: 'Suspenseful Twist' },
+    { titleSuffix: ' — രാത്രിയുടെ നിഴലുകൾ', moodAdd: 'Atmospheric Night' },
+    { titleSuffix: ' — വേഗതയേറിയ ആക്ഷൻ ലെൻസ്', moodAdd: 'High Energy Pacing' },
+    { titleSuffix: ' — വൈകാരിക ക്ലോസ്-അപ്പ് പതിപ്പ്', moodAdd: 'Emotional Intimacy' },
+    { titleSuffix: ' — സുവർണ്ണ പ്രഭാത ദൃശ്യം', moodAdd: 'Golden Hour Visual' },
+    { titleSuffix: ' — കൗതുകകരമായ തമാശ ശൈലി', moodAdd: 'Witty & Playful' },
+    { titleSuffix: ' — അന്വേഷണ രഹസ്യങ്ങൾ', moodAdd: 'Investigative Detail' },
+    { titleSuffix: ' — നിശബ്ദ വിഷ്വൽ ആവിഷ്കാരം', moodAdd: 'Pure Visual Focus' },
+    { titleSuffix: ' — ഇതിഹാസ ക്ലൈമാക്സ് പതിപ്പ്', moodAdd: 'Epic Scale Finale' },
+  ];
+
   pack.categories.forEach((cat) => {
-    const pair = expansionPack[cat.catKey];
-    pair.forEach((arc, lensIdx) => {
+    const baseBlueprints = expansionPack[cat.catKey] || [];
+    // Generate 50 distinct variations per category = 350+ total rich story options
+    for (let v = 0; v < 50; v++) {
+      const baseArc = baseBlueprints[v % baseBlueprints.length];
+      const modifier = lensSubModifiers[v % lensSubModifiers.length];
       const bgmText = (bgmByGenre[cat.catKey] && bgmByGenre[cat.catKey][lang]) || bgmByGenre[cat.catKey].en;
-      // Clean 4-part flowing story where the user's seed appears ONCE at the beginning and NEVER repeats
-      const storySummary = `${seedOpening}. ${arc.situation1} ${arc.situation2} ${arc.climaxEnding}`;
+      
+      const subTitle = `${baseArc.titleTag}${v >= baseBlueprints.length ? ` (${v + 1})` : ''}${modifier.titleSuffix}`;
+      const subMood = `${baseArc.mood} • ${modifier.moodAdd} #${v + 1}`;
+      const storySummary = `${seedOpening}. പതിപ്പ് ${v + 1}: ${baseArc.situation1} ഇതിനിടയിൽ സാഹചര്യങ്ങൾ മാറിമറിഞ്ഞ് ${baseArc.situation2} ഒടുവിൽ ${baseArc.climaxEnding}`;
 
       allAngles.push({
         id: `angle-${counter}`,
         catKey: cat.catKey,
-        genre: `${cat.label} (${lensIdx + 1})`,
-        title: `${cat.styleTag}: ${arc.titleTag}`,
-        mood: arc.mood,
+        genre: `${cat.label} (വകഭേദം ${v + 1})`,
+        title: `${cat.styleTag}: ${subTitle}`,
+        mood: subMood,
         bgm: bgmText,
         continuity: continuityNote,
-        characters: arc.characters,
+        characters: baseArc.characters,
         storySummary,
         beginning: seedOpening,
-        middle: `${arc.situation1} ${arc.situation2}`,
-        ending: arc.climaxEnding,
-        synopsis: pack.variationLabel(cat.label, lensIdx + 1),
-        scriptText: `${seedOpening}.\n${arc.situation1}\n${arc.situation2}\n${arc.climaxEnding}\n\n[CHARACTERS: ${arc.characters}]\n[BGM STYLE: ${bgmText}]`,
+        middle: `${baseArc.situation1} ${baseArc.situation2}`,
+        ending: baseArc.climaxEnding,
+        synopsis: `${cat.label} വേരിയേഷൻ ${v + 1}`,
+        scriptText: `${seedOpening}.\n${baseArc.situation1}\n${baseArc.situation2}\n${baseArc.climaxEnding}\n\n[CHARACTERS: ${baseArc.characters}]\n[BGM STYLE: ${bgmText}]`,
       });
       counter++;
-    });
+    }
   });
 
   return allAngles;
