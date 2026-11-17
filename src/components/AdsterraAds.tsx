@@ -904,29 +904,58 @@ export const FourSecondExportVideoAd: React.FC<{
   open: boolean;
   onComplete: () => void;
   durationMs?: number;
-}> = ({ open, onComplete, durationMs = 10000 }) => {
+  activeWhileExporting?: boolean;
+  exportProgress?: number;
+  exportElapsedSec?: number;
+  exportTotalSec?: number;
+  resolutionLabel?: string;
+  onCancelExport?: () => void;
+}> = ({
+  open,
+  onComplete,
+  durationMs = 10000,
+  activeWhileExporting = false,
+  exportProgress = 0,
+  exportElapsedSec = 0,
+  exportTotalSec = 0,
+  resolutionLabel = '1080p',
+  onCancelExport,
+}) => {
   const [msLeft, setMsLeft] = useState<number>(durationMs);
   const [isMuted, setIsMuted] = useState<boolean>(true);
-  const [videoSrc, setVideoSrc] = useState<string>('');
+  const [videoUrls, setVideoUrls] = useState<string[]>([]);
+  const [videoIdx, setVideoIdx] = useState<number>(0);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const onCompleteRef = useRef(onComplete);
   onCompleteRef.current = onComplete;
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      setVideoUrls([]);
+      setVideoIdx(0);
+      return;
+    }
     setMsLeft(durationMs);
-    setVideoSrc('');
+    setVideoUrls([]);
+    setVideoIdx(0);
 
     let cancelled = false;
     fetchLiveVastData().then((data) => {
       if (cancelled) return;
       if (data?.allVideoUrls && data.allVideoUrls.length > 0) {
-        const randomVid = data.allVideoUrls[Math.floor(Math.random() * data.allVideoUrls.length)];
-        setVideoSrc(randomVid);
-      } else {
+        const shuffled = [...data.allVideoUrls].sort(() => Math.random() - 0.5);
+        setVideoUrls(shuffled);
+        setVideoIdx(0);
+      } else if (!activeWhileExporting) {
         onCompleteRef.current();
       }
     });
+
+    if (activeWhileExporting) {
+      return () => {
+        cancelled = true;
+      };
+    }
 
     const start = performance.now();
     const interval = window.setInterval(() => {
@@ -943,12 +972,23 @@ export const FourSecondExportVideoAd: React.FC<{
       cancelled = true;
       window.clearInterval(interval);
     };
-  }, [open, durationMs]);
+  }, [open, durationMs, activeWhileExporting]);
+
+  const videoSrc = videoUrls[videoIdx % Math.max(1, videoUrls.length)] || '';
+
+  useEffect(() => {
+    if (!open || !videoSrc || !videoRef.current) return;
+    const vid = videoRef.current;
+    vid.muted = isMuted;
+    vid.play().catch(() => {});
+  }, [open, videoSrc, isMuted]);
 
   if (!open || !videoSrc) return null;
 
   const secondsLeft = Math.max(1, Math.ceil(msLeft / 1000));
-  const pct = Math.min(100, Math.max(0, ((durationMs - msLeft) / durationMs) * 100));
+  const pct = activeWhileExporting
+    ? Math.min(100, Math.max(0, exportProgress))
+    : Math.min(100, Math.max(0, ((durationMs - msLeft) / durationMs) * 100));
 
   return (
     <div
@@ -971,19 +1011,31 @@ export const FourSecondExportVideoAd: React.FC<{
           >
             {isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
           </button>
-          <button
-            type="button"
-            onClick={onComplete}
-            disabled={msLeft > 5000}
-            className={`px-3.5 py-2 rounded-xl text-xs font-extrabold flex items-center gap-1.5 shadow-lg ${
-              msLeft > 5000
-                ? 'bg-black/75 text-zinc-300 cursor-not-allowed'
-                : 'bg-white text-black hover:bg-amber-400 cursor-pointer'
-            }`}
-          >
-            <SkipForward className="w-3.5 h-3.5" />
-            <span>{msLeft > 5000 ? `${secondsLeft}s` : `Skip (${secondsLeft}s)`}</span>
-          </button>
+          {activeWhileExporting ? (
+            onCancelExport && (
+              <button
+                type="button"
+                onClick={onCancelExport}
+                className="px-3 py-2 rounded-xl text-xs font-extrabold bg-red-600/90 hover:bg-red-500 text-white cursor-pointer shadow-lg"
+              >
+                Cancel Export
+              </button>
+            )
+          ) : (
+            <button
+              type="button"
+              onClick={onComplete}
+              disabled={msLeft > 5000}
+              className={`px-3.5 py-2 rounded-xl text-xs font-extrabold flex items-center gap-1.5 shadow-lg ${
+                msLeft > 5000
+                  ? 'bg-black/75 text-zinc-300 cursor-not-allowed'
+                  : 'bg-white text-black hover:bg-amber-400 cursor-pointer'
+              }`}
+            >
+              <SkipForward className="w-3.5 h-3.5" />
+              <span>{msLeft > 5000 ? `${secondsLeft}s` : `Skip (${secondsLeft}s)`}</span>
+            </button>
+          )}
         </div>
 
         <div className="w-full h-[230px] sm:h-[260px] flex items-center justify-center bg-black">
@@ -993,21 +1045,41 @@ export const FourSecondExportVideoAd: React.FC<{
             autoPlay
             muted={isMuted}
             playsInline
-            loop
+            loop={videoUrls.length <= 1}
+            onEnded={() => {
+              if (videoUrls.length > 1) {
+                setVideoIdx((i) => (i + 1) % videoUrls.length);
+              } else if (videoRef.current) {
+                videoRef.current.currentTime = 0;
+                videoRef.current.play().catch(() => {});
+              }
+            }}
             className="w-full h-full object-cover"
           />
         </div>
 
-        <div className="px-3 py-2 bg-[#0d0e14] flex items-center justify-between text-[11px] font-mono text-zinc-300">
-          <span>Preparing 4K Render...</span>
-          <span className="text-amber-400 font-bold">{secondsLeft}s</span>
+        <div className="px-3.5 py-2.5 bg-[#0d0e14] flex items-center justify-between text-[11px] font-mono text-zinc-200 gap-2">
+          <span className="truncate font-bold">
+            {activeWhileExporting
+              ? `Exporting ${resolutionLabel} Video...`
+              : 'Preparing Video Render...'}
+          </span>
+          <span className="text-amber-400 font-extrabold shrink-0 tabular-nums">
+            {activeWhileExporting
+              ? `${Math.round(pct)}%${exportTotalSec > 0 ? ` · ${Math.min(Math.round(exportElapsedSec), Math.ceil(exportTotalSec))}s / ${Math.ceil(exportTotalSec)}s` : ''}`
+              : `${secondsLeft}s`}
+          </span>
         </div>
 
-        <div className="w-full h-1.5 bg-zinc-900">
-          <div className="h-full bg-amber-400 transition-all duration-75" style={{ width: `${pct}%` }} />
+        <div className="w-full h-2 bg-zinc-900">
+          <div
+            className="h-full bg-gradient-to-r from-amber-400 to-emerald-400 transition-all duration-100"
+            style={{ width: `${pct}%` }}
+          />
         </div>
       </div>
     </div>
   );
 };
+
 
