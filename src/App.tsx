@@ -80,7 +80,6 @@ import {
 import { AdminDashboard } from './components/AdminDashboard';
 import { type SavedStoryItem } from './components/SavedStoriesModal';
 import { VideoEditorStudio } from './components/VideoEditorStudio';
-import { ImageEditorStudio } from './components/ImageEditorStudio';
 import {
   initGuestSession,
   recordGenerationActivity,
@@ -156,9 +155,9 @@ export default function App() {
   const [lang, setLang] = useState<AppLang>('en');
   const t = UI_TRANSLATIONS[lang];
 
-  // Navigation Step: 'input' | 'options' | 'prompts' | 'editor' | 'image_editor' | 'history' | 'login'
+  // Navigation Step: 'input' | 'options' | 'prompts' | 'editor' | 'history' | 'login'
   const [activeStep, setActiveStep] = useState<
-    'input' | 'options' | 'prompts' | 'editor' | 'image_editor' | 'history' | 'login'
+    'input' | 'options' | 'prompts' | 'editor' | 'history' | 'login'
   >('input');
   const [lastStoryStep, setLastStoryStep] = useState<'input' | 'options' | 'prompts'>('input');
   const [premise, setPremise] = useState<string>('');
@@ -1122,12 +1121,16 @@ export default function App() {
 
   const totalAngleCountDisplay = storyAngles.length > 0 ? storyAngles.length : 14;
 
-  // Full-screen dedicated KineMaster-style 4K Video Editor mode (zero ads/headers/nav)
+  // Full-screen dedicated 4K Video Editor mode
   if (!showAdminPanel && activeStep === 'editor') {
     return (
       <VideoEditorStudio
         lang={lang}
-        onBackToStoryboard={() => setActiveStep('input')}
+        currentUser={currentUser}
+        onBackToStoryboard={() => {
+          trackStepChange('input');
+          setActiveStep('input');
+        }}
       />
     );
   }
@@ -2496,17 +2499,11 @@ ${imgPromptText}`;
         {activeStep === 'editor' && (
           <VideoEditorStudio
             lang={lang}
-            onBackToStoryboard={() => setActiveStep('input')}
-          />
-        )}
-
-        {/* ================================================================= */}
-        {/* PAGE: IMAGE EDITING & PHOTOSHOP STUDIO (`activeStep === 'image_editor'`) */}
-        {/* ================================================================= */}
-        {activeStep === 'image_editor' && (
-          <ImageEditorStudio
-            lang={lang}
-            onClose={() => setActiveStep('input')}
+            currentUser={currentUser}
+            onBackToStoryboard={() => {
+              trackStepChange('input');
+              setActiveStep('input');
+            }}
           />
         )}
 
@@ -2966,9 +2963,9 @@ ${imgPromptText}`;
         </>
       )}
 
-      {/* Unified 5-Tab Bottom App Navigation Bar (Mobile & Desktop with Cinematic Photo Thumbnails) */}
+      {/* Unified 4-Tab Bottom App Navigation Bar (Mobile & Desktop with Cinematic Photo Thumbnails) */}
       <nav className="fixed bottom-0 inset-x-0 z-40 bg-[#0d0f17]/95 backdrop-blur-lg border-t border-zinc-800 px-2.5 py-2 shadow-[0_-8px_30px_rgba(0,0,0,0.7)]">
-        <div className="max-w-4xl mx-auto grid grid-cols-5 gap-1.5 sm:gap-2">
+        <div className="max-w-4xl mx-auto grid grid-cols-4 gap-1.5 sm:gap-2">
           {/* Tab 1: Story */}
           <button
             type="button"
@@ -3006,6 +3003,7 @@ ${imgPromptText}`;
             type="button"
             onClick={() => {
               setShowAdminPanel(false);
+              trackStepChange('editor');
               setActiveStep('editor');
             }}
             className={`flex flex-col items-center justify-center gap-1 py-1.5 px-1 rounded-xl text-[11px] font-bold transition-all cursor-pointer ${
@@ -3027,33 +3025,7 @@ ${imgPromptText}`;
             </span>
           </button>
 
-          {/* Tab 3: Image Editing / Photoshop */}
-          <button
-            type="button"
-            onClick={() => {
-              setShowAdminPanel(false);
-              setActiveStep('image_editor');
-            }}
-            className={`flex flex-col items-center justify-center gap-1 py-1.5 px-1 rounded-xl text-[11px] font-bold transition-all cursor-pointer ${
-              !showAdminPanel && activeStep === 'image_editor'
-                ? 'bg-amber-500 text-black font-extrabold shadow-md shadow-amber-500/30'
-                : 'text-zinc-300 hover:text-white bg-zinc-900/80 hover:bg-zinc-800'
-            }`}
-          >
-            <div className="relative w-6 h-6 rounded-lg overflow-hidden border border-amber-500/40 shrink-0 shadow-inner">
-              <img
-                src="https://images.unsplash.com/photo-1542751371-adc38448a05e?auto=format&fit=crop&w=100&q=80"
-                alt="Image Editing"
-                className="w-full h-full object-cover"
-              />
-              <div className="absolute inset-0 bg-black/20" />
-            </div>
-            <span className="truncate max-w-full">
-              {lang === 'ml' ? 'ഫോട്ടോഷോപ്പ്' : 'Image Edit'}
-            </span>
-          </button>
-
-          {/* Tab 4: History */}
+          {/* Tab 3: History */}
           <button
             type="button"
             onClick={() => {

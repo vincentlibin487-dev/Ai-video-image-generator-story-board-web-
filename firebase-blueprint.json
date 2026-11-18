@@ -54,7 +54,7 @@
         "currentStep": {
           "type": "string",
           "description": "Latest page/step reached in the studio flow.",
-          "enum": ["input", "options", "prompts", "admin"],
+          "enum": ["input", "options", "prompts", "editor", "admin"],
           "maxLength": 16
         },
         "anglesGeneratedCount": {
@@ -421,6 +421,108 @@
         "dayKey",
         "createdAt"
       ]
+    },
+    "VideoEditLog": {
+      "title": "VideoEditLog",
+      "description": "Append-only video editor activity log recording editor opens, clip additions, timeline edits, and exports across guest and Gmail users.",
+      "type": "object",
+      "properties": {
+        "editId": {
+          "type": "string",
+          "description": "Unique video edit log ID.",
+          "minLength": 4,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "visitorId": {
+          "type": "string",
+          "description": "Visitor browser identifier.",
+          "minLength": 4,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "sessionId": {
+          "type": "string",
+          "description": "Session identifier.",
+          "minLength": 4,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "isLoggedIn": {
+          "type": "boolean",
+          "description": "Whether edited while signed in with Google."
+        },
+        "userEmail": {
+          "type": "string",
+          "description": "Verified user Gmail if signed in, empty string if guest.",
+          "maxLength": 128
+        },
+        "actionType": {
+          "type": "string",
+          "description": "Video editor action performed.",
+          "enum": ["open_editor", "add_media", "edit_timeline", "export_video"],
+          "maxLength": 24
+        },
+        "projectTitle": {
+          "type": "string",
+          "description": "Project title inside the video editor.",
+          "maxLength": 200
+        },
+        "clipCount": {
+          "type": "integer",
+          "description": "Number of timeline clips in the project."
+        },
+        "resolution": {
+          "type": "string",
+          "description": "Selected export resolution.",
+          "enum": ["720p", "1080p", "4K"],
+          "maxLength": 10
+        },
+        "aspectRatio": {
+          "type": "string",
+          "description": "Selected video aspect ratio.",
+          "enum": ["16:9", "9:16", "1:1", "4:5", "21:9", "4:3"],
+          "maxLength": 10
+        },
+        "exportDurationSec": {
+          "type": "integer",
+          "description": "Timeline duration in whole seconds."
+        },
+        "deviceType": {
+          "type": "string",
+          "description": "Detected viewport category.",
+          "enum": ["mobile", "tablet", "desktop"],
+          "maxLength": 16
+        },
+        "dayKey": {
+          "type": "string",
+          "description": "Local calendar day string YYYY-MM-DD.",
+          "minLength": 10,
+          "maxLength": 10,
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of the video editor event."
+        }
+      },
+      "required": [
+        "editId",
+        "visitorId",
+        "sessionId",
+        "isLoggedIn",
+        "userEmail",
+        "actionType",
+        "projectTitle",
+        "clipCount",
+        "resolution",
+        "aspectRatio",
+        "exportDurationSec",
+        "deviceType",
+        "dayKey",
+        "createdAt"
+      ]
     }
   },
   "firestore": {
@@ -453,6 +555,12 @@
         "$ref": "#/entities/GenerationLog"
       },
       "description": "Append-only user search premise and generated story/prompt logs readable only by the verified admin."
+    },
+    "/video_edit_logs/{editId}": {
+      "schema": {
+        "$ref": "#/entities/VideoEditLog"
+      },
+      "description": "Append-only video editor usage and export activity logs across guests and Gmail users, readable only by the verified admin."
     }
   }
 }

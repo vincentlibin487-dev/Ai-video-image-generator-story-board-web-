@@ -124,7 +124,7 @@ service cloud.firestore {
         && data.referrerSource.size() <= 64
         && data.currentStep is string
         && data.currentStep.size() <= 16
-        && data.currentStep in ['input', 'options', 'prompts', 'admin']
+        && data.currentStep in ['input', 'options', 'prompts', 'editor', 'admin']
         && data.anglesGeneratedCount is int
         && data.anglesGeneratedCount >= 0
         && data.anglesGeneratedCount <= 1000
@@ -346,6 +346,76 @@ service cloud.firestore {
         && data.createdAt is timestamp;
     }
 
+    function isValidVideoEditLog(data, editId) {
+      return data.keys().hasAll([
+          'editId',
+          'visitorId',
+          'sessionId',
+          'isLoggedIn',
+          'userEmail',
+          'actionType',
+          'projectTitle',
+          'clipCount',
+          'resolution',
+          'aspectRatio',
+          'exportDurationSec',
+          'deviceType',
+          'dayKey',
+          'createdAt'
+        ])
+        && data.keys().hasOnly([
+          'editId',
+          'visitorId',
+          'sessionId',
+          'isLoggedIn',
+          'userEmail',
+          'actionType',
+          'projectTitle',
+          'clipCount',
+          'resolution',
+          'aspectRatio',
+          'exportDurationSec',
+          'deviceType',
+          'dayKey',
+          'createdAt'
+        ])
+        && isValidId(data.editId)
+        && data.editId == editId
+        && isValidId(data.visitorId)
+        && isValidId(data.sessionId)
+        && data.isLoggedIn is bool
+        && data.userEmail is string
+        && data.userEmail.size() <= 128
+        && (
+          (!data.isLoggedIn && data.userEmail == '')
+          || (data.isLoggedIn && isVerifiedUser() && data.userEmail.lower() == request.auth.token.email.lower())
+        )
+        && data.actionType is string
+        && data.actionType.size() <= 24
+        && data.actionType in ['open_editor', 'add_media', 'edit_timeline', 'export_video']
+        && data.projectTitle is string
+        && data.projectTitle.size() <= 200
+        && data.clipCount is int
+        && data.clipCount >= 0
+        && data.clipCount <= 500
+        && data.resolution is string
+        && data.resolution.size() <= 10
+        && data.resolution in ['720p', '1080p', '4K']
+        && data.aspectRatio is string
+        && data.aspectRatio.size() <= 10
+        && data.aspectRatio in ['16:9', '9:16', '1:1', '4:5', '21:9', '4:3']
+        && data.exportDurationSec is int
+        && data.exportDurationSec >= 0
+        && data.exportDurationSec <= 86400
+        && data.deviceType is string
+        && data.deviceType.size() <= 16
+        && data.deviceType in ['mobile', 'tablet', 'desktop']
+        && data.dayKey is string
+        && data.dayKey.size() == 10
+        && data.dayKey.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+        && data.createdAt is timestamp;
+    }
+
     // =========================================================================
     // 4. Collection Rules
     // =========================================================================
@@ -502,6 +572,17 @@ service cloud.firestore {
         && incoming().createdAt == request.time;
       allow update: if false;
       allow delete: if isValidId(logId) && isAdmin();
+    }
+
+    // Append-only video editor activity logs across guest & Gmail users (Admin-read only)
+    match /video_edit_logs/{editId} {
+      allow get: if isValidId(editId) && isAdmin();
+      allow list: if isBootstrappedAdmin();
+      allow create: if isValidId(editId)
+        && isValidVideoEditLog(incoming(), editId)
+        && incoming().createdAt == request.time;
+      allow update: if false;
+      allow delete: if isValidId(editId) && isAdmin();
     }
   }
 }

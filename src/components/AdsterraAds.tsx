@@ -1082,4 +1082,155 @@ export const FourSecondExportVideoAd: React.FC<{
   );
 };
 
+/**
+ * Persistent Compact Bottom Video Ad Strip for the Video Editing System.
+ * Always sits cleanly at the very bottom of the Video Editor without overlapping timeline tracks.
+ */
+export const EditorBottomVideoAdBar: React.FC<{ slotId?: string }> = ({ slotId = 'studio-bottom' }) => {
+  return (
+    <div className="w-full h-[54px] sm:h-[62px] bg-[#070a0f] border-t border-zinc-800/90 px-2 py-1 flex items-center justify-between gap-2 shrink-0 overflow-hidden z-20">
+      <div className="w-[96px] sm:w-[138px] h-[44px] sm:h-[52px] rounded-lg overflow-hidden bg-black border border-zinc-800 shrink-0 shadow-md">
+        <SkippableVideoAdUnit slotId={`${slotId}-vid`} mini fillParent startIndex={0} />
+      </div>
+      <div className="flex-1 min-w-0 h-full flex items-center justify-center overflow-hidden">
+        <DualNetworkBannerFrame
+          slotId={`${slotId}-wide`}
+          slotIndex={1}
+          preferFormat="wide"
+          title="Video Editor Bottom Ad"
+        />
+      </div>
+    </div>
+  );
+};
+
+/**
+ * Live Video Commercial Player embedded directly inside the Export Modal.
+ * Plays continuously for the exact duration of the video export (0% -> 100%).
+ */
+export const ExportModalVideoAdPlayer: React.FC<{
+  active: boolean;
+  progress: number;
+  elapsedSec: number;
+  totalSec: number;
+  statusText?: string;
+}> = ({ active, progress, elapsedSec, totalSec, statusText }) => {
+  const [videoUrls, setVideoUrls] = useState<string[]>([]);
+  const [videoIdx, setVideoIdx] = useState<number>(0);
+  const [isMuted, setIsMuted] = useState<boolean>(true);
+  const [loadedVast, setLoadedVast] = useState<boolean>(false);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+
+  useEffect(() => {
+    if (!active) {
+      setVideoUrls([]);
+      setVideoIdx(0);
+      setLoadedVast(false);
+      return;
+    }
+    let cancelled = false;
+    fetchLiveVastData().then((data) => {
+      if (cancelled) return;
+      if (data?.allVideoUrls && data.allVideoUrls.length > 0) {
+        const shuffled = [...data.allVideoUrls].sort(() => Math.random() - 0.5);
+        setVideoUrls(shuffled);
+        setVideoIdx(0);
+      }
+      setLoadedVast(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [active]);
+
+  const videoSrc = videoUrls[videoIdx % Math.max(1, videoUrls.length)] || '';
+
+  useEffect(() => {
+    if (!active || !videoSrc || !videoRef.current) return;
+    const vid = videoRef.current;
+    vid.muted = isMuted;
+    vid.play().catch(() => {});
+  }, [active, videoSrc, isMuted]);
+
+  if (!active) return null;
+
+  const clampedPct = Math.min(100, Math.max(2, Math.round(progress)));
+  const safeTotal = Math.max(1, Math.ceil(totalSec || 1));
+  const safeElapsed = Math.min(safeTotal, Math.max(0, Math.round(elapsedSec || 0)));
+
+  return (
+    <div className="rounded-xl overflow-hidden bg-black border border-zinc-800 shadow-xl space-y-0">
+      <div className="relative w-full h-[170px] sm:h-[200px] bg-black flex items-center justify-center overflow-hidden">
+        {videoSrc ? (
+          <>
+            <video
+              ref={videoRef}
+              src={videoSrc}
+              autoPlay
+              muted={isMuted}
+              playsInline
+              loop={videoUrls.length <= 1}
+              onEnded={() => {
+                if (videoUrls.length > 1) {
+                  setVideoIdx((i) => (i + 1) % videoUrls.length);
+                } else if (videoRef.current) {
+                  videoRef.current.currentTime = 0;
+                  videoRef.current.play().catch(() => {});
+                }
+              }}
+              className="w-full h-full object-cover"
+            />
+            <button
+              type="button"
+              onClick={() => {
+                setIsMuted((prev) => {
+                  const next = !prev;
+                  if (videoRef.current) videoRef.current.muted = next;
+                  return next;
+                });
+              }}
+              className="absolute top-2.5 right-2.5 z-20 p-2 rounded-lg bg-black/75 hover:bg-black text-white border border-white/15 cursor-pointer"
+              aria-label={isMuted ? 'Unmute Ad' : 'Mute Ad'}
+            >
+              {isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+            </button>
+          </>
+        ) : loadedVast ? (
+          <div className="w-full h-full flex items-center justify-center p-2 bg-[#0a0d14]">
+            <DualNetworkBannerFrame
+              slotId="export-modal-fallback"
+              slotIndex={0}
+              preferFormat="banner"
+              title="Export Sponsor Ad"
+            />
+          </div>
+        ) : (
+          <div className="w-full h-full flex items-center justify-center bg-[#0a0d14] text-xs text-zinc-400 font-medium">
+            Loading live video stream...
+          </div>
+        )}
+      </div>
+
+      {/* Export Countdown & Live Video Render Progress */}
+      <div className="p-2.5 bg-[#0e131b] border-t border-zinc-800/90 space-y-1.5">
+        <div className="flex items-center justify-between text-[11px] font-mono gap-2">
+          <span className="text-teal-300 font-semibold truncate">
+            {statusText || 'Rendering Video...'}
+          </span>
+          <span className="text-amber-300 font-extrabold shrink-0 tabular-nums">
+            {clampedPct}% · {safeElapsed}s / {safeTotal}s
+          </span>
+        </div>
+        <div className="w-full h-2 bg-zinc-800 rounded-full overflow-hidden">
+          <div
+            className="h-full bg-gradient-to-r from-teal-400 via-emerald-400 to-amber-400 transition-all duration-150"
+            style={{ width: `${clampedPct}%` }}
+          />
+        </div>
+      </div>
+    </div>
+  );
+};
+
+
 

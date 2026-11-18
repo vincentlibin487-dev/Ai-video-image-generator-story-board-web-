@@ -9,7 +9,7 @@ import {
 import { db, handleFirestoreError, OperationType } from './firebase';
 import type { AppLang } from './i18n';
 
-export type VisitorStep = 'input' | 'options' | 'prompts' | 'admin';
+export type VisitorStep = 'input' | 'options' | 'prompts' | 'editor' | 'admin';
 export type DeviceCategory = 'mobile' | 'tablet' | 'desktop';
 
 export interface VisitorSessionRecord {
@@ -45,6 +45,25 @@ export interface GenerationLogRecord {
   generatedTitles: string[];
   selectedStoryTitle: string;
   shotCount: number;
+  dayKey: string;
+  createdAt?: Timestamp | null;
+}
+
+export type VideoEditActionType = 'open_editor' | 'add_media' | 'edit_timeline' | 'export_video';
+
+export interface VideoEditLogRecord {
+  editId: string;
+  visitorId: string;
+  sessionId: string;
+  isLoggedIn: boolean;
+  userEmail: string;
+  actionType: VideoEditActionType;
+  projectTitle: string;
+  clipCount: number;
+  resolution: '720p' | '1080p' | '4K';
+  aspectRatio: '16:9' | '9:16' | '1:1' | '4:5' | '21:9' | '4:3';
+  exportDurationSec: number;
+  deviceType: DeviceCategory;
   dayKey: string;
   createdAt?: Timestamp | null;
 }
@@ -358,7 +377,7 @@ export function initGuestSession(initialLang: AppLang): void {
   }
 }
 
-export function trackStepChange(step: 'input' | 'options' | 'prompts'): void {
+export function trackStepChange(step: 'input' | 'options' | 'prompts' | 'editor'): void {
   if (!sessionState) return;
   if (sessionState.currentStep === step) return;
   sessionState.currentStep = step;
@@ -455,6 +474,60 @@ export async function recordGenerationActivity(params: {
       generatedTitles: titles,
       selectedStoryTitle: String(params.selectedStoryTitle || '').slice(0, 300),
       shotCount: clampInt(params.shotCount || 0, 0, 2000),
+      dayKey: formatDayKey(),
+      createdAt: serverTimestamp(),
+    });
+  } catch (err) {
+    try {
+      handleFirestoreError(err, OperationType.CREATE, path);
+    } catch {
+      // Structured FirestoreErrorInfo logged cleanly
+    }
+  }
+}
+
+const VALID_VIDEO_RESOLUTIONS = ['720p', '1080p', '4K'] as const;
+const VALID_ASPECT_RATIOS = ['16:9', '9:16', '1:1', '4:5', '21:9', '4:3'] as const;
+
+export async function recordVideoEditorActivity(params: {
+  actionType: VideoEditActionType;
+  projectTitle?: string;
+  clipCount?: number;
+  resolution?: string;
+  aspectRatio?: string;
+  exportDurationSec?: number;
+  user?: User | null;
+}): Promise<void> {
+  if (typeof window === 'undefined') return;
+
+  const visitorId = sessionState?.visitorId || generateId('vis');
+  const sessionId = sessionState?.sessionId || generateId('sess');
+  const isVerified = Boolean(params.user && params.user.emailVerified && params.user.email);
+  const userEmail = isVerified && params.user?.email ? params.user.email.slice(0, 128) : '';
+  const editId = generateId('vedit');
+  const path = `video_edit_logs/${editId}`;
+
+  const safeResolution = (VALID_VIDEO_RESOLUTIONS as readonly string[]).includes(String(params.resolution))
+    ? (params.resolution as '720p' | '1080p' | '4K')
+    : '1080p';
+  const safeRatio = (VALID_ASPECT_RATIOS as readonly string[]).includes(String(params.aspectRatio))
+    ? (params.aspectRatio as '16:9' | '9:16' | '1:1' | '4:5' | '21:9' | '4:3')
+    : '16:9';
+
+  try {
+    await setDoc(doc(db, 'video_edit_logs', editId), {
+      editId,
+      visitorId,
+      sessionId,
+      isLoggedIn: isVerified,
+      userEmail,
+      actionType: params.actionType,
+      projectTitle: String(params.projectTitle || 'Untitled Project').trim().slice(0, 200) || 'Untitled Project',
+      clipCount: clampInt(params.clipCount || 0, 0, 500),
+      resolution: safeResolution,
+      aspectRatio: safeRatio,
+      exportDurationSec: clampInt(Math.round(params.exportDurationSec || 0), 0, 86400),
+      deviceType: sessionState?.deviceType || detectDeviceType(),
       dayKey: formatDayKey(),
       createdAt: serverTimestamp(),
     });
