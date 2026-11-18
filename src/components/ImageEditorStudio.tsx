@@ -24,6 +24,31 @@ import {
   Wand2,
   Camera,
   Layers3,
+  Smile,
+  LayoutGrid,
+  Sun,
+  Contrast,
+  Droplet,
+  Eye,
+  Zap,
+  PlusCircle,
+  PenTool,
+  Cloud,
+  CloudUpload,
+  Cpu,
+  Eraser,
+  Scissors,
+  ShieldCheck,
+  SlidersHorizontal,
+  FolderOpen,
+  Settings,
+  Share2,
+  HelpCircle,
+  Search,
+  Lock,
+  ChevronDown,
+  Plus,
+  Folder,
 } from 'lucide-react';
 import type { AppLang } from '../lib/i18n';
 
@@ -35,7 +60,7 @@ export interface ImageEditorStudioProps {
 interface LayerItem {
   id: string;
   name: string;
-  type: 'image' | 'text' | 'shape';
+  type: 'image' | 'text' | 'shape' | 'sticker' | 'drawing';
   content?: string;
   x: number;
   y: number;
@@ -43,96 +68,103 @@ interface LayerItem {
   height?: number;
   fontSize?: number;
   fontColor?: string;
-  fontFamily?: string;
   opacity: number;
   blendMode: 'normal' | 'multiply' | 'screen' | 'overlay';
   visible: boolean;
-  shapeType?: 'rectangle' | 'circle';
-  shapeFill?: string;
+  locked?: boolean;
 }
 
 export const ImageEditorStudio: React.FC<ImageEditorStudioProps> = ({ lang, onClose }) => {
   const isMl = lang === 'ml';
 
+  // New Project Setup State
+  const [projectCreated, setProjectCreated] = useState<boolean>(false);
+  const [projectName, setProjectName] = useState<string>('My Cinematic Poster');
+  const [projectWidth, setProjectWidth] = useState<number>(1920);
+  const [projectHeight, setProjectHeight] = useState<number>(1080);
+  const [projectAspect, setProjectAspect] = useState<'16:9' | '9:16' | '1:1' | '2.39:1'>('16:9');
+  const [projectBgColor, setProjectBgColor] = useState<string>('#11131f');
+
+  // Document & Canvas State
+  const [docs, setDocs] = useState<Array<{ id: string; name: string; active: boolean }>>([
+    { id: 'doc_1', name: 'poster.psd', active: true },
+  ]);
+  const [activeDocName, setActiveDocName] = useState<string>('poster.psd');
   const [imageUrl, setImageUrl] = useState<string>(
     'https://images.unsplash.com/photo-1536440136628-849c177e76a1?auto=format&fit=crop&w=1200&q=80'
   );
-  const [imageName, setImageName] = useState<string>('cinematic_poster_01.jpg');
-  const [imageWidth, setImageWidth] = useState<number>(1200);
-  const [imageHeight, setImageHeight] = useState<number>(675);
+
+  // Active Photoshop Left Tool
+  const [activeTool, setActiveTool] = useState<string>('move');
+
+  // Right Panel Tab ('color' | 'properties' | 'layers')
+  const [rightPanelTab, setRightPanelTab] = useState<'color' | 'properties' | 'layers'>('layers');
 
   // Adjustments
   const [brightness, setBrightness] = useState<number>(100);
   const [contrast, setContrast] = useState<number>(100);
   const [saturation, setSaturation] = useState<number>(100);
-  const [blur, setBlur] = useState<number>(0);
-  const [sepia, setSepia] = useState<number>(0);
-  const [grayscale, setGrayscale] = useState<number>(0);
-  const [vignette, setVignette] = useState<boolean>(false);
-
-  // Active Tool: 'adjust' | 'text' | 'layers' | 'filters' | 'draw' | 'crop'
-  const [activeTab, setActiveTab] = useState<'adjust' | 'text' | 'layers' | 'filters' | 'draw' | 'crop'>('adjust');
+  const [brushOpacity, setBrushOpacity] = useState<number>(93);
 
   // Layers stack
   const [layers, setLayers] = useState<LayerItem[]>([
     {
-      id: 'layer_bg',
-      name: 'Background Poster',
+      id: 'layer_1',
+      name: 'Layer 1',
       type: 'image',
       x: 0,
       y: 0,
       opacity: 100,
       blendMode: 'normal',
       visible: true,
+      locked: false,
     },
     {
-      id: 'layer_title',
-      name: 'Cinematic Title Text',
-      type: 'text',
-      content: 'BLOCKBUSTER MOVIE TITLE',
-      x: 100,
-      y: 80,
-      fontSize: 42,
-      fontColor: '#fbbf24',
-      fontFamily: 'sans-serif',
+      id: 'layer_bg',
+      name: 'Background',
+      type: 'image',
+      x: 0,
+      y: 0,
       opacity: 100,
       blendMode: 'normal',
       visible: true,
+      locked: true,
     },
   ]);
-  const [selectedLayerId, setSelectedLayerId] = useState<string>('layer_title');
+  const [selectedLayerId, setSelectedLayerId] = useState<string>('layer_1');
 
-  // New text input state
+  // Text tools
   const [newTextContent, setNewTextContent] = useState<string>('');
-  const [newTextSize, setNewTextSize] = useState<number>(36);
-  const [newTextColor, setNewTextColor] = useState<string>('#ffffff');
+  const [newTextSize, setNewTextSize] = useState<number>(48);
+  const [newTextColor, setNewTextColor] = useState<string>('#fbbf24');
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const handleCreateProject = () => {
+    setProjectCreated(true);
+    setActiveDocName(`${projectName.replace(/\s+/g, '_')}.psd`);
+    setDocs([{ id: 'doc_1', name: `${projectName.replace(/\s+/g, '_')}.psd`, active: true }]);
+  };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    setImageName(file.name);
     const url = URL.createObjectURL(file);
     setImageUrl(url);
-
-    const img = new Image();
-    img.onload = () => {
-      setImageWidth(img.width || 1200);
-      setImageHeight(img.height || 675);
-    };
-    img.src = url;
+    const newDocName = file.name;
+    setActiveDocName(newDocName);
+    setDocs((prev) => [{ id: `doc_${Date.now()}`, name: newDocName, active: true }, ...prev.map((d) => ({ ...d, active: false }))]);
   };
 
   const handleAddTextLayer = () => {
-    const text = newTextContent.trim() || (isMl ? 'പുതിയ സിനിമാ ശീർഷകം' : 'New Movie Title');
+    const text = newTextContent.trim() || (isMl ? 'ഫോട്ടോഷോപ്പ് ടൈറ്റിൽ' : 'Photoshop Layer Text');
     const newLayer: LayerItem = {
       id: `layer_text_${Date.now()}`,
-      name: text.slice(0, 20),
+      name: text.slice(0, 16),
       type: 'text',
       content: text,
-      x: 120,
-      y: 150,
+      x: 300,
+      y: 400,
       fontSize: newTextSize,
       fontColor: newTextColor,
       opacity: 100,
@@ -144,409 +176,297 @@ export const ImageEditorStudio: React.FC<ImageEditorStudioProps> = ({ lang, onCl
     setNewTextContent('');
   };
 
-  const handleAddShapeLayer = (shapeType: 'rectangle' | 'circle') => {
-    const newLayer: LayerItem = {
-      id: `layer_shape_${Date.now()}`,
-      name: shapeType === 'rectangle' ? 'Box Shape' : 'Circle Shape',
-      type: 'shape',
-      shapeType,
-      shapeFill: '#fbbf24',
-      x: 200,
-      y: 200,
-      width: 250,
-      height: 120,
-      opacity: 85,
-      blendMode: 'normal',
-      visible: true,
-    };
-    setLayers((prev) => [newLayer, ...prev]);
-    setSelectedLayerId(newLayer.id);
-  };
-
   const handleDeleteLayer = (id: string) => {
     setLayers((prev) => prev.filter((l) => l.id !== id));
   };
 
-  const handleExportPoster = () => {
+  const handleExportPsImage = () => {
     const canvas = document.createElement('canvas');
-    canvas.width = imageWidth;
-    canvas.height = imageHeight;
+    canvas.width = projectWidth;
+    canvas.height = projectHeight;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => {
-      // Apply filters
-      ctx.filter = `brightness(${brightness}%) contrast(${contrast}%) saturate(${saturation}%) blur(${blur}px) sepia(${sepia}%) grayscale(${grayscale}%)`;
-      ctx.drawImage(img, 0, 0, imageWidth, imageHeight);
-      ctx.filter = 'none';
+    if (projectBgColor && !imageUrl) {
+      ctx.fillStyle = projectBgColor;
+      ctx.fillRect(0, 0, projectWidth, projectHeight);
+    } else {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        ctx.filter = `brightness(${brightness}%) contrast(${contrast}%) saturate(${saturation}%)`;
+        ctx.drawImage(img, 0, 0, projectWidth, projectHeight);
+        ctx.filter = 'none';
+        drawLayersAndExport(ctx, canvas);
+      };
+      img.src = imageUrl;
+      return;
+    }
 
-      // Draw layers
-      layers.slice().reverse().forEach((l) => {
-        if (!l.visible) return;
-        ctx.globalAlpha = (l.opacity ?? 100) / 100;
-        if (l.type === 'text' && l.content) {
-          ctx.font = `bold ${l.fontSize || 36}px sans-serif`;
-          ctx.fillStyle = l.fontColor || '#ffffff';
-          ctx.shadowColor = 'rgba(0,0,0,0.8)';
-          ctx.shadowBlur = 12;
-          ctx.fillText(l.content, l.x, l.y);
-          ctx.shadowBlur = 0;
-        } else if (l.type === 'shape') {
-          ctx.fillStyle = l.shapeFill || '#fbbf24';
-          if (l.shapeType === 'circle') {
-            ctx.beginPath();
-            ctx.arc(l.x + (l.width || 100) / 2, l.y + (l.height || 100) / 2, (l.width || 100) / 2, 0, Math.PI * 2);
-            ctx.fill();
-          } else {
-            ctx.fillRect(l.x, l.y, l.width || 200, l.height || 100);
-          }
-        }
-      });
-
-      ctx.globalAlpha = 1.0;
-      const dataUrl = canvas.toDataURL('image/jpeg', 0.95);
-      const link = document.createElement('a');
-      link.href = dataUrl;
-      link.download = `photoshop_poster_${Date.now()}.jpg`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    };
-    img.src = imageUrl;
+    drawLayersAndExport(ctx, canvas);
   };
 
-  const filterStyle = {
-    filter: `brightness(${brightness}%) contrast(${contrast}%) saturate(${saturation}%) blur(${blur}px) sepia(${sepia}%) grayscale(${grayscale}%)`,
+  const drawLayersAndExport = (ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement) => {
+    layers.slice().reverse().forEach((l) => {
+      if (!l.visible) return;
+      ctx.globalAlpha = (l.opacity ?? 100) / 100;
+      if (l.type === 'text' && l.content) {
+        ctx.font = `bold ${l.fontSize || 48}px sans-serif`;
+        ctx.fillStyle = l.fontColor || '#ffffff';
+        ctx.shadowColor = 'rgba(0,0,0,0.9)';
+        ctx.shadowBlur = 16;
+        ctx.fillText(l.content, l.x, l.y);
+        ctx.shadowBlur = 0;
+      }
+    });
+
+    ctx.globalAlpha = 1.0;
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.95);
+    const link = document.createElement('a');
+    link.href = dataUrl;
+    link.download = `${activeDocName.replace(/\.[^/.]+$/, '')}_edited.jpg`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
-  return (
-    <div className="min-h-screen bg-[#07090e] text-white flex flex-col pb-24">
-      {/* Top Photoshop Header */}
-      <header className="bg-[#0f121d] border-b border-zinc-800 px-4 py-3 flex items-center justify-between shadow-xl">
-        <div className="flex items-center gap-3">
-          <div className="p-2 rounded-xl bg-gradient-to-br from-amber-500 to-rose-600 text-black shadow-md">
-            <Layers3 className="w-5 h-5" />
-          </div>
-          <div>
-            <h1 className="text-sm sm:text-base font-extrabold tracking-wide uppercase flex items-center gap-2">
-              <span>{isMl ? 'ഫോട്ടോഷോപ്പ് & ഇമേജ് എഡിറ്റിംഗ് സ്റ്റുഡിയോ' : 'Photoshop & Image Editing Studio'}</span>
-              <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400 font-mono text-xs">
-                PRO PSD
-              </span>
-            </h1>
-            <p className="text-xs text-zinc-400">
-              {isMl
-                ? 'പോസ്റ്ററുകൾ നിർമ്മിക്കാനും, ലെയറുകൾ എഡിറ്റ് ചെയ്യാനും, പ്രൊഫഷണൽ ഫിൽട്ടറുകൾ നൽകാനും.'
-                : 'Create cinematic posters, manage layers, and apply professional adjustments & text.'}
-            </p>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            className="hidden"
-            onChange={handleFileUpload}
-          />
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            className="px-3.5 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-bold text-xs flex items-center gap-2 cursor-pointer border border-zinc-700"
-          >
-            <Upload className="w-4 h-4 text-amber-400" />
-            <span>{isMl ? 'ചിത്രം അപ്‌ലോഡ്' : 'Open Image'}</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={handleExportPoster}
-            className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-extrabold text-xs uppercase tracking-wider flex items-center gap-2 cursor-pointer shadow-lg shadow-amber-500/20"
-          >
-            <Download className="w-4 h-4" />
-            <span>{isMl ? 'പോസ്റ്റർ എക്സ്പോർട്ട് (.JPG)' : 'Export Poster'}</span>
-          </button>
-        </div>
-      </header>
-
-      {/* Main Photoshop Workspace */}
-      <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-4 p-4 max-w-7xl mx-auto w-full">
-        {/* Left Toolbar / Tools */}
-        <div className="lg:col-span-3 bg-[#11131f] border border-zinc-800 rounded-2xl p-4 space-y-4 shadow-2xl">
-          <div className="grid grid-cols-3 gap-2 border-b border-zinc-800 pb-3">
-            <button
-              type="button"
-              onClick={() => setActiveTab('adjust')}
-              className={`p-2.5 rounded-xl text-xs font-bold flex flex-col items-center gap-1 cursor-pointer transition-all ${
-                activeTab === 'adjust' ? 'bg-amber-500 text-black font-extrabold' : 'bg-zinc-900 text-zinc-300 hover:bg-zinc-800'
-              }`}
-            >
-              <Sliders className="w-4 h-4" />
-              <span>{isMl ? 'കളർ' : 'Adjust'}</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveTab('text')}
-              className={`p-2.5 rounded-xl text-xs font-bold flex flex-col items-center gap-1 cursor-pointer transition-all ${
-                activeTab === 'text' ? 'bg-amber-500 text-black font-extrabold' : 'bg-zinc-900 text-zinc-300 hover:bg-zinc-800'
-              }`}
-            >
-              <Type className="w-4 h-4" />
-              <span>{isMl ? 'ടെക്സ്റ്റ്' : 'Text'}</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveTab('layers')}
-              className={`p-2.5 rounded-xl text-xs font-bold flex flex-col items-center gap-1 cursor-pointer transition-all ${
-                activeTab === 'layers' ? 'bg-amber-500 text-black font-extrabold' : 'bg-zinc-900 text-zinc-300 hover:bg-zinc-800'
-              }`}
-            >
-              <Layers className="w-4 h-4" />
-              <span>{isMl ? 'ലെയറുകൾ' : 'Layers'}</span>
-            </button>
-          </div>
-
-          {/* Tab 1: Adjustments */}
-          {activeTab === 'adjust' && (
-            <div className="space-y-4 text-xs">
-              <h3 className="font-extrabold text-zinc-300 uppercase tracking-wider flex items-center gap-2">
-                <Palette className="w-3.5 h-3.5 text-amber-400" />
-                <span>{isMl ? 'കളർ & ലൈറ്റിംഗ് അഡ്ജസ്റ്റ്മെന്റ്' : 'Color & Light Adjustments'}</span>
-              </h3>
-
-              <div className="space-y-1.5">
-                <div className="flex justify-between text-zinc-400">
-                  <span>{isMl ? 'ബ്രൈറ്റ്‌നസ്' : 'Brightness'}</span>
-                  <span className="font-mono text-amber-400">{brightness}%</span>
-                </div>
-                <input
-                  type="range"
-                  min="0"
-                  max="200"
-                  value={brightness}
-                  onChange={(e) => setBrightness(Number(e.target.value))}
-                  className="w-full accent-amber-500 cursor-pointer"
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <div className="flex justify-between text-zinc-400">
-                  <span>{isMl ? 'കോൺട്രാസ്റ്റ്' : 'Contrast'}</span>
-                  <span className="font-mono text-amber-400">{contrast}%</span>
-                </div>
-                <input
-                  type="range"
-                  min="0"
-                  max="200"
-                  value={contrast}
-                  onChange={(e) => setContrast(Number(e.target.value))}
-                  className="w-full accent-amber-500 cursor-pointer"
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <div className="flex justify-between text-zinc-400">
-                  <span>{isMl ? 'സാച്ചുറേഷൻ' : 'Saturation'}</span>
-                  <span className="font-mono text-amber-400">{saturation}%</span>
-                </div>
-                <input
-                  type="range"
-                  min="0"
-                  max="200"
-                  value={saturation}
-                  onChange={(e) => setSaturation(Number(e.target.value))}
-                  className="w-full accent-amber-500 cursor-pointer"
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <div className="flex justify-between text-zinc-400">
-                  <span>{isMl ? 'ബ്ലർ (Blur)' : 'Blur'}</span>
-                  <span className="font-mono text-amber-400">{blur}px</span>
-                </div>
-                <input
-                  type="range"
-                  min="0"
-                  max="20"
-                  value={blur}
-                  onChange={(e) => setBlur(Number(e.target.value))}
-                  className="w-full accent-amber-500 cursor-pointer"
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <div className="flex justify-between text-zinc-400">
-                  <span>{isMl ? 'സെപിയ (Sepia)' : 'Sepia'}</span>
-                  <span className="font-mono text-amber-400">{sepia}%</span>
-                </div>
-                <input
-                  type="range"
-                  min="0"
-                  max="100"
-                  value={sepia}
-                  onChange={(e) => setSepia(Number(e.target.value))}
-                  className="w-full accent-amber-500 cursor-pointer"
-                />
-              </div>
-
-              <div className="pt-2 border-t border-zinc-800 flex items-center justify-between">
-                <span className="text-zinc-300 font-bold">{isMl ? 'വിഗ്നെറ്റ് (Vignette)' : 'Vignette Frame'}</span>
-                <button
-                  type="button"
-                  onClick={() => setVignette(!vignette)}
-                  className={`px-3 py-1 rounded-lg text-xs font-bold cursor-pointer ${
-                    vignette ? 'bg-amber-500 text-black' : 'bg-zinc-900 text-zinc-400 border border-zinc-700'
-                  }`}
-                >
-                  {vignette ? 'ON' : 'OFF'}
-                </button>
-              </div>
+  // If project not yet created, show Photoshop New Project Setup Screen
+  if (!projectCreated) {
+    return (
+      <div className="min-h-screen bg-[#1e1e1e] text-white flex items-center justify-center p-4 font-sans select-none">
+        <div className="bg-[#262626] border border-zinc-700 rounded-2xl p-6 sm:p-8 max-w-lg w-full space-y-6 shadow-2xl">
+          <div className="flex items-center gap-3 border-b border-zinc-700 pb-4">
+            <div className="p-3 rounded-xl bg-blue-600 text-white shadow-md">
+              <Palette className="w-6 h-6" />
             </div>
-          )}
+            <div>
+              <h2 className="text-lg font-extrabold tracking-wide uppercase">
+                {isMl ? 'ന്യൂ പ്രോജക്ട് (New Photoshop Project)' : 'New Photoshop Project'}
+              </h2>
+              <p className="text-xs text-zinc-400">
+                {isMl
+                  ? 'പ്രോജക്റ്റിന്റെ പേരും ഫോർമാറ്റും സെറ്റ് ചെയ്ത് വർക്ക് സ്പേസ് തുറക്കുക.'
+                  : 'Set project name, format, and dimensions to open the professional workspace.'}
+              </p>
+            </div>
+          </div>
 
-          {/* Tab 2: Text Layers */}
-          {activeTab === 'text' && (
-            <div className="space-y-4 text-xs">
-              <h3 className="font-extrabold text-zinc-300 uppercase tracking-wider flex items-center gap-2">
-                <Type className="w-3.5 h-3.5 text-amber-400" />
-                <span>{isMl ? 'പോസ്റ്റർ ടൈറ്റിൽ & ടെക്സ്റ്റ്' : 'Add Poster Title'}</span>
-              </h3>
+          <div className="space-y-4 text-xs">
+            <div className="space-y-1.5">
+              <label className="text-zinc-300 font-bold block">{isMl ? 'പ്രോജക്ട് പേര്' : 'Project Name'}</label>
+              <input
+                type="text"
+                value={projectName}
+                onChange={(e) => setProjectName(e.target.value)}
+                className="w-full bg-[#1e1e1e] border border-zinc-700 rounded-xl px-3.5 py-2.5 text-white font-bold"
+              />
+            </div>
 
-              <div className="space-y-2">
-                <label className="text-zinc-400 block">{isMl ? 'ടെക്സ്റ്റ് നൽകുക' : 'Enter Text Content'}</label>
-                <input
-                  type="text"
-                  value={newTextContent}
-                  onChange={(e) => setNewTextContent(e.target.value)}
-                  placeholder={isMl ? 'സിനിമാ ശീർഷകം എഴുതുക...' : 'Enter movie title...'}
-                  className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-2 text-white"
-                />
-              </div>
-
+            <div className="space-y-1.5">
+              <label className="text-zinc-300 font-bold block">{isMl ? 'ഫോർമാറ്റ് / ആസ്പെക്റ്റ് റേഷ്യോ' : 'Preset Format / Aspect Ratio'}</label>
               <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="text-zinc-400 block mb-1">{isMl ? 'ഫോണ്ട് സൈസ്' : 'Font Size'}</label>
-                  <input
-                    type="number"
-                    value={newTextSize}
-                    onChange={(e) => setNewTextSize(Number(e.target.value))}
-                    className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-1.5 text-white"
-                  />
-                </div>
-                <div>
-                  <label className="text-zinc-400 block mb-1">{isMl ? 'നിറം (Color)' : 'Color'}</label>
-                  <input
-                    type="color"
-                    value={newTextColor}
-                    onChange={(e) => setNewTextColor(e.target.value)}
-                    className="w-full h-8 bg-zinc-900 border border-zinc-700 rounded-xl px-1 cursor-pointer"
-                  />
-                </div>
-              </div>
-
-              <button
-                type="button"
-                onClick={handleAddTextLayer}
-                className="w-full py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-extrabold uppercase tracking-wider cursor-pointer shadow-md"
-              >
-                {isMl ? '➕ ടെക്സ്റ്റ് ലെയർ ചേർക്കുക' : 'Add Text Layer'}
-              </button>
-
-              <div className="pt-2 border-t border-zinc-800 space-y-2">
-                <span className="text-zinc-400 font-bold block">{isMl ? 'വേഗത്തിലുള്ള ആകൃതികൾ (Shapes):' : 'Quick Shapes:'}</span>
-                <div className="flex gap-2">
+                {[
+                  { id: '16:9', name: '16:9 Cinematic (1920×1080)', w: 1920, h: 1080 },
+                  { id: '9:16', name: '9:16 Reels / Story (1080×1920)', w: 1080, h: 1920 },
+                  { id: '1:1', name: '1:1 Square Post (1200×1200)', w: 1200, h: 1200 },
+                  { id: '2.39:1', name: '2.39:1 Cinemascope (2048×858)', w: 2048, h: 858 },
+                ].map((item) => (
                   <button
+                    key={item.id}
                     type="button"
-                    onClick={() => handleAddShapeLayer('rectangle')}
-                    className="flex-1 py-2 bg-zinc-900 border border-zinc-700 rounded-xl font-bold hover:bg-zinc-800 cursor-pointer"
-                  >
-                    {isMl ? 'ബോക്സ്' : 'Rectangle'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleAddShapeLayer('circle')}
-                    className="flex-1 py-2 bg-zinc-900 border border-zinc-700 rounded-xl font-bold hover:bg-zinc-800 cursor-pointer"
-                  >
-                    {isMl ? 'വട്ടം (Circle)' : 'Circle'}
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Tab 3: Layers Manager */}
-          {activeTab === 'layers' && (
-            <div className="space-y-3 text-xs">
-              <h3 className="font-extrabold text-zinc-300 uppercase tracking-wider flex items-center gap-2">
-                <Layers className="w-3.5 h-3.5 text-amber-400" />
-                <span>{isMl ? 'ലെയർ സ്റ്റാക്ക് (Layers)' : 'Layers Stack'}</span>
-              </h3>
-
-              <div className="space-y-2 max-h-72 overflow-y-auto no-scrollbar pr-1">
-                {layers.map((layer) => (
-                  <div
-                    key={layer.id}
-                    onClick={() => setSelectedLayerId(layer.id)}
-                    className={`p-2.5 rounded-xl border flex items-center justify-between gap-2 cursor-pointer transition-all ${
-                      selectedLayerId === layer.id
-                        ? 'bg-amber-500/15 border-amber-500 text-amber-300 font-bold'
-                        : 'bg-zinc-900 border-zinc-800 text-zinc-300'
+                    onClick={() => {
+                      setProjectAspect(item.id as any);
+                      setProjectWidth(item.w);
+                      setProjectHeight(item.h);
+                    }}
+                    className={`p-3 rounded-xl border text-left font-bold cursor-pointer transition-all ${
+                      projectAspect === item.id
+                        ? 'bg-blue-600 text-white border-blue-500 shadow-md'
+                        : 'bg-[#1e1e1e] text-zinc-300 border-zinc-700 hover:bg-[#333]'
                     }`}
                   >
-                    <div className="flex items-center gap-2 truncate">
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setLayers((prev) =>
-                            prev.map((l) => (l.id === layer.id ? { ...l, visible: !l.visible } : l))
-                          );
-                        }}
-                        className="text-zinc-400 hover:text-white"
-                      >
-                        {layer.visible ? '👁️' : '🚫'}
-                      </button>
-                      <span className="truncate">{layer.name}</span>
-                    </div>
-
-                    {layer.id !== 'layer_bg' && (
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleDeleteLayer(layer.id);
-                        }}
-                        className="text-zinc-500 hover:text-red-400 p-1"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    )}
-                  </div>
+                    <p className="font-extrabold">{item.id}</p>
+                    <p className="text-[10px] text-zinc-400">{item.name}</p>
+                  </button>
                 ))}
               </div>
             </div>
-          )}
+
+            <div className="grid grid-cols-2 gap-3 pt-2">
+              <div>
+                <label className="text-zinc-400 block mb-1">Width (px)</label>
+                <input
+                  type="number"
+                  value={projectWidth}
+                  onChange={(e) => setProjectWidth(Number(e.target.value))}
+                  className="w-full bg-[#1e1e1e] border border-zinc-700 rounded-xl px-3 py-2 text-white font-mono"
+                />
+              </div>
+              <div>
+                <label className="text-zinc-400 block mb-1">Height (px)</label>
+                <input
+                  type="number"
+                  value={projectHeight}
+                  onChange={(e) => setProjectHeight(Number(e.target.value))}
+                  className="w-full bg-[#1e1e1e] border border-zinc-700 rounded-xl px-3 py-2 text-white font-mono"
+                />
+              </div>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={handleCreateProject}
+            className="w-full py-3.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-extrabold text-xs uppercase tracking-wider shadow-lg shadow-blue-600/30 cursor-pointer"
+          >
+            {isMl ? '🚀 പ്രോജക്ട് ക്രിയേറ്റ് ചെയ്യുക (Create)' : 'Create Photoshop Project'}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Once project is created, show full Photoshop Web Workspace
+  return (
+    <div className="min-h-screen bg-[#1e1e1e] text-zinc-200 flex flex-col font-sans select-none pb-16">
+      {/* 1. TOP DOCUMENT TABS BAR */}
+      <div className="bg-[#262626] border-b border-[#111] flex items-center justify-between px-2 h-9 overflow-x-auto no-scrollbar shrink-0">
+        <div className="flex items-center gap-1 overflow-x-auto no-scrollbar">
+          {docs.map((doc) => (
+            <div
+              key={doc.id}
+              className="px-3.5 py-1.5 text-xs font-medium rounded-t-lg flex items-center gap-2 cursor-pointer border-t border-x bg-[#1e1e1e] text-white border-zinc-700 shadow-inner"
+            >
+              <span className="truncate max-w-[120px]">{doc.name}</span>
+            </div>
+          ))}
+          <button
+            type="button"
+            onClick={() => setProjectCreated(false)}
+            className="px-2 py-1 text-[10px] font-bold bg-[#333] hover:bg-[#444] text-zinc-300 rounded ml-2 cursor-pointer"
+          >
+            + New Project
+          </button>
         </div>
 
-        {/* Center Canvas Preview Area */}
-        <div className="lg:col-span-9 bg-[#11131f] border border-zinc-800 rounded-2xl p-4 flex flex-col items-center justify-center relative shadow-2xl min-h-[450px]">
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={handleExportPsImage}
+            className="px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded-md shadow flex items-center gap-1.5 cursor-pointer"
+          >
+            <Share2 className="w-3.5 h-3.5" />
+            <span>Share</span>
+          </button>
+        </div>
+      </div>
+
+      {/* 2. TOP TOOL OPTIONS BAR */}
+      <div className="bg-[#323232] border-b border-[#222] px-3 py-1.5 flex items-center justify-between text-xs text-zinc-300 shrink-0 shadow-sm">
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-1.5">
+            <span className="text-zinc-400 text-[11px]">Format:</span>
+            <span className="font-mono text-blue-400 font-bold">{projectAspect} ({projectWidth}×{projectHeight}px)</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="text-zinc-400 text-[11px]">Opacity:</span>
+            <span className="font-mono text-white">{brushOpacity}%</span>
+            <input
+              type="range"
+              min="10"
+              max="100"
+              value={brushOpacity}
+              onChange={(e) => setBrushOpacity(Number(e.target.value))}
+              className="w-20 accent-blue-500 cursor-pointer"
+            />
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <span className="text-[11px] font-mono text-zinc-400">50% (RGB/8*)</span>
+          <Settings className="w-4 h-4 text-zinc-400 cursor-pointer hover:text-white" />
+        </div>
+      </div>
+
+      {/* 3. MAIN WORKSPACE */}
+      <div className="flex-1 flex overflow-hidden relative">
+        {/* LEFT TOOLBAR SIDEBAR */}
+        <div className="w-12 bg-[#262626] border-r border-[#1a1a1a] flex flex-col items-center py-2 gap-1 shrink-0 z-20">
+          {[
+            { id: 'move', icon: Move, label: 'Move Tool (V)' },
+            { id: 'marquee', icon: Square, label: 'Marquee Tool (M)' },
+            { id: 'lasso', icon: Circle, label: 'Lasso Tool (L)' },
+            { id: 'wand', icon: Wand2, label: 'Object Selection (W)' },
+            { id: 'brush', icon: Brush, label: 'Brush Tool (B)' },
+            { id: 'eraser', icon: Eraser, label: 'Eraser (E)' },
+            { id: 'gradient', icon: Droplet, label: 'Gradient Tool (G)' },
+            { id: 'text', icon: Type, label: 'Horizontal Type (T)' },
+            { id: 'shape', icon: Square, label: 'Shape Tool (U)' },
+            { id: 'zoom', icon: Search, label: 'Zoom Tool (Z)' },
+          ].map((tool) => {
+            const IconComponent = tool.icon;
+            return (
+              <button
+                key={tool.id}
+                type="button"
+                onClick={() => setActiveTool(tool.id)}
+                className={`p-2.5 rounded-lg transition-colors cursor-pointer ${
+                  activeTool === tool.id ? 'bg-[#3b82f6] text-white shadow-md' : 'text-zinc-400 hover:text-white hover:bg-[#333]'
+                }`}
+                title={tool.label}
+              >
+                <IconComponent className="w-4 h-4" />
+              </button>
+            );
+          })}
+
+          <div className="mt-auto flex flex-col items-center gap-1 pb-2">
+            <div className="w-5 h-5 rounded bg-amber-400 border border-black shadow cursor-pointer" title="Foreground" />
+            <div className="w-5 h-5 rounded bg-white border border-black shadow -mt-2.5 cursor-pointer" title="Background" />
+          </div>
+        </div>
+
+        {/* CENTER CANVAS & RULERS */}
+        <div className="flex-1 bg-[#1a1a1a] flex flex-col items-center justify-center p-4 relative overflow-auto">
+          {/* Top Ruler */}
+          <div className="absolute top-0 inset-x-12 h-6 bg-[#262626] border-b border-[#333] flex items-center px-4 text-[9px] font-mono text-zinc-500 overflow-hidden pointer-events-none select-none">
+            <span>0</span>
+            <span className="ml-24">200</span>
+            <span className="ml-24">400</span>
+            <span className="ml-24">600</span>
+            <span className="ml-24">800</span>
+            <span className="ml-24">1000</span>
+            <span className="ml-24">1200</span>
+            <span className="ml-24">1400</span>
+            <span className="ml-24">1600</span>
+          </div>
+
+          {/* Left Ruler */}
+          <div className="absolute left-12 top-6 bottom-0 w-6 bg-[#262626] border-r border-[#333] flex flex-col py-2 text-[9px] font-mono text-zinc-500 items-center overflow-hidden pointer-events-none select-none gap-8">
+            <span>0</span>
+            <span>200</span>
+            <span>400</span>
+            <span>600</span>
+            <span>800</span>
+            <span>1000</span>
+          </div>
+
+          {/* Main Image Canvas */}
           <div
-            className={`relative rounded-xl overflow-hidden shadow-2xl border border-zinc-700 bg-black ${
-              vignette ? 'ring-4 ring-amber-500/30' : ''
+            className={`relative shadow-[0_20px_60px_rgba(0,0,0,0.8)] border border-zinc-700 bg-black max-w-4xl max-h-[75vh] overflow-hidden rounded transition-all ${
+              projectAspect === '16:9' ? 'aspect-video w-full' : projectAspect === '9:16' ? 'aspect-[9/16] h-[580px]' : projectAspect === '1:1' ? 'aspect-square w-[500px]' : 'w-full aspect-[2.39:1]'
             }`}
-            style={{ maxWidth: '100%', maxHeight: '600px' }}
           >
             <img
               src={imageUrl}
-              alt="Poster Preview"
-              style={filterStyle}
-              className="w-full h-auto object-contain max-h-[580px] pointer-events-none"
+              alt="Canvas"
+              style={{
+                filter: `brightness(${brightness}%) contrast(${contrast}%) saturate(${saturation}%)`,
+              }}
+              className="w-full h-full object-cover pointer-events-none"
             />
 
-            {/* Render Layers on top of canvas preview */}
+            {/* Render Text Layers */}
             {layers.map((layer) => {
               if (!layer.visible) return null;
               if (layer.type === 'text') {
@@ -558,44 +478,201 @@ export const ImageEditorStudio: React.FC<ImageEditorStudioProps> = ({ lang, onCl
                       left: `${layer.x}px`,
                       top: `${layer.y}px`,
                       color: layer.fontColor || '#ffffff',
-                      fontSize: `${layer.fontSize || 36}px`,
+                      fontSize: `${layer.fontSize || 48}px`,
                       fontWeight: 900,
-                      textShadow: '0 4px 12px rgba(0,0,0,0.9)',
+                      textShadow: '0 4px 16px rgba(0,0,0,0.95)',
                     }}
                   >
                     {layer.content}
                   </div>
                 );
               }
-              if (layer.type === 'shape') {
-                return (
-                  <div
-                    key={layer.id}
-                    className="absolute"
-                    style={{
-                      left: `${layer.x}px`,
-                      top: `${layer.y}px`,
-                      width: `${layer.width || 200}px`,
-                      height: `${layer.height || 100}px`,
-                      backgroundColor: layer.shapeFill || '#fbbf24',
-                      borderRadius: layer.shapeType === 'circle' ? '50%' : '12px',
-                      opacity: (layer.opacity || 85) / 100,
-                      boxShadow: '0 4px 20px rgba(0,0,0,0.6)',
-                    }}
-                  />
-                );
-              }
               return null;
             })}
           </div>
 
-          <div className="mt-4 flex items-center justify-between w-full text-xs text-zinc-400 px-2">
-            <span>
-              {imageName} ({imageWidth} × {imageHeight} px)
-            </span>
-            <span className="font-mono text-amber-400">
-              {isMl ? 'ഫോട്ടോഷോപ്പ് പ്രോ എഡിറ്റർ സജീവം' : 'Photoshop Pro Studio Active'}
-            </span>
+          {/* Bottom Left Info */}
+          <div className="absolute bottom-2 left-16 text-[10px] font-mono text-zinc-400 bg-[#262626]/80 px-2 py-0.5 rounded border border-zinc-700 pointer-events-none">
+            50% &nbsp;|&nbsp; {projectWidth} px × {projectHeight} px ({projectAspect})
+          </div>
+        </div>
+
+        {/* RIGHT PANELS */}
+        <div className="w-72 bg-[#262626] border-l border-[#1a1a1a] flex flex-col shrink-0 z-20">
+          <div className="grid grid-cols-3 border-b border-[#1a1a1a] bg-[#222] text-xs font-medium">
+            <button
+              type="button"
+              onClick={() => setRightPanelTab('color')}
+              className={`py-2 text-center cursor-pointer ${rightPanelTab === 'color' ? 'bg-[#262626] text-white border-b-2 border-blue-500 font-bold' : 'text-zinc-400 hover:text-white'}`}
+            >
+              Color
+            </button>
+            <button
+              type="button"
+              onClick={() => setRightPanelTab('properties')}
+              className={`py-2 text-center cursor-pointer ${rightPanelTab === 'properties' ? 'bg-[#262626] text-white border-b-2 border-blue-500 font-bold' : 'text-zinc-400 hover:text-white'}`}
+            >
+              Properties
+            </button>
+            <button
+              type="button"
+              onClick={() => setRightPanelTab('layers')}
+              className={`py-2 text-center cursor-pointer ${rightPanelTab === 'layers' ? 'bg-[#262626] text-white border-b-2 border-blue-500 font-bold' : 'text-zinc-400 hover:text-white'}`}
+            >
+              Layers
+            </button>
+          </div>
+
+          <div className="flex-1 overflow-y-auto no-scrollbar p-3 space-y-4 text-xs">
+            {rightPanelTab === 'color' && (
+              <div className="space-y-3">
+                <div className="h-32 bg-gradient-to-r from-red-500 via-green-500 to-blue-500 rounded-lg shadow-inner relative overflow-hidden border border-zinc-700" />
+                <div className="flex items-center justify-between">
+                  <span className="text-zinc-400">Foreground Color:</span>
+                  <input
+                    type="color"
+                    value={newTextColor}
+                    onChange={(e) => setNewTextColor(e.target.value)}
+                    className="w-10 h-7 bg-zinc-900 border border-zinc-700 rounded cursor-pointer"
+                  />
+                </div>
+              </div>
+            )}
+
+            {rightPanelTab === 'properties' && (
+              <div className="space-y-3">
+                <h4 className="font-bold text-zinc-300 uppercase text-[10px] tracking-wider">Format Dimensions</h4>
+                <div className="grid grid-cols-2 gap-2 font-mono text-[11px]">
+                  <div className="bg-[#1e1e1e] p-2 rounded border border-zinc-800 flex justify-between">
+                    <span className="text-zinc-500">W:</span>
+                    <span>{projectWidth} px</span>
+                  </div>
+                  <div className="bg-[#1e1e1e] p-2 rounded border border-zinc-800 flex justify-between">
+                    <span className="text-zinc-500">H:</span>
+                    <span>{projectHeight} px</span>
+                  </div>
+                </div>
+
+                <div className="pt-2 border-t border-zinc-800 space-y-2">
+                  <h4 className="font-bold text-zinc-300 uppercase text-[10px] tracking-wider">Upload / Gallery Photo</h4>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={handleFileUpload}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="w-full py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded text-xs cursor-pointer shadow"
+                  >
+                    📂 Open Gallery Photo
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {rightPanelTab === 'layers' && (
+              <div className="space-y-3">
+                <div className="p-2.5 rounded bg-[#1e1e1e] border border-zinc-800 space-y-2">
+                  <span className="text-[11px] font-bold text-zinc-300 block">Add Text Layer (T)</span>
+                  <input
+                    type="text"
+                    value={newTextContent}
+                    onChange={(e) => setNewTextContent(e.target.value)}
+                    placeholder="Type text..."
+                    className="w-full bg-[#2a2a2a] border border-zinc-700 rounded px-2.5 py-1 text-white"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleAddTextLayer}
+                    className="w-full py-1.5 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded text-xs cursor-pointer"
+                  >
+                    + Add Text Layer
+                  </button>
+                </div>
+
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between text-[11px] text-zinc-400 pb-1 border-b border-zinc-800">
+                    <span>Kind</span>
+                    <span>Normal | 100%</span>
+                  </div>
+
+                  {layers.map((layer) => (
+                    <div
+                      key={layer.id}
+                      onClick={() => setSelectedLayerId(layer.id)}
+                      className={`p-2 rounded border flex items-center justify-between gap-2 cursor-pointer transition-all ${
+                        selectedLayerId === layer.id
+                          ? 'bg-[#3b82f6]/20 border-blue-500 text-white font-bold'
+                          : 'bg-[#1e1e1e] border-zinc-800 text-zinc-300 hover:bg-[#222]'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 truncate">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setLayers((prev) =>
+                              prev.map((l) => (l.id === layer.id ? { ...l, visible: !l.visible } : l))
+                            );
+                          }}
+                          className="text-zinc-400 hover:text-white"
+                        >
+                          {layer.visible ? <Eye className="w-3.5 h-3.5" /> : '🚫'}
+                        </button>
+                        <span className="truncate">{layer.name}</span>
+                      </div>
+
+                      {layer.id !== 'layer_bg' && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteLayer(layer.id);
+                          }}
+                          className="text-zinc-500 hover:text-red-400 p-0.5"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Bottom Layer Action Icons */}
+          <div className="bg-[#222] border-t border-[#1a1a1a] px-3 py-2 flex items-center justify-between text-zinc-400 shrink-0">
+            <button type="button" className="hover:text-white cursor-pointer" title="Delete Layer">
+              <Trash2 className="w-4 h-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const newLayer: LayerItem = {
+                  id: `layer_${Date.now()}`,
+                  name: `Layer ${layers.length + 1}`,
+                  type: 'shape',
+                  x: 0,
+                  y: 0,
+                  opacity: 100,
+                  blendMode: 'normal',
+                  visible: true,
+                };
+                setLayers((prev) => [newLayer, ...prev]);
+                setSelectedLayerId(newLayer.id);
+              }}
+              className="hover:text-white cursor-pointer"
+              title="Create New Layer"
+            >
+              <Plus className="w-4 h-4" />
+            </button>
+            <button type="button" className="hover:text-white cursor-pointer" title="Folder">
+              <Folder className="w-4 h-4" />
+            </button>
           </div>
         </div>
       </div>
