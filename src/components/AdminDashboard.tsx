@@ -4,6 +4,7 @@ import {
   BarChart3,
   ChevronDown,
   ChevronUp,
+  Clapperboard,
   Clock,
   Download,
   ExternalLink,
@@ -55,7 +56,7 @@ import {
   handleFirestoreError,
   OperationType,
 } from '../lib/firebase';
-import type { GenerationLogRecord, VisitorSessionRecord } from '../lib/analytics';
+import type { GenerationLogRecord, VideoEditLogRecord, VisitorSessionRecord } from '../lib/analytics';
 import type { UserAccountRecord } from '../lib/storySync';
 import { AppLang, LANGUAGE_OPTIONS } from '../lib/i18n';
 import { BookOpen, Calendar, FileText, Mail } from 'lucide-react';
@@ -147,6 +148,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ lang, onClose })
   const [logSearchQuery, setLogSearchQuery] = useState<string>('');
   const [logAuthFilter, setLogAuthFilter] = useState<'all' | 'guest' | 'gmail'>('all');
   const [visibleLogs, setVisibleLogs] = useState<number>(25);
+  const [videoEditLogs, setVideoEditLogs] = useState<VideoEditLogRecord[]>([]);
+  const [videoEditSearchQuery, setVideoEditSearchQuery] = useState<string>('');
+  const [videoEditAuthFilter, setVideoEditAuthFilter] = useState<'all' | 'guest' | 'gmail'>('all');
+  const [visibleVideoLogs, setVisibleVideoLogs] = useState<number>(25);
   const [loadingData, setLoadingData] = useState<boolean>(false);
   const [dataError, setDataError] = useState<string | null>(null);
   const [quotaError, setQuotaError] = useState<boolean>(false);
@@ -200,6 +205,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ lang, onClose })
   useEffect(() => {
     if (!authReady || !isAuthorizedAdmin) {
       setSessions([]);
+      setVideoEditLogs([]);
       setLoadingData(false);
       return;
     }
@@ -345,11 +351,51 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ lang, onClose })
     };
     subscribeLogs(true);
 
+    // Subscribe to video_edit_logs (Video Editor Activity across Guest & Gmail users)
+    const videoLogsPath = 'video_edit_logs';
+    let activeVideoLogsUnsub: (() => void) | null = null;
+    const subscribeVideoLogs = (useOrderedQuery: boolean) => {
+      const vq = useOrderedQuery
+        ? query(collection(db, videoLogsPath), orderBy('createdAt', 'desc'), limit(1000))
+        : query(collection(db, videoLogsPath), limit(1000));
+
+      activeVideoLogsUnsub = onSnapshot(
+        vq,
+        (snapshot) => {
+          if (cancelled) return;
+          const rows: VideoEditLogRecord[] = snapshot.docs.map((docSnap) => ({
+            ...(docSnap.data() as VideoEditLogRecord),
+            editId: docSnap.id,
+          }));
+          if (!useOrderedQuery) {
+            rows.sort((a, b) => toEpochMs(b.createdAt) - toEpochMs(a.createdAt));
+          }
+          setVideoEditLogs(rows);
+        },
+        (err) => {
+          if (cancelled) return;
+          const msg = (err instanceof Error ? err.message : String(err)).toLowerCase();
+          if (useOrderedQuery && (msg.includes('failed-precondition') || msg.includes('index'))) {
+            activeVideoLogsUnsub?.();
+            subscribeVideoLogs(false);
+            return;
+          }
+          try {
+            handleFirestoreError(err, OperationType.LIST, videoLogsPath);
+          } catch {
+            // Logged
+          }
+        }
+      );
+    };
+    subscribeVideoLogs(true);
+
     return () => {
       cancelled = true;
       activeUnsub?.();
       activeUsersUnsub?.();
       activeLogsUnsub?.();
+      activeVideoLogsUnsub?.();
     };
   }, [authReady, isAuthorizedAdmin]);
 
@@ -503,6 +549,33 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ lang, onClose })
           logRows.sort((a, b) => toEpochMs(b.createdAt) - toEpochMs(a.createdAt));
         }
         setGenerationLogs(logRows);
+      } catch {}
+
+      // Refresh video_edit_logs
+      try {
+        let videoSnap;
+        let sortVideoClient = false;
+        try {
+          videoSnap = await getDocs(
+            query(collection(db, 'video_edit_logs'), orderBy('createdAt', 'desc'), limit(1000))
+          );
+        } catch (vErr: any) {
+          const vMsg = String(vErr?.message || '').toLowerCase();
+          if (vMsg.includes('failed-precondition') || vMsg.includes('index')) {
+            videoSnap = await getDocs(query(collection(db, 'video_edit_logs'), limit(1000)));
+            sortVideoClient = true;
+          } else {
+            throw vErr;
+          }
+        }
+        const videoRows: VideoEditLogRecord[] = videoSnap.docs.map((docSnap) => ({
+          ...(docSnap.data() as VideoEditLogRecord),
+          editId: docSnap.id,
+        }));
+        if (sortVideoClient) {
+          videoRows.sort((a, b) => toEpochMs(b.createdAt) - toEpochMs(a.createdAt));
+        }
+        setVideoEditLogs(videoRows);
       } catch {}
 
       if (expandedUid) {
@@ -880,6 +953,57 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ lang, onClose })
       );
     });
   }, [generationLogs, logSearchQuery, logAuthFilter]);
+
+  const videoEditorStats = useMemo(() => {
+    const uniqueUsers = new Set<string>();
+    const guestUsers = new Set<string>();
+    const gmailUsers = new Set<string>();
+    let exportCount = 0;
+    let todayCount = 0;
+
+    for (const log of videoEditLogs) {
+      const identityKey =
+        log.isLoggedIn && log.userEmail ? `gmail:${log.userEmail.toLowerCase()}` : `guest:${log.visitorId}`;
+      uniqueUsers.add(identityKey);
+      if (log.isLoggedIn && log.userEmail) {
+        gmailUsers.add(log.userEmail.toLowerCase());
+      } else {
+        guestUsers.add(log.visitorId);
+      }
+      if (log.actionType === 'export_video') {
+        exportCount += 1;
+      }
+      if (log.dayKey === todayKey) {
+        todayCount += 1;
+      }
+    }
+
+    return {
+      totalEvents: videoEditLogs.length,
+      uniqueUsers: uniqueUsers.size,
+      guestUsers: guestUsers.size,
+      gmailUsers: gmailUsers.size,
+      exportCount,
+      todayCount,
+    };
+  }, [videoEditLogs, todayKey]);
+
+  const filteredVideoEditLogs = useMemo(() => {
+    const q = videoEditSearchQuery.trim().toLowerCase();
+    return videoEditLogs.filter((log) => {
+      if (videoEditAuthFilter === 'guest' && log.isLoggedIn) return false;
+      if (videoEditAuthFilter === 'gmail' && !log.isLoggedIn) return false;
+      if (!q) return true;
+      return (
+        (log.projectTitle || '').toLowerCase().includes(q) ||
+        (log.userEmail || '').toLowerCase().includes(q) ||
+        log.visitorId.toLowerCase().includes(q) ||
+        log.actionType.toLowerCase().includes(q) ||
+        log.resolution.toLowerCase().includes(q) ||
+        log.aspectRatio.toLowerCase().includes(q)
+      );
+    });
+  }, [videoEditLogs, videoEditSearchQuery, videoEditAuthFilter]);
 
   // Daily trend (up to 10 most recent active days)
   const dailyTrend = useMemo(() => {
@@ -1655,6 +1779,218 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ lang, onClose })
                   </tbody>
                 </table>
               </div>
+            )}
+          </div>
+
+          {/* Video Editor Activity (Guest & Gmail) */}
+          <div className="bg-[#11131f] border border-zinc-800 rounded-2xl overflow-hidden shadow-xl">
+            <div className="p-4 sm:p-5 border-b border-zinc-800 flex flex-col lg:flex-row lg:items-center justify-between gap-3 bg-[#141728]">
+              <div>
+                <h3 className="text-sm sm:text-base font-extrabold text-white flex items-center gap-2">
+                  <Clapperboard className="w-4 h-4 text-teal-400 shrink-0" />
+                  <span>
+                    {isMl
+                      ? `വീഡിയോ എഡിറ്റർ ഉപയോഗം (${filteredVideoEditLogs.length})`
+                      : `Video Editor Activity (${filteredVideoEditLogs.length})`}
+                  </span>
+                </h3>
+                <p className="text-xs text-zinc-400 mt-0.5">
+                  {isMl
+                    ? 'Gmail ഉള്ളവരും ഇല്ലാത്തവരും (Guest) വീഡിയോ എഡിറ്ററിൽ തുറന്നതും കട്ട്/എഡിറ്റ് ചെയ്തതും എക്സ്പോർട്ട് ചെയ്തതുമായ വിവരങ്ങൾ.'
+                    : 'Real-time tracking of video editor sessions, timeline edits, and exports across Guest and Gmail users.'}
+                </p>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="relative min-w-[200px] flex-1 sm:flex-none">
+                  <Search className="w-3.5 h-3.5 text-zinc-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    value={videoEditSearchQuery}
+                    onChange={(e) => {
+                      setVideoEditSearchQuery(e.target.value);
+                      setVisibleVideoLogs(25);
+                    }}
+                    placeholder={isMl ? 'പ്രൊജക്റ്റ് / Gmail / ആക്ഷൻ തിരയുക...' : 'Search project, Gmail, action...'}
+                    className="w-full pl-8 pr-3 py-2 rounded-xl bg-zinc-950 border border-zinc-800 text-xs text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-teal-500"
+                  />
+                </div>
+                <select
+                  value={videoEditAuthFilter}
+                  onChange={(e) => {
+                    setVideoEditAuthFilter(e.target.value as 'all' | 'guest' | 'gmail');
+                    setVisibleVideoLogs(25);
+                  }}
+                  className="px-2.5 py-2 rounded-xl bg-zinc-950 border border-zinc-800 text-xs text-zinc-200 focus:outline-none focus:border-teal-500 cursor-pointer"
+                >
+                  <option value="all">{isMl ? 'എല്ലാവരും (All)' : 'All Users'}</option>
+                  <option value="guest">{isMl ? 'ജിമെയിൽ ഇല്ലാതെ (Guest)' : 'Without Gmail'}</option>
+                  <option value="gmail">{isMl ? 'ജിമെയിൽ വഴി (Gmail)' : 'With Gmail'}</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 p-4 border-b border-zinc-800/80 bg-[#0d101a]">
+              <div className="p-2.5 rounded-xl bg-[#11131f] border border-zinc-800/90">
+                <div className="text-[10px] font-mono uppercase tracking-wider text-zinc-400">
+                  {isMl ? 'ആകെ ആക്ഷനുകൾ' : 'Total Events'}
+                </div>
+                <div className="text-lg font-extrabold text-white mt-0.5 tabular-nums">
+                  {videoEditorStats.totalEvents}
+                </div>
+              </div>
+              <div className="p-2.5 rounded-xl bg-[#11131f] border border-zinc-800/90">
+                <div className="text-[10px] font-mono uppercase tracking-wider text-zinc-400">
+                  {isMl ? 'ആകെ ഉപയോക്താക്കൾ' : 'Unique Users'}
+                </div>
+                <div className="text-lg font-extrabold text-teal-300 mt-0.5 tabular-nums">
+                  {videoEditorStats.uniqueUsers}
+                </div>
+              </div>
+              <div className="p-2.5 rounded-xl bg-[#11131f] border border-zinc-800/90">
+                <div className="text-[10px] font-mono uppercase tracking-wider text-zinc-400">
+                  {isMl ? 'Guest (Gmail ഇല്ല)' : 'Guest Users'}
+                </div>
+                <div className="text-lg font-extrabold text-amber-400 mt-0.5 tabular-nums">
+                  {videoEditorStats.guestUsers}
+                </div>
+              </div>
+              <div className="p-2.5 rounded-xl bg-[#11131f] border border-zinc-800/90">
+                <div className="text-[10px] font-mono uppercase tracking-wider text-zinc-400">
+                  {isMl ? 'Gmail ഉപയോക്താക്കൾ' : 'Gmail Users'}
+                </div>
+                <div className="text-lg font-extrabold text-emerald-400 mt-0.5 tabular-nums">
+                  {videoEditorStats.gmailUsers}
+                </div>
+              </div>
+              <div className="p-2.5 rounded-xl bg-[#11131f] border border-zinc-800/90">
+                <div className="text-[10px] font-mono uppercase tracking-wider text-zinc-400">
+                  {isMl ? 'എക്സ്പോർട്ടുകൾ' : 'Video Exports'}
+                </div>
+                <div className="text-lg font-extrabold text-sky-400 mt-0.5 tabular-nums">
+                  {videoEditorStats.exportCount}
+                </div>
+              </div>
+              <div className="p-2.5 rounded-xl bg-[#11131f] border border-zinc-800/90">
+                <div className="text-[10px] font-mono uppercase tracking-wider text-zinc-400">
+                  {isMl ? 'ഇന്നത്തെ പ്രവർത്തനം' : 'Today Events'}
+                </div>
+                <div className="text-lg font-extrabold text-purple-300 mt-0.5 tabular-nums">
+                  {videoEditorStats.todayCount}
+                </div>
+              </div>
+            </div>
+
+            {filteredVideoEditLogs.length === 0 ? (
+              <div className="p-8 text-center space-y-1.5">
+                <Clapperboard className="w-6 h-6 text-zinc-600 mx-auto" />
+                <p className="text-xs text-zinc-400">
+                  {isMl
+                    ? 'വീഡിയോ എഡിറ്റർ ഉപയോഗിക്കുന്നതിന്റെ തത്സമയ വിവരങ്ങൾ ഇവിടെ രേഖപ്പെടുത്തും.'
+                    : 'Video editor opens, timeline edits, and exports will appear here in real time.'}
+                </p>
+              </div>
+            ) : (
+              <>
+                <div className="divide-y divide-zinc-800/80">
+                  {filteredVideoEditLogs.slice(0, visibleVideoLogs).map((log) => {
+                    const actionLabel =
+                      log.actionType === 'export_video'
+                        ? isMl
+                          ? 'വീഡിയോ എക്സ്പോർട്ട്'
+                          : 'Export Video'
+                        : log.actionType === 'add_media'
+                        ? isMl
+                          ? 'മീഡിയ ചേർത്തു'
+                          : 'Add Media'
+                        : log.actionType === 'edit_timeline'
+                        ? isMl
+                          ? 'ടൈംലൈൻ എഡിറ്റ്'
+                          : 'Edit Timeline'
+                        : isMl
+                        ? 'എഡിറ്റർ തുറന്നു'
+                        : 'Open Editor';
+
+                    const actionBadgeClass =
+                      log.actionType === 'export_video'
+                        ? 'bg-sky-500/15 border-sky-500/30 text-sky-300'
+                        : log.actionType === 'edit_timeline'
+                        ? 'bg-teal-500/15 border-teal-500/30 text-teal-300'
+                        : log.actionType === 'add_media'
+                        ? 'bg-purple-500/15 border-purple-500/30 text-purple-300'
+                        : 'bg-zinc-900 border-zinc-700 text-zinc-300';
+
+                    return (
+                      <div key={log.editId} className="p-4 hover:bg-zinc-900/30 transition-colors space-y-2">
+                        <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span
+                              className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                                log.isLoggedIn && log.userEmail
+                                  ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300 font-mono'
+                                  : 'bg-amber-500/10 border-amber-500/30 text-amber-300'
+                              }`}
+                            >
+                              {log.isLoggedIn && log.userEmail
+                                ? `Gmail: ${log.userEmail}`
+                                : isMl
+                                ? `ജിമെയിൽ ഇല്ലാതെ (#${log.visitorId.slice(-6)})`
+                                : `Guest (#${log.visitorId.slice(-6)})`}
+                            </span>
+                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${actionBadgeClass}`}>
+                              {actionLabel}
+                            </span>
+                            <span className="px-2 py-0.5 rounded bg-zinc-900 border border-zinc-800 text-[10px] font-mono text-zinc-300">
+                              {log.resolution} · {log.aspectRatio}
+                            </span>
+                            <span className="text-[11px] font-mono text-zinc-400">
+                              {log.deviceType}
+                            </span>
+                          </div>
+                          <span className="text-[11px] font-mono text-zinc-500">
+                            {log.dayKey} · {formatTimestampLabel(log.createdAt)}
+                          </span>
+                        </div>
+
+                        <div className="flex flex-wrap items-center justify-between gap-2 bg-[#0a0b12] border border-zinc-800/90 rounded-xl px-3 py-2 text-xs">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="text-[10px] font-mono uppercase text-zinc-500 shrink-0">
+                              {isMl ? 'പ്രൊജക്റ്റ്:' : 'Project:'}
+                            </span>
+                            <span className="font-bold text-white truncate">
+                              {log.projectTitle || 'Untitled Video'}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-3 text-[11px] font-mono text-zinc-400 shrink-0">
+                            <span>
+                              {log.clipCount} {isMl ? 'ക്ലിപ്പുകൾ' : 'clips'}
+                            </span>
+                            {log.exportDurationSec > 0 && (
+                              <span className="text-sky-300 font-bold">
+                                {formatDurationShort(log.exportDurationSec)}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {filteredVideoEditLogs.length > visibleVideoLogs && (
+                  <div className="p-3 border-t border-zinc-800 text-center">
+                    <button
+                      type="button"
+                      onClick={() => setVisibleVideoLogs((prev) => prev + 25)}
+                      className="px-5 py-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-xs font-bold text-teal-400 cursor-pointer"
+                    >
+                      {isMl
+                        ? `കൂടുതൽ കാണുക (${visibleVideoLogs} / ${filteredVideoEditLogs.length})`
+                        : `Show More (${visibleVideoLogs} / ${filteredVideoEditLogs.length})`}
+                    </button>
+                  </div>
+                )}
+              </>
             )}
           </div>
 

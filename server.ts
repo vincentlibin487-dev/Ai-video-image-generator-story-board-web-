@@ -84,6 +84,123 @@ function stripXmlTags(input: string): string {
     .trim();
 }
 
+async function extractSafeVastData(
+  xml: string,
+  reqHeaders: Record<string, string | string[] | undefined>,
+  depth = 0
+): Promise<{
+  safeVideoUrls: string[];
+  safeClickThrough: string;
+  safeImpressions: string[];
+  blockedAdultCount: number;
+}> {
+  const adBlocks = [...xml.matchAll(/<Ad\b[^>]*>[\s\S]*?<\/Ad>/gi)].map((m) => m[0]);
+  const blocksToInspect = adBlocks.length > 0 ? adBlocks : [xml];
+
+  const safeVideoUrls: string[] = [];
+  const seenCreativePrefixes = new Set<string>();
+  let safeClickThrough = '';
+  const safeImpressions: string[] = [];
+  let blockedAdultCount = 0;
+  const wrapperUrls: string[] = [];
+
+  for (const block of blocksToInspect) {
+    const adTextMetadata = stripXmlTags(block);
+    const mediaMatches = [
+      ...block.matchAll(/<MediaFile([^>]*)>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/MediaFile>/gi),
+    ]
+      .map((m) => ({ attrs: m[1] || '', url: (m[2] || '').trim() }))
+      .filter(({ attrs, url }) => {
+        if (!url || !/^https?:\/\//i.test(url)) return false;
+        const lower = url.toLowerCase();
+        const isVideoUrl = lower.includes('.mp4') || lower.includes('.webm') || /type=["']video\//i.test(attrs);
+        return isVideoUrl;
+      })
+      .map((item) => item.url);
+
+    const blockClickThrough =
+      block
+        .match(/<ClickThrough[^>]*>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/ClickThrough>/i)?.[1]
+        ?.trim() || '';
+
+    const blockImpressions = [
+      ...block.matchAll(/<Impression[^>]*>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/Impression>/gi),
+    ]
+      .map((m) => m[1]?.trim())
+      .filter((u): u is string => Boolean(u));
+
+    const blockWrapperUrl =
+      block
+        .match(/<VASTAdTagURI[^>]*>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/VASTAdTagURI>/i)?.[1]
+        ?.trim() || '';
+
+    // Strict SFW Gate: reject the entire Ad block if any metadata, URL, or tag contains adult/NSFW signals
+    if (
+      !isFamilySafeAdContent(
+        adTextMetadata,
+        blockClickThrough,
+        blockWrapperUrl,
+        ...mediaMatches,
+        ...blockImpressions
+      )
+    ) {
+      blockedAdultCount += 1;
+      continue;
+    }
+
+    // Prefer one clean MP4 resolution (480p or default) per creative ID to avoid playing identical repeats
+    const preferredMedia =
+      mediaMatches.find((u) => u.includes('480.mp4')) ||
+      mediaMatches.find((u) => u.includes('.mp4') && !u.includes('360.mp4')) ||
+      mediaMatches[0];
+
+    if (preferredMedia) {
+      const creativeKey = preferredMedia.replace(/(480|360|720)?\.(mp4|webm)$/i, '');
+      if (!seenCreativePrefixes.has(creativeKey)) {
+        seenCreativePrefixes.add(creativeKey);
+        safeVideoUrls.push(preferredMedia);
+      }
+      if (!safeClickThrough && blockClickThrough) {
+        safeClickThrough = blockClickThrough;
+      }
+      safeImpressions.push(...blockImpressions);
+    } else if (blockWrapperUrl && /^https?:\/\//i.test(blockWrapperUrl)) {
+      wrapperUrls.push(blockWrapperUrl);
+    }
+  }
+
+  // Follow up to 1 VAST Wrapper level if direct MediaFiles were empty
+  if (safeVideoUrls.length === 0 && depth < 1 && wrapperUrls.length > 0) {
+    try {
+      const forwardedFor = reqHeaders['x-forwarded-for'];
+      const acceptLang = reqHeaders['accept-language'];
+      const wrapRes = await fetch(wrapperUrls[0], {
+        signal: AbortSignal.timeout(4000),
+        headers: {
+          'User-Agent':
+            (reqHeaders['user-agent'] as string) ||
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          ...(forwardedFor ? { 'X-Forwarded-For': String(forwardedFor) } : {}),
+          ...(acceptLang ? { 'Accept-Language': String(acceptLang) } : {}),
+          Referer: 'https://cineai.vercel.app/',
+        },
+      });
+      if (wrapRes.ok) {
+        const wrapXml = await wrapRes.text();
+        const nested = await extractSafeVastData(wrapXml, reqHeaders, depth + 1);
+        blockedAdultCount += nested.blockedAdultCount;
+        safeVideoUrls.push(...nested.safeVideoUrls);
+        if (!safeClickThrough && nested.safeClickThrough) safeClickThrough = nested.safeClickThrough;
+        safeImpressions.push(...nested.safeImpressions);
+      }
+    } catch {
+      // Ignore transient wrapper errors
+    }
+  }
+
+  return { safeVideoUrls, safeClickThrough, safeImpressions, blockedAdultCount };
+}
+
 // Endpoint to fetch real HilltopAds VAST video ad data with strict Non-Adult (SFW) filtering
 app.get('/api/vast-ad', async (req: Request, res: Response) => {
   const vastFeedUrl =
@@ -92,85 +209,34 @@ app.get('/api/vast-ad', async (req: Request, res: Response) => {
   let blockedAdultCount = 0;
 
   try {
+    const forwardedFor = req.headers['x-forwarded-for'] || req.socket?.remoteAddress;
+    const acceptLang = req.headers['accept-language'];
     const upstreamRes = await fetch(vastFeedUrl, {
+      signal: AbortSignal.timeout(5000),
       headers: {
         'User-Agent':
           (req.headers['user-agent'] as string) ||
           'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        ...(forwardedFor ? { 'X-Forwarded-For': String(forwardedFor) } : {}),
+        ...(acceptLang ? { 'Accept-Language': String(acceptLang) } : {}),
         Referer: 'https://cineai.vercel.app/',
       },
     });
 
     if (upstreamRes.ok) {
       const xml = await upstreamRes.text();
-      const adBlocks = [...xml.matchAll(/<Ad\b[^>]*>[\s\S]*?<\/Ad>/gi)].map((m) => m[0]);
-      const blocksToInspect = adBlocks.length > 0 ? adBlocks : [xml];
+      const extracted = await extractSafeVastData(xml, req.headers, 0);
+      blockedAdultCount = extracted.blockedAdultCount;
 
-      const safeVideoUrls: string[] = [];
-      const seenCreativePrefixes = new Set<string>();
-      let safeClickThrough = '';
-      const safeImpressions: string[] = [];
-
-      for (const block of blocksToInspect) {
-        const adTextMetadata = stripXmlTags(block);
-        const mediaMatches = [
-          ...block.matchAll(/<MediaFile[^>]*>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/MediaFile>/gi),
-        ]
-          .map((m) => m[1]?.trim())
-          .filter((u): u is string => Boolean(u && u.includes('.mp4')));
-
-        const blockClickThrough =
-          block
-            .match(/<ClickThrough[^>]*>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/ClickThrough>/i)?.[1]
-            ?.trim() || '';
-
-        const blockImpressions = [
-          ...block.matchAll(/<Impression[^>]*>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/Impression>/gi),
-        ]
-          .map((m) => m[1]?.trim())
-          .filter((u): u is string => Boolean(u));
-
-        // Strict SFW Gate: reject the entire Ad block if any metadata, URL, or tag contains adult/NSFW signals
-        if (
-          !isFamilySafeAdContent(
-            adTextMetadata,
-            blockClickThrough,
-            ...mediaMatches,
-            ...blockImpressions
-          )
-        ) {
-          blockedAdultCount += 1;
-          continue;
-        }
-
-        // Prefer one clean MP4 resolution (480p or default) per creative ID to avoid playing identical repeats
-        const preferredMp4 =
-          mediaMatches.find((u) => u.includes('480.mp4')) ||
-          mediaMatches.find((u) => !u.includes('360.mp4')) ||
-          mediaMatches[0];
-
-        if (preferredMp4) {
-          const creativeKey = preferredMp4.replace(/(480|360|720)?\.mp4$/i, '');
-          if (!seenCreativePrefixes.has(creativeKey)) {
-            seenCreativePrefixes.add(creativeKey);
-            safeVideoUrls.push(preferredMp4);
-          }
-          if (!safeClickThrough && blockClickThrough) {
-            safeClickThrough = blockClickThrough;
-          }
-          safeImpressions.push(...blockImpressions);
-        }
-      }
-
-      if (safeVideoUrls.length > 0) {
+      if (extracted.safeVideoUrls.length > 0) {
         return res.json({
           success: true,
           sfwOnly: true,
           blockedAdultCount,
-          videoUrl: safeVideoUrls[0],
-          allVideoUrls: safeVideoUrls,
-          clickThrough: safeClickThrough || vastFeedUrl,
-          impressions: safeImpressions,
+          videoUrl: extracted.safeVideoUrls[0],
+          allVideoUrls: extracted.safeVideoUrls,
+          clickThrough: extracted.safeClickThrough || vastFeedUrl,
+          impressions: extracted.safeImpressions,
         });
       }
     }

@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import {
   X,
   Copy,
@@ -127,9 +127,17 @@ const AutoResizeTextarea: React.FC<React.TextareaHTMLAttributes<HTMLTextAreaElem
 
   useEffect(() => {
     const el = ref.current;
-    if (!el) return;
-    el.style.height = 'auto';
-    el.style.height = `${el.scrollHeight}px`;
+    if (!el || typeof window === 'undefined') return;
+    const rafId = window.requestAnimationFrame(() => {
+      if (!ref.current) return;
+      const target = ref.current;
+      target.style.height = 'auto';
+      const nextHeight = `${target.scrollHeight}px`;
+      if (target.style.height !== nextHeight) {
+        target.style.height = nextHeight;
+      }
+    });
+    return () => window.cancelAnimationFrame(rafId);
   }, [value]);
 
   return (
@@ -141,15 +149,6 @@ const AutoResizeTextarea: React.FC<React.TextareaHTMLAttributes<HTMLTextAreaElem
     />
   );
 };
-
-function isLongParagraphBlock(text: string, lineThreshold = 8, charThreshold = 420): boolean {
-  if (!text) return false;
-  const trimmed = text.trim();
-  if (!trimmed) return false;
-  const lineBreaks = trimmed.split(/\r?\n/).filter(Boolean).length;
-  const estimatedWrappedLines = Math.max(lineBreaks, Math.ceil(trimmed.length / 55));
-  return estimatedWrappedLines >= lineThreshold || trimmed.length >= charThreshold;
-}
 
 export default function App() {
   const [lang, setLang] = useState<AppLang>('en');
@@ -226,6 +225,16 @@ export default function App() {
   const optionClickCountRef = useRef<number>(0);
   const savedStoriesRef = useRef<SavedStoryItem[]>(savedStories);
   savedStoriesRef.current = savedStories;
+
+  const lovedStoryKeys = useMemo(() => {
+    const set = new Set<string>();
+    for (const s of savedStories) {
+      if (!s.isLoved) continue;
+      if (s.angle?.id && s.title) set.add(`id:${s.angle.id}::${s.title}`);
+      if (s.title && s.genre) set.add(`tg:${s.title}::${s.genre}`);
+    }
+    return set;
+  }, [savedStories]);
 
   const isInIframe =
     typeof window !== 'undefined' &&
@@ -446,8 +455,8 @@ export default function App() {
       ? durationValue * 3600
       : durationValue * 60;
 
-  // Calculate EXACT number of video clips needed
-  const calculatedShotCount = Math.max(1, Math.ceil(totalSeconds / shotDurationSec));
+  // Calculate EXACT number of video clips needed (safely bounded to avoid browser memory freeze)
+  const calculatedShotCount = Math.min(600, Math.max(1, Math.ceil(totalSeconds / shotDurationSec)));
 
   // Format Duration Description in the active UI language
   const formatDurationDisplay = () => {
@@ -1315,9 +1324,6 @@ export default function App() {
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6 items-start">
             {/* Left Studio Panel (Mobile Top / Desktop 7 cols): Story Concept */}
             <div className="lg:col-span-7 bg-[#11131f] border border-zinc-800 p-4 sm:p-6 rounded-2xl shadow-2xl space-y-3">
-              <div className="hidden lg:block">
-                <InFeedBannerAd slotId="page1-left-top" slotIndex={0} />
-              </div>
 
               <div className="flex items-center justify-between gap-2 flex-wrap">
                 <label className="text-xs font-bold uppercase tracking-wider text-amber-400 flex items-center gap-2">
@@ -1386,9 +1392,6 @@ export default function App() {
 
             {/* Right Studio Panel (Mobile Bottom / Desktop 5 cols): Duration, Clips & CTA */}
             <div className="lg:col-span-5 bg-[#11131f] border border-zinc-800 p-4 sm:p-6 rounded-2xl shadow-2xl space-y-4">
-              <div className="hidden lg:block">
-                <InFeedBannerAd slotId="page1-right-top" slotIndex={1} />
-              </div>
               <label className="text-xs font-bold text-amber-400 uppercase tracking-wider flex items-center gap-2">
                 <Timer className="w-4 h-4 shrink-0" />
                 <span>{t.durationLabel}</span>
@@ -1541,15 +1544,10 @@ export default function App() {
                     : t.generateAnglesBtn(14, formatDurationDisplay(), calculatedShotCount)}
                 </span>
               </button>
-
-              <div className="pt-1">
-                <InFeedBannerAd slotId="page1-right-bottom" slotIndex={0} />
-              </div>
             </div>
 
-            {/* Wide Centered + Full-Width Showcase + 1-2 Compact Video Ads on Page 1 */}
+            {/* Clean Full-Width Showcase Video + Banner below panels */}
             <div className="lg:col-span-12 space-y-4">
-              <InlineVideoAdPair sectionId="page1-video-pair" />
               <FullWidthShowcaseAd slotId="page1-showcase" />
             </div>
           </div>
@@ -1680,10 +1678,8 @@ export default function App() {
                       return true;
                     })
                     .map((angle, angleIdx) => {
-                      const isEveryThirdCard = (angleIdx + 1) % 3 === 0;
-                      const storyParagraph = angle.storySummary || angle.synopsis || '';
-                      const isLongParagraph = isLongParagraphBlock(storyParagraph, 8, 420);
-                      const showVideoAndBannerHere = isEveryThirdCard || isLongParagraph;
+                      const showVideoAndBannerHere =
+                        angleIdx === 2 || angleIdx === 7 || angleIdx === 12;
 
                       return (
                         <React.Fragment key={angle.id}>
@@ -1695,12 +1691,9 @@ export default function App() {
                                 </span>
                                 <div className="flex items-center gap-1.5 shrink-0">
                                   {(() => {
-                                    const isLoved = savedStories.some(
-                                      (s) =>
-                                        Boolean(s.isLoved) &&
-                                        ((s.angle?.id === angle.id && s.title === angle.title) ||
-                                          (s.title === angle.title && s.genre === angle.genre))
-                                    );
+                                    const isLoved =
+                                      lovedStoryKeys.has(`id:${angle.id}::${angle.title}`) ||
+                                      lovedStoryKeys.has(`tg:${angle.title}::${angle.genre}`);
                                     return (
                                       <button
                                         type="button"
@@ -2111,18 +2104,11 @@ ${imgPromptText}`;
                     setTimeout(() => setCopiedKey(null), 2000);
                   };
 
-                  const combinedShotText = [
-                    shot.action,
-                    shotDialogue,
-                    vidPromptText,
-                    imgPromptText,
-                  ]
-                    .filter(Boolean)
-                    .join('\n');
-                  const isLongShotContent = isLongParagraphBlock(combinedShotText, 10, 560);
-                  const isEveryThirdShot = promptViewMode === 'all' && (idx + 1) % 3 === 0;
                   const showShotVideoAndBanner =
-                    promptViewMode === 'all' && (isEveryThirdShot || isLongShotContent);
+                    promptViewMode === 'all' &&
+                    idx > 0 &&
+                    (idx + 1) % 6 === 0 &&
+                    idx < 24;
 
                   return (
                     <React.Fragment key={idx}>
@@ -2955,9 +2941,9 @@ ${imgPromptText}`;
       {/* Non-blocking Corner Mini Skippable Video Ad (Desktop) */}
       <FloatingMiniVideoAd />
 
-      {/* Brief 2-Second In-Page Video Ad Break (only every 3rd option tap, auto-closes after 2s) */}
+      {/* Brief 2-Second In-Page Video Ad Break (auto-closes after 2s, never interrupts editor) */}
       <TwoSecondVideoBreakOverlay
-        open={show2sVideoBreak}
+        open={show2sVideoBreak && activeStep !== 'editor'}
         onClose={() => setShow2sVideoBreak(false)}
       />
         </>

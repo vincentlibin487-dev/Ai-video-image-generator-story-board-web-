@@ -1,8 +1,7 @@
 // =========================================================================
-// CINESTUDIO 4K - EXPANDED CREATIVE ASSETS LIBRARY (600 ITEMS PER CATEGORY)
-// 600 Filters, 600 Background Music & SFX, 600 Transitions, 600 Effects,
-// 600 Titles, 600 Templates, 600 Stickers, and 600 Color Grading LUTs.
-// Every item includes full detail descriptions & real-time render metadata.
+// CINESTUDIO 4K - EXPANDED CREATIVE ASSETS LIBRARY (1,200 ITEMS PER CATEGORY)
+// 1,200 Filters, 1,200 Audio/SFX, 1,200 Transitions, 1,200 Effects,
+// 1,200 Titles, 1,200 Templates, 1,200 Stickers, 1,200 Color LUTs, 1,200 VFX.
 // =========================================================================
 
 export interface FilterItem {
@@ -23,7 +22,19 @@ export interface AudioItem {
   bpm: number;
   mood: string;
   description: string;
-  synthPreset: 'comedy' | 'meme_boom' | 'cinematic' | 'lofi' | 'trailer' | 'electronic' | 'upbeat' | 'sfx_whoosh';
+  synthPreset:
+    | 'comedy'
+    | 'meme_boom'
+    | 'cinematic'
+    | 'lofi'
+    | 'trailer'
+    | 'electronic'
+    | 'upbeat'
+    | 'sfx_whoosh'
+    | 'sfx_glass_break'
+    | 'sfx_fire_burn'
+    | 'sfx_punch_impact'
+    | 'sfx_gunshot';
   url?: string;
 }
 
@@ -143,7 +154,11 @@ export type CinemaVfxKind =
   | 'glass_shatter'
   | 'shockwave'
   | 'portal'
-  | 'rain_storm';
+  | 'rain_storm'
+  | 'building_inferno'
+  | 'person_ablaze'
+  | 'matchstick_strike'
+  | 'fire_tornado';
 
 export interface CinemaVfxItem {
   id: string;
@@ -158,20 +173,25 @@ export interface CinemaVfxItem {
   description: string;
 }
 
-// Curated thumbnail images for previews
+// Local inline SVG cinematic artwork thumbnails (zero external network dependency / never broken)
+const makeCinemaThumbSvg = (topHex: string, midHex: string, botHex: string, sunHex: string, silHex: string) => {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 180"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${topHex}"/><stop offset="55%" stop-color="${midHex}"/><stop offset="100%" stop-color="${botHex}"/></linearGradient></defs><rect width="320" height="180" fill="url(#g)"/><circle cx="225" cy="54" r="32" fill="${sunHex}" opacity="0.88"/><path d="M0 132 L65 88 L128 118 L205 74 L275 112 L320 96 L320 180 L0 180 Z" fill="${silHex}" opacity="0.85"/><path d="M0 148 L95 124 L175 144 L250 116 L320 140 L320 180 L0 180 Z" fill="#090c10" opacity="0.92"/><rect x="14" y="14" width="46" height="14" rx="4" fill="#000" opacity="0.45"/><circle cx="26" cy="21" r="3.5" fill="${sunHex}"/></svg>`;
+  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+};
+
 const FILTER_THUMBS = [
-  'https://images.unsplash.com/photo-1478760329108-5c3ed9d495a0?auto=format&fit=crop&w=200&q=80',
-  'https://images.unsplash.com/photo-1508739773434-c26b3d09e071?auto=format&fit=crop&w=200&q=80',
-  'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=200&q=80',
-  'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?auto=format&fit=crop&w=200&q=80',
-  'https://images.unsplash.com/photo-1517604931442-7e0c8ed2963c?auto=format&fit=crop&w=200&q=80',
-  'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=200&q=80',
-  'https://images.unsplash.com/photo-1451187580459-43490279c0fa?auto=format&fit=crop&w=200&q=80',
-  'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80',
-  'https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?auto=format&fit=crop&w=200&q=80',
-  'https://images.unsplash.com/photo-1542751371-adc38448a05e?auto=format&fit=crop&w=200&q=80',
-  'https://images.unsplash.com/photo-1579783902614-a3fb3927b675?auto=format&fit=crop&w=200&q=80',
-  'https://images.unsplash.com/photo-1506703719100-a0f3a48c0f86?auto=format&fit=crop&w=200&q=80',
+  makeCinemaThumbSvg('#0f172a', '#134e4a', '#9a3412', '#fbbf24', '#0f172a'),
+  makeCinemaThumbSvg('#311042', '#9d174d', '#0f172a', '#22d3ee', '#1e1b4b'),
+  makeCinemaThumbSvg('#451a03', '#b45309', '#1c1917', '#fef08a', '#292524'),
+  makeCinemaThumbSvg('#090d16', '#1e293b', '#0f172a', '#e2e8f0', '#020617'),
+  makeCinemaThumbSvg('#064e3b', '#047857', '#022c22', '#a7f3d0', '#064e3b'),
+  makeCinemaThumbSvg('#7c2d12', '#ea580c', '#450a0a', '#fde047', '#270909'),
+  makeCinemaThumbSvg('#1e1b4b', '#4338ca', '#09090b', '#f472b6', '#0f172a'),
+  makeCinemaThumbSvg('#27272a', '#52525b', '#09090b', '#fafafa', '#18181b'),
+  makeCinemaThumbSvg('#0c4a6e', '#0284c7', '#172554', '#7dd3fc', '#082f49'),
+  makeCinemaThumbSvg('#701a75', '#c026d3', '#1e1b4b', '#facc15', '#2e1065'),
+  makeCinemaThumbSvg('#14532d', '#16a34a', '#052e16', '#fde047', '#052e16'),
+  makeCinemaThumbSvg('#4c0519', '#be123c', '#09090b', '#fda4af', '#18181b'),
 ];
 
 // -------------------------------------------------------------------------
@@ -227,10 +247,10 @@ export const FILTERS_LIST: FilterItem[] = [
     thumbnail: FILTER_THUMBS[0],
     description: 'Unfiltered original video & photo colors with zero LUT adjustment.',
   },
-  ...Array.from({ length: 599 }, (_, idx) => {
+  ...Array.from({ length: 1199 }, (_, idx) => {
     const base = RAW_FILTER_DEFINITIONS[idx % RAW_FILTER_DEFINITIONS.length];
     const cat = FILTER_CATEGORIES[idx % FILTER_CATEGORIES.length];
-    const factor = 0.88 + (idx % 6) * 0.06;
+    const factor = 0.86 + (idx % 7) * 0.05;
     const tier = Math.floor(idx / RAW_FILTER_DEFINITIONS.length) + 1;
     return {
       id: `flt_${idx + 1}`,
@@ -292,13 +312,20 @@ const RAW_CINEMATIC_AUDIO: typeof RAW_FUNNY_MEME_SFX = [
   { title: 'Rain on Window Lo-Fi Study', cat: 'Lo-Fi Chill', dur: '00:30', sec: 30, bpm: 80, mood: 'Chill', desc: 'Warm vinyl crackle Rhodes chords and relaxed beat', synth: 'lofi' },
   { title: 'Dark Synthwave 80s Pulse', cat: 'Electronic', dur: '00:24', sec: 24, bpm: 122, mood: 'Cyber', desc: 'Analog arpeggio bass & neon synth lead', synth: 'electronic' },
   { title: 'Subtle Cinematic Whoosh / Swish', cat: 'Sound Effects', dur: '00:03', sec: 3, bpm: 100, mood: 'Transition', desc: 'Clean air whoosh ideal for slide & whip transitions', synth: 'sfx_whoosh' },
+  { title: '🪟 Window Glass Shatter & Crash (ചില്ല് പൊട്ടുന്ന ശബ്ദം)', cat: 'Sound Effects', dur: '00:03', sec: 3, bpm: 120, mood: 'Action Impact', desc: 'Crisp high-frequency glass crash & tumbling crystal shards SFX', synth: 'sfx_glass_break' },
+  { title: '🪞 Mirror Shatter & Hammer Smash SFX', cat: 'Sound Effects', dur: '00:03', sec: 3, bpm: 118, mood: 'Thrill Impact', desc: 'Heavy glass crack + scattering shards for action & horror scenes', synth: 'sfx_glass_break' },
+  { title: '🍾 Bottle Crash Shatter SFX', cat: 'Sound Effects', dur: '00:02', sec: 2, bpm: 125, mood: 'Smash', desc: 'Sharp glass bottle smash & floor ring impact sound', synth: 'sfx_glass_break' },
+  { title: '🔥 Matchstick Strike & Ignite Burst (തീപ്പെട്ടി ഉരയ്ക്കുന്ന ശബ്ദം)', cat: 'Sound Effects', dur: '00:04', sec: 4, bpm: 110, mood: 'Ignition', desc: 'Friction match strike followed by sudden flame ignition roar', synth: 'sfx_fire_burn' },
+  { title: '🏚️ Building Inferno Fire Roar & Crackle', cat: 'Sound Effects', dur: '00:10', sec: 10, bpm: 92, mood: 'Inferno', desc: 'Towering building fire blaze crackle and deep flame roar', synth: 'sfx_fire_burn' },
+  { title: '🥊 Heavy Action Punch & Crash Impact', cat: 'Sound Effects', dur: '00:02', sec: 2, bpm: 130, mood: 'Fight', desc: 'Deep chest thud + sonic crack for fight choreography', synth: 'sfx_punch_impact' },
+  { title: '🔫 Pistol Gunshot & Echo Tail SFX', cat: 'Sound Effects', dur: '00:03', sec: 3, bpm: 140, mood: 'Gunfire', desc: 'Sharp 9mm gunshot crack with metallic echo tail', synth: 'sfx_gunshot' },
   { title: 'Thunderstorm & Rain Ambience', cat: 'Sound Effects', dur: '00:14', sec: 14, bpm: 65, mood: 'Atmosphere', desc: 'Deep rolling thunder rumble for moody night scenes', synth: 'meme_boom' },
 ];
 
 const ALL_RAW_AUDIO = [...RAW_FUNNY_MEME_SFX, ...RAW_CINEMATIC_AUDIO];
 const AUDIO_STYLE_TAGS = ['Studio Master', 'Reels Cut', 'Dolby Mix', 'Bass Boost', 'Acoustic', 'Extended', 'Vlog Edit', '4K Surround'];
 
-export const AUDIO_LIST: AudioItem[] = Array.from({ length: 600 }, (_, i) => {
+export const AUDIO_LIST: AudioItem[] = Array.from({ length: 1200 }, (_, i) => {
   const base = ALL_RAW_AUDIO[i % ALL_RAW_AUDIO.length];
   const cycle = Math.floor(i / ALL_RAW_AUDIO.length);
   const tag = AUDIO_STYLE_TAGS[i % AUDIO_STYLE_TAGS.length];
@@ -374,11 +401,11 @@ const TRANSITION_DEFS: Array<{
   },
 ];
 
-export const TRANSITIONS_LIST: TransitionItem[] = Array.from({ length: 600 }, (_, i) => {
+export const TRANSITIONS_LIST: TransitionItem[] = Array.from({ length: 1200 }, (_, i) => {
   const def = TRANSITION_DEFS[i % TRANSITION_DEFS.length];
   const baseName = def.names[Math.floor(i / TRANSITION_DEFS.length) % def.names.length];
   const vol = Math.floor(i / (TRANSITION_DEFS.length * def.names.length)) + 1;
-  const code = `TR${String(i + 1).padStart(3, '0')}`;
+  const code = `TR${String(i + 1).padStart(4, '0')}`;
   const dur = Number((0.6 + (i % 5) * 0.15).toFixed(2));
   return {
     id: `tr_${i + 1}`,
@@ -459,7 +486,7 @@ const EFFECT_DEFS: Array<{
   },
 ];
 
-export const EFFECTS_LIST: EffectItem[] = Array.from({ length: 600 }, (_, i) => {
+export const EFFECTS_LIST: EffectItem[] = Array.from({ length: 1200 }, (_, i) => {
   const def = EFFECT_DEFS[i % EFFECT_DEFS.length];
   const baseName = def.names[Math.floor(i / EFFECT_DEFS.length) % def.names.length];
   const tier = Math.floor(i / (EFFECT_DEFS.length * def.names.length)) + 1;
@@ -497,7 +524,7 @@ const BASE_TITLES = [
   { name: 'DOCUMENTARY CHAPTER', sub: 'PART I · THE BEGINNING', style: 'font-serif tracking-[0.25em] text-zinc-200 uppercase', desc: 'Wide-tracked cinematic chapter divider' },
 ];
 
-export const TITLES_LIST: TitleItem[] = Array.from({ length: 600 }, (_, i) => {
+export const TITLES_LIST: TitleItem[] = Array.from({ length: 1200 }, (_, i) => {
   const base = BASE_TITLES[i % BASE_TITLES.length];
   const cat = TITLE_CATEGORIES[i % TITLE_CATEGORIES.length];
   return {
@@ -512,7 +539,7 @@ export const TITLES_LIST: TitleItem[] = Array.from({ length: 600 }, (_, i) => {
 });
 
 // -------------------------------------------------------------------------
-// 6. VIDEO TEMPLATES LIBRARY (600 Motion Templates)
+// 6. VIDEO TEMPLATES LIBRARY (1,200 Motion Templates)
 // -------------------------------------------------------------------------
 const TEMPLATE_CATEGORIES = [
   'Cinematic Intro',
@@ -525,7 +552,7 @@ const TEMPLATE_CATEGORIES = [
   'Comedy & Meme',
 ];
 
-export const TEMPLATES_LIST: TemplateItem[] = Array.from({ length: 600 }, (_, i) => {
+export const TEMPLATES_LIST: TemplateItem[] = Array.from({ length: 1200 }, (_, i) => {
   const cat = TEMPLATE_CATEGORIES[i % TEMPLATE_CATEGORIES.length];
   const dur = 10 + (i % 25);
   const ss = String(dur).padStart(2, '0');
@@ -540,7 +567,7 @@ export const TEMPLATES_LIST: TemplateItem[] = Array.from({ length: 600 }, (_, i)
     movieTitle: `${cat.toUpperCase()} #${i + 1}`,
     subtitle: `PRODUCE | CineStudio 4K · ${cat}`,
     director: `DIRECTOR | CineStudio Pro`,
-    bgUrl: thumb.replace('w=200', 'w=1280'),
+    bgUrl: thumb,
     description: `Applies pre-styled ${cat} title typography, subtitle & director credits (${dur}s layout).`,
   };
 });
@@ -584,7 +611,7 @@ const RAW_STICKERS = [
   { name: 'Cool Sunglasses Swag', cat: 'Gaming & Stream', badge: 'GG EZ', emoji: '😎', color: 'bg-zinc-800 text-white', desc: 'Cool sunglasses gaming win badge' },
 ];
 
-export const STICKERS_LIST: StickerItem[] = Array.from({ length: 600 }, (_, i) => {
+export const STICKERS_LIST: StickerItem[] = Array.from({ length: 1200 }, (_, i) => {
   const base = RAW_STICKERS[i % RAW_STICKERS.length];
   const cat = STICKER_CATEGORIES[i % STICKER_CATEGORIES.length];
   return {
@@ -599,7 +626,7 @@ export const STICKERS_LIST: StickerItem[] = Array.from({ length: 600 }, (_, i) =
 });
 
 // -------------------------------------------------------------------------
-// 9. COLOR GRADING LUT PRESETS (600 Presets for Color Grading Inspector)
+// 9. COLOR GRADING LUT PRESETS (1,200 Presets for Color Grading Inspector)
 // -------------------------------------------------------------------------
 const COLOR_GRADE_CATEGORIES = [
   'Hollywood Film',
@@ -624,7 +651,7 @@ const RAW_COLOR_GRADES = [
   { name: 'Silver Noir Monochrome', cat: 'Monochrome', b: -4, c: 45, s: -100, ex: 0, w: 0, t: 0, hi: 15, sh: -25, v: 55, grad: 'from-zinc-200 to-zinc-950', desc: 'Zero saturation true black & white cinema grade' },
 ];
 
-export const COLOR_GRADES_LIST: ColorGradePreset[] = Array.from({ length: 600 }, (_, i) => {
+export const COLOR_GRADES_LIST: ColorGradePreset[] = Array.from({ length: 1200 }, (_, i) => {
   const base = RAW_COLOR_GRADES[i % RAW_COLOR_GRADES.length];
   const cat = COLOR_GRADE_CATEGORIES[i % COLOR_GRADE_CATEGORIES.length];
   const delta = (i % 7) - 3;
@@ -783,6 +810,50 @@ const RAW_CINEMA_VFX: Array<{
     dur: 1.4,
     emoji: '✨',
     desc: 'ഇരുമ്പിലും ചുവരിലും വെടിയുണ്ട തട്ടി തെറിക്കുന്ന തീപ്പൊരി ചിതറൽ',
+  },
+  {
+    name: 'Burning Building Full Inferno (തീപിടിച്ച കെട്ടിടം)',
+    cat: 'Fire & Smoke',
+    kind: 'building_inferno',
+    route: false,
+    c1: '#fef08a',
+    c2: '#ea580c',
+    dur: 3.5,
+    emoji: '🏚️',
+    desc: 'ബിൽഡിങ്ങും ജനലുകളും തീ ആളിക്കത്തി വലിയ പുകയും തീപ്പൊരിയും ഉയരുന്ന ആക്ഷൻ ഫയർ VFX',
+  },
+  {
+    name: 'Full-Body Human Fire Aura (ശരീരം കത്തുന്ന തീ VFX)',
+    cat: 'Fire & Smoke',
+    kind: 'person_ablaze',
+    route: false,
+    c1: '#fde047',
+    c2: '#dc2626',
+    dur: 3.0,
+    emoji: '🔥',
+    desc: 'മനുഷ്യന്റെ ശരീരത്തിൽ വെയ്ക്കാൻ സാധിക്കുന്ന ആളിക്കത്തുന്ന തീയും തീജ്വാലയും',
+  },
+  {
+    name: 'Matchstick Strike & Spinning Fire Throw',
+    cat: 'Fire & Smoke',
+    kind: 'matchstick_strike',
+    route: true,
+    c1: '#fef9c3',
+    c2: '#f97316',
+    dur: 2.2,
+    emoji: '🧨',
+    desc: 'തീപ്പെട്ടി ഉരസി തീ പിടിക്കുകയും വട്ടത്തിൽ കറങ്ങി തീപ്പൊരി വിതറി പറക്കുകയും ചെയ്യുന്ന ആക്ഷൻ VFX',
+  },
+  {
+    name: 'Swirling Fire Tornado Vortex',
+    cat: 'Fire & Smoke',
+    kind: 'fire_tornado',
+    route: true,
+    c1: '#fef08a',
+    c2: '#ef4444',
+    dur: 2.8,
+    emoji: '🌪️',
+    desc: 'ചുഴറ്റിയടിക്കുന്ന തീക്കൊടുങ്കാറ്റും തീപ്പൊരി ചിതറലും',
   },
   {
     name: 'Dense Battlefield Gunsmoke Drift',

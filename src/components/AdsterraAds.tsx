@@ -1,9 +1,9 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { SkipForward, Volume2, VolumeX, X } from 'lucide-react';
 
 // =========================================================================
 // OFFICIAL LIVE AD NETWORKS (Network 1: Adsterra | Network 2: HilltopAds)
-// Strict Non-Adult / Family-Safe (SFW) Guard Enabled
+// Strict Non-Adult / Family-Safe (SFW) Guard + Opaque Sandbox Isolation
 // =========================================================================
 
 export const ADSTERRA_CONFIG = {
@@ -55,14 +55,148 @@ interface VastAdData {
 
 let cachedVastData: VastAdData | null = null;
 let vastFetchPromise: Promise<VastAdData> | null = null;
+let lastEmptyVastAt = 0;
 
-async function fetchLiveVastData(): Promise<VastAdData> {
-  if (cachedVastData) return cachedVastData;
+function stripClientXmlTags(input: string): string {
+  return input
+    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/gi, '$1')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+async function parseVastXmlClient(xml: string, depth = 0): Promise<VastAdData | null> {
+  if (!xml || !xml.includes('<')) return null;
+  const adBlocks = [...xml.matchAll(/<Ad\b[^>]*>[\s\S]*?<\/Ad>/gi)].map((m) => m[0]);
+  const blocks = adBlocks.length > 0 ? adBlocks : [xml];
+
+  const safeUrls: string[] = [];
+  const seenPrefixes = new Set<string>();
+  let safeClick = '';
+  const safeImpressions: string[] = [];
+  const wrapperUrls: string[] = [];
+
+  for (const block of blocks) {
+    const metaText = stripClientXmlTags(block);
+    const mediaUrls = [
+      ...block.matchAll(/<MediaFile([^>]*)>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/MediaFile>/gi),
+    ]
+      .map((m) => ({ attrs: m[1] || '', url: (m[2] || '').trim() }))
+      .filter(({ attrs, url }) => {
+        if (!url || !/^https?:\/\//i.test(url)) return false;
+        const lower = url.toLowerCase();
+        return lower.includes('.mp4') || lower.includes('.webm') || /type=["']video\//i.test(attrs);
+      })
+      .map((item) => item.url);
+
+    const clickThrough =
+      block
+        .match(/<ClickThrough[^>]*>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/ClickThrough>/i)?.[1]
+        ?.trim() || '';
+
+    const impressions = [
+      ...block.matchAll(/<Impression[^>]*>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/Impression>/gi),
+    ]
+      .map((m) => m[1]?.trim())
+      .filter((u): u is string => Boolean(u));
+
+    const wrapperUrl =
+      block
+        .match(/<VASTAdTagURI[^>]*>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/VASTAdTagURI>/i)?.[1]
+        ?.trim() || '';
+
+    if (containsAdultAdSignals(metaText, clickThrough, wrapperUrl, ...mediaUrls, ...impressions)) {
+      continue;
+    }
+
+    const preferred =
+      mediaUrls.find((u) => u.includes('480.mp4')) ||
+      mediaUrls.find((u) => u.includes('.mp4') && !u.includes('360.mp4')) ||
+      mediaUrls[0];
+
+    if (preferred) {
+      const prefix = preferred.replace(/(480|360|720)?\.(mp4|webm)$/i, '');
+      if (!seenPrefixes.has(prefix)) {
+        seenPrefixes.add(prefix);
+        safeUrls.push(preferred);
+      }
+      if (!safeClick && clickThrough) safeClick = clickThrough;
+      safeImpressions.push(...impressions);
+    } else if (wrapperUrl && /^https?:\/\//i.test(wrapperUrl)) {
+      wrapperUrls.push(wrapperUrl);
+    }
+  }
+
+  if (safeUrls.length === 0 && depth < 1 && wrapperUrls.length > 0) {
+    try {
+      const wrapRes = await fetch(wrapperUrls[0], {
+        signal: typeof AbortSignal !== 'undefined' && 'timeout' in AbortSignal ? AbortSignal.timeout(3500) : undefined,
+      });
+      if (wrapRes.ok) {
+        const wrapXml = await wrapRes.text();
+        return await parseVastXmlClient(wrapXml, depth + 1);
+      }
+    } catch {
+      // Fall through to server fallback
+    }
+  }
+
+  if (safeUrls.length === 0) return null;
+  return {
+    videoUrl: safeUrls[0],
+    allVideoUrls: safeUrls,
+    clickThrough: safeClick || HILLTOP_CONFIG.vastVideoFeedUrl,
+    impressions: safeImpressions,
+    loaded: true,
+  };
+}
+
+async function fetchLiveVastData(forceRetry = false): Promise<VastAdData> {
+  if (cachedVastData && cachedVastData.allVideoUrls.length > 0) {
+    return cachedVastData;
+  }
+  if (!forceRetry && cachedVastData && Date.now() - lastEmptyVastAt < 12000) {
+    return cachedVastData;
+  }
   if (vastFetchPromise) return vastFetchPromise;
 
   vastFetchPromise = (async () => {
+    // 1. Try direct browser fetch first so HilltopAds sees user's real residential/mobile IP & User-Agent
     try {
-      const res = await fetch('/api/vast-ad');
+      const directController = typeof AbortController !== 'undefined' ? new AbortController() : null;
+      const directTimer =
+        typeof window !== 'undefined' && directController
+          ? window.setTimeout(() => directController.abort(), 3800)
+          : null;
+      try {
+        const directRes = await fetch(
+          HILLTOP_CONFIG.vastVideoFeedUrl,
+          directController ? { signal: directController.signal } : undefined
+        );
+        if (directTimer !== null) window.clearTimeout(directTimer);
+        if (directRes.ok) {
+          const xml = await directRes.text();
+          const parsedDirect = await parseVastXmlClient(xml, 0);
+          if (parsedDirect && parsedDirect.allVideoUrls.length > 0) {
+            cachedVastData = parsedDirect;
+            return cachedVastData;
+          }
+        }
+      } catch {
+        if (directTimer !== null) window.clearTimeout(directTimer);
+      }
+    } catch {}
+
+    // 2. Fallback to backend /api/vast-ad proxy (handles CORS environments and extracts nested wrappers)
+    const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    const timeoutId =
+      typeof window !== 'undefined' && controller
+        ? window.setTimeout(() => controller.abort(), 4800)
+        : null;
+
+    try {
+      const res = await fetch('/api/vast-ad', controller ? { signal: controller.signal } : undefined);
+      if (timeoutId !== null) window.clearTimeout(timeoutId);
       if (res.ok) {
         const data = await res.json();
         const rawUrls: string[] = Array.isArray(data?.allVideoUrls) ? data.allVideoUrls : [];
@@ -70,17 +204,22 @@ async function fetchLiveVastData(): Promise<VastAdData> {
         const safeClick =
           data?.clickThrough && !containsAdultAdSignals(data.clickThrough) ? data.clickThrough : '';
 
-        cachedVastData = {
-          videoUrl: safeUrls[0] || '',
-          allVideoUrls: safeUrls,
-          clickThrough: safeClick,
-          impressions: Array.isArray(data?.impressions) ? data.impressions : [],
-          loaded: true,
-        };
-        return cachedVastData;
+        if (safeUrls.length > 0) {
+          cachedVastData = {
+            videoUrl: safeUrls[0],
+            allVideoUrls: safeUrls,
+            clickThrough: safeClick,
+            impressions: Array.isArray(data?.impressions) ? data.impressions : [],
+            loaded: true,
+          };
+          return cachedVastData;
+        }
       }
-    } catch {}
+    } catch {
+      if (timeoutId !== null) window.clearTimeout(timeoutId);
+    }
 
+    lastEmptyVastAt = Date.now();
     cachedVastData = {
       videoUrl: '',
       allVideoUrls: [],
@@ -89,82 +228,131 @@ async function fetchLiveVastData(): Promise<VastAdData> {
       loaded: true,
     };
     return cachedVastData;
-  })();
+  })().finally(() => {
+    vastFetchPromise = null;
+  });
 
   return vastFetchPromise;
 }
 
-function hasRenderedCreative(doc: Document | null | undefined): boolean {
-  if (!doc || !doc.body) return false;
-  const media = doc.body.querySelector('img, iframe, video, canvas, ins, a, object, embed');
-  if (!media) return false;
-  const rect = media.getBoundingClientRect();
-  return rect.width >= 40 && rect.height >= 20;
+// =========================================================================
+// GLOBAL SINGLE-ACTIVE-VIDEO COORDINATOR
+// Guarantees ONLY ONE background/in-flow video ad decodes & plays at a time
+// so mobile hardware MediaCodec decoders & main UI thread never saturate.
+// =========================================================================
+type ActiveVideoListener = (activeInstanceId: string | null) => void;
+const visibleVideoPriorities = new Map<string, number>();
+const activeVideoListeners = new Set<ActiveVideoListener>();
+let modalVideoLockCount = 0;
+let currentActiveVideoInstanceId: string | null = null;
+
+function notifyActiveVideoListeners() {
+  let nextActiveId: string | null = null;
+  if (modalVideoLockCount === 0 && visibleVideoPriorities.size > 0) {
+    let bestPriority = -1;
+    visibleVideoPriorities.forEach((priority, id) => {
+      if (priority > bestPriority) {
+        bestPriority = priority;
+        nextActiveId = id;
+      }
+    });
+  }
+  if (nextActiveId !== currentActiveVideoInstanceId) {
+    currentActiveVideoInstanceId = nextActiveId;
+    activeVideoListeners.forEach((listener) => listener(nextActiveId));
+  }
 }
 
-function documentHasAdultCreative(doc: Document | null | undefined): boolean {
-  if (!doc || !doc.body) return false;
-  try {
-    const signals: Array<string | null | undefined> = [doc.title, doc.body.innerText];
-
-    doc.body.querySelectorAll('a, img, iframe, video, source, script').forEach((el) => {
-      signals.push(
-        el.getAttribute('href'),
-        el.getAttribute('src'),
-        el.getAttribute('alt'),
-        el.getAttribute('title'),
-        el.getAttribute('aria-label'),
-        el.getAttribute('data-url'),
-        el.getAttribute('data-href')
-      );
-    });
-
-    return containsAdultAdSignals(...signals);
-  } catch {
-    return false;
+function setVideoSlotVisibility(instanceId: string, priority: number | null) {
+  if (priority === null) {
+    if (visibleVideoPriorities.delete(instanceId)) {
+      notifyActiveVideoListeners();
+    }
+    return;
   }
+  const prev = visibleVideoPriorities.get(instanceId);
+  if (prev === undefined || Math.abs(prev - priority) >= 0.05) {
+    visibleVideoPriorities.set(instanceId, priority);
+    notifyActiveVideoListeners();
+  }
+}
+
+function subscribeActiveVideo(listener: ActiveVideoListener): () => void {
+  activeVideoListeners.add(listener);
+  listener(currentActiveVideoInstanceId);
+  return () => {
+    activeVideoListeners.delete(listener);
+  };
+}
+
+function acquireModalVideoLock(): () => void {
+  modalVideoLockCount += 1;
+  notifyActiveVideoListeners();
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    modalVideoLockCount = Math.max(0, modalVideoLockCount - 1);
+    notifyActiveVideoListeners();
+  };
 }
 
 /**
  * Pure Frameless Dual-Network Banner Renderer (Adsterra <-> HilltopAds).
- * - ZERO outer boxes, borders, backgrounds, or ad-network/sponsored text labels.
- * - Strict SFW guard scans injected DOM links/images/text and wipes/hides any adult creative immediately.
+ * - Uses strict opaque-origin srcDoc isolation (NO `allow-same-origin` alongside `allow-scripts`)
+ *   so third-party ad scripts CANNOT access `window.top`, attach invisible overlays,
+ *   intercept Storyboard touch/scroll events, or block the main React UI thread.
+ * - Zero synchronous DOM/innerText polling and zero simultaneous 3.2s reload bursts.
  */
 export const DualNetworkBannerFrame: React.FC<{
   slotId: string;
   slotIndex?: number;
   preferFormat?: 'banner' | 'square' | 'wide';
+  maxHeight?: number;
   title?: string;
-}> = ({ slotId, slotIndex = 0, preferFormat = 'banner', title = 'Advertisement' }) => {
+}> = ({ slotId, slotIndex = 0, preferFormat = 'banner', maxHeight, title = 'Advertisement' }) => {
   const wrapperRef = useRef<HTMLDivElement | null>(null);
-  const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const [inView, setInView] = useState<boolean>(false);
+  const [mountReady, setMountReady] = useState<boolean>(false);
   const [isDesktop, setIsDesktop] = useState<boolean>(() =>
     typeof window !== 'undefined' ? window.innerWidth >= 768 : false
   );
   const [containerWidth, setContainerWidth] = useState<number>(() =>
-    typeof window !== 'undefined' ? window.innerWidth : 360
+    typeof window !== 'undefined' ? Math.min(window.innerWidth, 760) : 360
   );
-  const [activeNetwork, setActiveNetwork] = useState<'adsterra' | 'hilltop'>(
-    slotIndex % 2 === 0 ? 'hilltop' : 'adsterra'
-  );
-  const [failoverAttempts, setFailoverAttempts] = useState<number>(0);
-  const [blockedAsAdult, setBlockedAsAdult] = useState<boolean>(false);
+  const activeNetwork: 'adsterra' | 'hilltop' = slotIndex % 2 === 0 ? 'hilltop' : 'adsterra';
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const updateSize = () => setIsDesktop(window.innerWidth >= 768);
-    window.addEventListener('resize', updateSize);
-    return () => window.removeEventListener('resize', updateSize);
+    let rafId: number | null = null;
+    const updateSize = () => {
+      if (rafId !== null) window.cancelAnimationFrame(rafId);
+      rafId = window.requestAnimationFrame(() => {
+        const nextDesktop = window.innerWidth >= 768;
+        setIsDesktop((prev) => (prev === nextDesktop ? prev : nextDesktop));
+      });
+    };
+    window.addEventListener('resize', updateSize, { passive: true });
+    return () => {
+      if (rafId !== null) window.cancelAnimationFrame(rafId);
+      window.removeEventListener('resize', updateSize);
+    };
   }, []);
 
   useEffect(() => {
     const el = wrapperRef.current;
     if (!el) return;
 
+    let rafId: number | null = null;
     const updateWidth = () => {
-      const rect = el.getBoundingClientRect();
-      if (rect.width > 0) setContainerWidth(rect.width);
+      if (rafId !== null) window.cancelAnimationFrame(rafId);
+      rafId = window.requestAnimationFrame(() => {
+        const rect = el.getBoundingClientRect();
+        const rounded = Math.round(rect.width);
+        if (rounded > 0) {
+          setContainerWidth((prev) => (Math.abs(prev - rounded) >= 4 ? rounded : prev));
+        }
+      });
     };
     updateWidth();
 
@@ -183,7 +371,7 @@ export const DualNetworkBannerFrame: React.FC<{
             io?.disconnect();
           }
         },
-        { rootMargin: '500px 0px' }
+        { rootMargin: '120px 0px' }
       );
       io.observe(el);
     } else {
@@ -191,21 +379,21 @@ export const DualNetworkBannerFrame: React.FC<{
     }
 
     return () => {
+      if (rafId !== null) window.cancelAnimationFrame(rafId);
       ro?.disconnect();
       io?.disconnect();
     };
   }, []);
 
-  // Rotate between Adsterra and HilltopAds periodically
+  // Stagger iframe script hydration lightly when multiple banners enter near load
   useEffect(() => {
-    if (blockedAsAdult) return;
-    const timer = window.setInterval(() => {
-      setActiveNetwork((prev) => (prev === 'adsterra' ? 'hilltop' : 'adsterra'));
-    }, 25000);
-    return () => window.clearInterval(timer);
-  }, [blockedAsAdult]);
+    if (!inView) return;
+    const delayMs = 80 + (slotIndex % 4) * 140;
+    const timer = window.setTimeout(() => setMountReady(true), delayMs);
+    return () => window.clearTimeout(timer);
+  }, [inView, slotIndex]);
 
-  const adDetails = (() => {
+  const adDetails = useMemo(() => {
     if (activeNetwork === 'adsterra') {
       const cfg = isDesktop ? ADSTERRA_CONFIG.desktop728x90 : ADSTERRA_CONFIG.mobile320x50;
       const scriptHtml = `<script type="text/javascript">
@@ -217,7 +405,7 @@ export const DualNetworkBannerFrame: React.FC<{
           'params': {}
         };
       </script>
-      <script type="text/javascript" src="${cfg.invokeUrl}"></script>`;
+      <script type="text/javascript" src="${cfg.invokeUrl}" async></script>`;
       return { width: cfg.width, height: cfg.height, scriptHtml };
     }
 
@@ -234,55 +422,21 @@ export const DualNetworkBannerFrame: React.FC<{
         s.referrerPolicy = 'no-referrer-when-downgrade';
         if (l && l.parentNode) {
           l.parentNode.insertBefore(s, l);
-        } else {
+        } else if (d.body) {
           d.body.appendChild(s);
         }
       })({});
     </script>`;
     return { width: cfg.width, height: cfg.height, scriptHtml };
-  })();
+  }, [activeNetwork, isDesktop, preferFormat]);
 
-  const safeWidth = Math.max(260, containerWidth);
-  const scale = Math.min(1, safeWidth / adDetails.width);
-  const scaledWidth = Math.floor(adDetails.width * scale);
-  const scaledHeight = Math.floor(adDetails.height * scale);
-
-  useEffect(() => {
-    if (!inView || blockedAsAdult) return;
-    const iframe = iframeRef.current;
-    if (!iframe) return;
-
-    let observer: MutationObserver | null = null;
-
-    const inspectAndProtect = () => {
-      try {
-        const doc = iframeRef.current?.contentWindow?.document;
-        if (documentHasAdultCreative(doc)) {
-          if (doc?.body) doc.body.innerHTML = '';
-          if (failoverAttempts < 1) {
-            setFailoverAttempts((c) => c + 1);
-            setActiveNetwork((prev) => (prev === 'adsterra' ? 'hilltop' : 'adsterra'));
-          } else {
-            setBlockedAsAdult(true);
-          }
-          return true;
-        }
-      } catch {}
-      return false;
-    };
-
-    try {
-      const doc = iframe.contentWindow?.document;
-      if (!doc) return;
-      const baseHref = typeof window !== 'undefined' ? window.location.origin : '';
-      doc.open();
-      doc.write(`<!doctype html>
+  const bannerSrcDoc = useMemo(() => {
+    return `<!doctype html>
 <html>
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <meta name="rating" content="General" />
-    ${baseHref ? `<base href="${baseHref}/" />` : ''}
     <style>
       html, body {
         margin: 0;
@@ -301,53 +455,14 @@ export const DualNetworkBannerFrame: React.FC<{
   <body>
     ${adDetails.scriptHtml}
   </body>
-</html>`);
-      doc.close();
+</html>`;
+  }, [adDetails]);
 
-      if (doc.body && typeof MutationObserver !== 'undefined') {
-        observer = new MutationObserver(() => {
-          inspectAndProtect();
-        });
-        observer.observe(doc.body, {
-          childList: true,
-          subtree: true,
-          attributes: true,
-        });
-      }
-    } catch {}
-
-    const checkTimes = [800, 1800, 3500, 6500];
-    const timers = checkTimes.map((ms) =>
-      window.setTimeout(() => {
-        if (inspectAndProtect()) return;
-        if (ms === 3500) {
-          try {
-            const filled = hasRenderedCreative(iframeRef.current?.contentWindow?.document);
-            if (!filled && failoverAttempts < 1) {
-              setFailoverAttempts((c) => c + 1);
-              setActiveNetwork((prev) => (prev === 'adsterra' ? 'hilltop' : 'adsterra'));
-            }
-          } catch {}
-        }
-      }, ms)
-    );
-
-    return () => {
-      observer?.disconnect();
-      timers.forEach((t) => window.clearTimeout(t));
-    };
-  }, [
-    inView,
-    blockedAsAdult,
-    activeNetwork,
-    adDetails.width,
-    adDetails.height,
-    adDetails.scriptHtml,
-    slotId,
-    failoverAttempts,
-  ]);
-
-  if (blockedAsAdult) return null;
+  const safeWidth = maxHeight ? Math.max(96, containerWidth) : Math.max(260, containerWidth);
+  const heightScale = maxHeight ? maxHeight / adDetails.height : 1;
+  const scale = Math.min(1, safeWidth / adDetails.width, heightScale);
+  const scaledWidth = Math.max(1, Math.floor(adDetails.width * scale));
+  const scaledHeight = Math.max(1, Math.floor(adDetails.height * scale));
 
   return (
     <div ref={wrapperRef} className="w-full max-w-full flex items-center justify-center">
@@ -357,16 +472,19 @@ export const DualNetworkBannerFrame: React.FC<{
           width: `${scaledWidth}px`,
           height: `${scaledHeight}px`,
           maxWidth: '100%',
+          contain: 'layout style paint',
         }}
       >
-        {inView && (
+        {inView && mountReady && (
           <iframe
-            ref={iframeRef}
             key={`${slotId}-${activeNetwork}-${adDetails.width}x${adDetails.height}`}
+            srcDoc={bannerSrcDoc}
             title={title}
+            loading="lazy"
             scrolling="no"
-            frameBorder="0"
-            sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox"
+            frameBorder={0}
+            referrerPolicy="no-referrer-when-downgrade"
+            sandbox="allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox"
             allow="autoplay; encrypted-media"
             style={{
               width: `${adDetails.width}px`,
@@ -387,9 +505,9 @@ export const DualNetworkBannerFrame: React.FC<{
 
 /**
  * Pure Frameless Video Ad Unit (Real SFW-Filtered VAST Commercial Video Only).
- * - Waits for server-side Non-Adult (SFW) VAST validation before rendering any stream.
- * - Hides cleanly if no verified SFW video stream is available.
- * - Tapping on or near the video NEVER hijacks navigation to another website.
+ * - Coordinated globally so ONLY ONE video ad actively decodes/plays at any moment,
+ *   preventing mobile GPU/MediaCodec stalls and main-thread freezes.
+ * - Releases the `<video>` element cleanly when scrolled out of view or superseded.
  */
 export const SkippableVideoAdUnit: React.FC<{
   slotId: string;
@@ -397,8 +515,21 @@ export const SkippableVideoAdUnit: React.FC<{
   mini?: boolean;
   fillParent?: boolean;
   startIndex?: number;
+  fallbackBannerSlotId?: string;
+  forceRetryOnMount?: boolean;
   onDismiss?: () => void;
-}> = ({ compact = false, mini = false, fillParent = false, startIndex = 0, onDismiss }) => {
+}> = ({
+  slotId,
+  compact = false,
+  mini = false,
+  fillParent = false,
+  startIndex = 0,
+  fallbackBannerSlotId,
+  forceRetryOnMount = false,
+  onDismiss,
+}) => {
+  const reactId = useId();
+  const instanceId = `${slotId}::${reactId}`;
   const [adData, setAdData] = useState<VastAdData>({
     videoUrl: '',
     allVideoUrls: [],
@@ -410,12 +541,13 @@ export const SkippableVideoAdUnit: React.FC<{
   const [errorCount, setErrorCount] = useState<number>(0);
   const [skipSecondsLeft, setSkipSecondsLeft] = useState<number>(2);
   const [isMuted, setIsMuted] = useState<boolean>(true);
+  const [isActiveDecoder, setIsActiveDecoder] = useState<boolean>(false);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
   useEffect(() => {
     let isMounted = true;
-    fetchLiveVastData().then((data) => {
+    fetchLiveVastData(forceRetryOnMount).then((data) => {
       if (isMounted) {
         setAdData(data);
       }
@@ -423,9 +555,17 @@ export const SkippableVideoAdUnit: React.FC<{
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [forceRetryOnMount]);
 
   useEffect(() => {
+    const unsub = subscribeActiveVideo((activeId) => {
+      setIsActiveDecoder(activeId === instanceId);
+    });
+    return unsub;
+  }, [instanceId]);
+
+  useEffect(() => {
+    if (!isActiveDecoder) return;
     setSkipSecondsLeft(2);
     const t1 = window.setTimeout(() => setSkipSecondsLeft(1), 1000);
     const t2 = window.setTimeout(() => setSkipSecondsLeft(0), 2000);
@@ -433,47 +573,89 @@ export const SkippableVideoAdUnit: React.FC<{
       window.clearTimeout(t1);
       window.clearTimeout(t2);
     };
-  }, [videoIndex]);
+  }, [videoIndex, isActiveDecoder]);
 
   const currentVideoSrc =
     adData.allVideoUrls.length > 0
       ? adData.allVideoUrls[videoIndex % adData.allVideoUrls.length]
       : '';
 
-  // Ensure continuous muted playback whenever visible on screen
+  const hasPlayableAd =
+    adData.loaded && Boolean(currentVideoSrc) && errorCount < adData.allVideoUrls.length;
+
   useEffect(() => {
-    if (!currentVideoSrc) return;
-    const vid = videoRef.current;
+    if (!hasPlayableAd) {
+      setVideoSlotVisibility(instanceId, null);
+      return;
+    }
     const container = containerRef.current;
-    if (!vid || !container) return;
+    if (!container) return;
 
-    const tryPlay = () => {
-      if (vid.paused) {
-        vid.muted = isMuted;
-        vid.play().catch(() => {
-          vid.muted = true;
-          vid.play().catch(() => {});
-        });
-      }
-    };
+    const basePriorityBoost = slotId === 'floating-mini-vid' ? 0.25 : 1.0;
 
-    tryPlay();
+    if (typeof IntersectionObserver === 'undefined') {
+      setVideoSlotVisibility(instanceId, basePriorityBoost);
+      return () => setVideoSlotVisibility(instanceId, null);
+    }
 
-    if (typeof IntersectionObserver === 'undefined') return;
     const io = new IntersectionObserver(
       (entries) => {
-        if (entries.some((e) => e.isIntersecting)) {
-          tryPlay();
+        const entry = entries[0];
+        if (entry && entry.isIntersecting && entry.intersectionRatio >= 0.02) {
+          setVideoSlotVisibility(instanceId, Math.max(0.05, entry.intersectionRatio) * basePriorityBoost);
+        } else {
+          setVideoSlotVisibility(instanceId, null);
         }
       },
-      { threshold: 0.15 }
+      { threshold: [0, 0.02, 0.25, 0.75] }
     );
     io.observe(container);
-    return () => io.disconnect();
-  }, [currentVideoSrc, isMuted]);
 
-  // If SFW validation returned no safe video URLs (or failed all), hide slot cleanly
-  if (!adData.loaded || !currentVideoSrc || errorCount >= adData.allVideoUrls.length) {
+    return () => {
+      io.disconnect();
+      setVideoSlotVisibility(instanceId, null);
+    };
+  }, [hasPlayableAd, instanceId, slotId]);
+
+  // Release hardware decoder immediately when inactive or unmounted
+  useEffect(() => {
+    const vid = videoRef.current;
+    if (!vid) return;
+
+    if (isActiveDecoder && currentVideoSrc) {
+      vid.muted = isMuted;
+      vid.play().catch(() => {
+        vid.muted = true;
+        vid.play().catch(() => {});
+      });
+    }
+
+    return () => {
+      try {
+        vid.pause();
+        vid.removeAttribute('src');
+        vid.load();
+      } catch {}
+    };
+  }, [isActiveDecoder, currentVideoSrc, isMuted]);
+
+  // If SFW validation returned no safe video URLs (or failed all), optionally show compact live banner fallback
+  if (!hasPlayableAd) {
+    if (fallbackBannerSlotId) {
+      return (
+        <div
+          className={`w-full ${fillParent ? 'h-full' : mini ? 'h-[46px]' : 'h-[120px]'} flex items-center justify-center overflow-hidden bg-[#0a0d14]`}
+        >
+          <DualNetworkBannerFrame
+            slotId={fallbackBannerSlotId}
+            slotIndex={0}
+            preferFormat="banner"
+            maxHeight={mini ? 46 : undefined}
+            title="Sponsor Ad"
+          />
+        </div>
+      );
+    }
     return null;
   }
 
@@ -505,6 +687,7 @@ export const SkippableVideoAdUnit: React.FC<{
   return (
     <div
       ref={containerRef}
+      style={{ contain: 'layout style paint' }}
       className={`relative w-full rounded-xl overflow-hidden flex items-center justify-center bg-black ${
         fillParent
           ? 'h-full'
@@ -515,23 +698,27 @@ export const SkippableVideoAdUnit: React.FC<{
           : 'h-[190px] sm:h-[230px]'
       }`}
     >
-      <video
-        ref={videoRef}
-        key={currentVideoSrc}
-        src={currentVideoSrc}
-        autoPlay
-        muted={isMuted}
-        playsInline
-        loop
-        preload="auto"
-        onCanPlay={() => {
-          if (videoRef.current?.paused) {
-            videoRef.current.play().catch(() => {});
-          }
-        }}
-        onError={handleVideoError}
-        className="w-full h-full object-cover pointer-events-none select-none"
-      />
+      {isActiveDecoder ? (
+        <video
+          ref={videoRef}
+          key={currentVideoSrc}
+          src={currentVideoSrc}
+          autoPlay
+          muted={isMuted}
+          playsInline
+          loop
+          preload="metadata"
+          onCanPlay={() => {
+            if (videoRef.current?.paused) {
+              videoRef.current.play().catch(() => {});
+            }
+          }}
+          onError={handleVideoError}
+          className="w-full h-full object-cover pointer-events-none select-none"
+        />
+      ) : (
+        <div className="w-full h-full bg-zinc-950/90" aria-hidden="true" />
+      )}
 
       {/* Minimal Overlay Controls Only (Mute + 2s Next Video + Close) — stays safely inside app */}
       <div
@@ -642,14 +829,13 @@ export const TopBannerAd: React.FC = () => {
 };
 
 /**
- * Compact Video Ad Pair with Small Banner right below.
+ * Compact Video Ad + Small Banner right below (capped to 1 active video for smooth mobile playback).
  */
 export const InlineVideoAdPair: React.FC<{ sectionId: string }> = ({ sectionId }) => {
   return (
-    <div className="w-full max-w-5xl mx-auto my-3 space-y-2.5">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+    <div className="w-full max-w-3xl mx-auto my-3 space-y-2.5">
+      <div className="max-w-lg mx-auto w-full">
         <SkippableVideoAdUnit slotId={`${sectionId}-vid-1`} compact startIndex={0} />
-        <SkippableVideoAdUnit slotId={`${sectionId}-vid-2`} compact startIndex={1} />
       </div>
       <div className="flex items-center justify-center">
         <DualNetworkBannerFrame
@@ -664,31 +850,21 @@ export const InlineVideoAdPair: React.FC<{ sectionId: string }> = ({ sectionId }
 };
 
 /**
- * Full-Width Showcase (Centered Playing Video + Dual Small Banners below).
+ * Full-Width Showcase (Centered Playing Video + Clean Banner below).
  */
 export const FullWidthShowcaseAd: React.FC<{ slotId: string }> = ({ slotId }) => {
   return (
-    <div className="col-span-full w-full max-w-5xl mx-auto my-3 space-y-2.5">
+    <div className="col-span-full w-full max-w-4xl mx-auto my-3 space-y-2.5">
       <div className="max-w-lg mx-auto w-full">
         <SkippableVideoAdUnit slotId={`${slotId}-center-vid`} compact startIndex={2} />
       </div>
-      <div className="grid grid-cols-1 md:grid-cols-12 gap-2.5 items-center">
-        <div className="md:col-span-6 w-full flex items-center justify-center">
-          <DualNetworkBannerFrame
-            slotId={`${slotId}-wide`}
-            slotIndex={0}
-            preferFormat="banner"
-            title={`Showcase Wide ${slotId}`}
-          />
-        </div>
-        <div className="md:col-span-6 w-full flex items-center justify-center">
-          <DualNetworkBannerFrame
-            slotId={`${slotId}-alt`}
-            slotIndex={1}
-            preferFormat="banner"
-            title={`Showcase Alt ${slotId}`}
-          />
-        </div>
+      <div className="w-full flex items-center justify-center">
+        <DualNetworkBannerFrame
+          slotId={`${slotId}-wide`}
+          slotIndex={0}
+          preferFormat="banner"
+          title={`Showcase Wide ${slotId}`}
+        />
       </div>
     </div>
   );
@@ -719,7 +895,7 @@ export const InFeedBannerAd: React.FC<{
 /**
  * 2-Second Auto-Cut In-Page Video Ad Overlay:
  * - Triggered smoothly inside the website (40s after opening) — zero external page redirects.
- * - Only opens when verified SFW VAST video stream is available.
+ * - Pauses inline video ads while active so hardware decoders stay free.
  * - Auto-skips cleanly in 2 seconds AND offers an immediate Skip button on the video corner.
  */
 export const TwoSecondVideoBreakOverlay: React.FC<{
@@ -734,7 +910,11 @@ export const TwoSecondVideoBreakOverlay: React.FC<{
   onCloseRef.current = onClose;
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      setVideoSrc('');
+      return;
+    }
+    const releaseLock = acquireModalVideoLock();
     setMsLeft(2000);
 
     let cancelled = false;
@@ -757,11 +937,17 @@ export const TwoSecondVideoBreakOverlay: React.FC<{
         window.clearInterval(interval);
         onCloseRef.current();
       }
-    }, 60);
+    }, 100);
+
+    const failsafeTimer = window.setTimeout(() => {
+      onCloseRef.current();
+    }, 2600);
 
     return () => {
       cancelled = true;
       window.clearInterval(interval);
+      window.clearTimeout(failsafeTimer);
+      releaseLock();
     };
   }, [open]);
 
@@ -819,6 +1005,7 @@ export const TwoSecondVideoBreakOverlay: React.FC<{
             muted={isMuted}
             playsInline
             loop
+            onError={() => onCloseRef.current()}
             className="w-full h-full object-cover"
           />
         </div>
@@ -833,14 +1020,15 @@ export const TwoSecondVideoBreakOverlay: React.FC<{
 };
 
 /**
- * Small Persistent Corner Mini Video Player (Mobile + Desktop) — keeps playing smoothly inside the screen.
+ * Small Persistent Corner Mini Video Player (Desktop / Wide Screens) — stays cleanly in corner
+ * without competing against visible in-flow video decoders.
  */
 export const FloatingMiniVideoAd: React.FC = () => {
   const [visible, setVisible] = useState<boolean>(true);
   if (!visible) return null;
 
   return (
-    <div className="fixed bottom-[68px] sm:bottom-4 right-2 sm:right-4 z-30 w-[156px] sm:w-[230px] shadow-2xl rounded-xl overflow-hidden border border-zinc-800/80 bg-black">
+    <div className="hidden md:block fixed bottom-[68px] sm:bottom-4 right-2 sm:right-4 z-30 w-[180px] sm:w-[220px] shadow-2xl rounded-xl overflow-hidden border border-zinc-800/80 bg-black">
       <SkippableVideoAdUnit
         slotId="floating-mini-vid"
         mini
@@ -935,6 +1123,7 @@ export const FourSecondExportVideoAd: React.FC<{
       setVideoIdx(0);
       return;
     }
+    const releaseLock = acquireModalVideoLock();
     setMsLeft(durationMs);
     setVideoUrls([]);
     setVideoIdx(0);
@@ -954,6 +1143,7 @@ export const FourSecondExportVideoAd: React.FC<{
     if (activeWhileExporting) {
       return () => {
         cancelled = true;
+        releaseLock();
       };
     }
 
@@ -971,6 +1161,7 @@ export const FourSecondExportVideoAd: React.FC<{
     return () => {
       cancelled = true;
       window.clearInterval(interval);
+      releaseLock();
     };
   }, [open, durationMs, activeWhileExporting]);
 
@@ -1084,19 +1275,28 @@ export const FourSecondExportVideoAd: React.FC<{
 
 /**
  * Persistent Compact Bottom Video Ad Strip for the Video Editing System.
- * Always sits cleanly at the very bottom of the Video Editor without overlapping timeline tracks.
+ * Always sits cleanly at the very bottom of the Video Editor (left compact video ad + right live banner ad)
+ * without overlapping timeline tracks or clipping vertically.
  */
 export const EditorBottomVideoAdBar: React.FC<{ slotId?: string }> = ({ slotId = 'studio-bottom' }) => {
   return (
-    <div className="w-full h-[54px] sm:h-[62px] bg-[#070a0f] border-t border-zinc-800/90 px-2 py-1 flex items-center justify-between gap-2 shrink-0 overflow-hidden z-20">
-      <div className="w-[96px] sm:w-[138px] h-[44px] sm:h-[52px] rounded-lg overflow-hidden bg-black border border-zinc-800 shrink-0 shadow-md">
-        <SkippableVideoAdUnit slotId={`${slotId}-vid`} mini fillParent startIndex={0} />
+    <div className="w-full h-[58px] sm:h-[66px] bg-[#070a0f] border-t border-zinc-800/90 px-2 py-1 flex items-center justify-between gap-2 shrink-0 overflow-hidden z-20">
+      <div className="w-[104px] sm:w-[146px] h-[46px] sm:h-[54px] rounded-lg overflow-hidden bg-black border border-zinc-800 shrink-0 shadow-md">
+        <SkippableVideoAdUnit
+          slotId={`${slotId}-vid`}
+          mini
+          fillParent
+          startIndex={0}
+          forceRetryOnMount
+          fallbackBannerSlotId={`${slotId}-vid-banner`}
+        />
       </div>
       <div className="flex-1 min-w-0 h-full flex items-center justify-center overflow-hidden">
         <DualNetworkBannerFrame
           slotId={`${slotId}-wide`}
           slotIndex={1}
           preferFormat="wide"
+          maxHeight={54}
           title="Video Editor Bottom Ad"
         />
       </div>
@@ -1105,8 +1305,9 @@ export const EditorBottomVideoAdBar: React.FC<{ slotId?: string }> = ({ slotId =
 };
 
 /**
- * Live Video Commercial Player embedded directly inside the Export Modal.
- * Plays continuously for the exact duration of the video export (0% -> 100%).
+ * Live Video Commercial Player embedded directly inside the Export Modal Box.
+ * Plays continuously for the ENTIRE export + download finalization duration (0% -> 100%)
+ * and shuts off cleanly at the exact moment export finishes.
  */
 export const ExportModalVideoAdPlayer: React.FC<{
   active: boolean;
@@ -1117,6 +1318,7 @@ export const ExportModalVideoAdPlayer: React.FC<{
 }> = ({ active, progress, elapsedSec, totalSec, statusText }) => {
   const [videoUrls, setVideoUrls] = useState<string[]>([]);
   const [videoIdx, setVideoIdx] = useState<number>(0);
+  const [errorCount, setErrorCount] = useState<number>(0);
   const [isMuted, setIsMuted] = useState<boolean>(true);
   const [loadedVast, setLoadedVast] = useState<boolean>(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -1125,11 +1327,15 @@ export const ExportModalVideoAdPlayer: React.FC<{
     if (!active) {
       setVideoUrls([]);
       setVideoIdx(0);
+      setErrorCount(0);
       setLoadedVast(false);
       return;
     }
+    const releaseLock = acquireModalVideoLock();
+    setErrorCount(0);
+    setLoadedVast(false);
     let cancelled = false;
-    fetchLiveVastData().then((data) => {
+    fetchLiveVastData(true).then((data) => {
       if (cancelled) return;
       if (data?.allVideoUrls && data.allVideoUrls.length > 0) {
         const shuffled = [...data.allVideoUrls].sort(() => Math.random() - 0.5);
@@ -1140,16 +1346,26 @@ export const ExportModalVideoAdPlayer: React.FC<{
     });
     return () => {
       cancelled = true;
+      releaseLock();
     };
   }, [active]);
 
-  const videoSrc = videoUrls[videoIdx % Math.max(1, videoUrls.length)] || '';
+  const hasPlayableVideo = videoUrls.length > 0 && errorCount < videoUrls.length;
+  const videoSrc = hasPlayableVideo ? videoUrls[videoIdx % videoUrls.length] || '' : '';
 
   useEffect(() => {
     if (!active || !videoSrc || !videoRef.current) return;
     const vid = videoRef.current;
     vid.muted = isMuted;
-    vid.play().catch(() => {});
+    vid.play().catch(() => {
+      vid.muted = true;
+      vid.play().catch(() => {});
+    });
+    return () => {
+      try {
+        vid.pause();
+      } catch {}
+    };
   }, [active, videoSrc, isMuted]);
 
   if (!active) return null;
@@ -1160,17 +1376,30 @@ export const ExportModalVideoAdPlayer: React.FC<{
 
   return (
     <div className="rounded-xl overflow-hidden bg-black border border-zinc-800 shadow-xl space-y-0">
-      <div className="relative w-full h-[170px] sm:h-[200px] bg-black flex items-center justify-center overflow-hidden">
+      <div className="relative w-full h-[180px] sm:h-[210px] bg-black flex items-center justify-center overflow-hidden">
         {videoSrc ? (
           <>
             <video
+              key={videoSrc}
               ref={videoRef}
               src={videoSrc}
               autoPlay
               muted={isMuted}
               playsInline
+              preload="auto"
               loop={videoUrls.length <= 1}
+              onCanPlay={() => {
+                if (active && videoRef.current?.paused) {
+                  videoRef.current.play().catch(() => {});
+                }
+              }}
+              onPause={() => {
+                if (active && videoRef.current && !videoRef.current.ended) {
+                  videoRef.current.play().catch(() => {});
+                }
+              }}
               onEnded={() => {
+                if (!active) return;
                 if (videoUrls.length > 1) {
                   setVideoIdx((i) => (i + 1) % videoUrls.length);
                 } else if (videoRef.current) {
@@ -1178,7 +1407,13 @@ export const ExportModalVideoAdPlayer: React.FC<{
                   videoRef.current.play().catch(() => {});
                 }
               }}
-              className="w-full h-full object-cover"
+              onError={() => {
+                setErrorCount((c) => c + 1);
+                if (videoUrls.length > 1) {
+                  setVideoIdx((i) => (i + 1) % videoUrls.length);
+                }
+              }}
+              className="w-full h-full object-cover pointer-events-none select-none"
             />
             <button
               type="button"
@@ -1201,6 +1436,7 @@ export const ExportModalVideoAdPlayer: React.FC<{
               slotId="export-modal-fallback"
               slotIndex={0}
               preferFormat="banner"
+              maxHeight={180}
               title="Export Sponsor Ad"
             />
           </div>

@@ -110,6 +110,48 @@ import {
   type ColorGradePreset,
   type CinemaVfxItem,
 } from './videoStudioLibrary';
+import {
+  PRO_EDITOR_FEATURES,
+  PRO_FEATURE_CATEGORIES,
+  PRO_SETTING_MODULES,
+  buildFeatureSettingsCatalog,
+  computeProRenderDeltas,
+  type ProEditorFeature,
+} from './proEditorFeatures';
+import {
+  DEFAULT_CHROMA_KEY_CONFIG,
+  DEFAULT_SPLIT_SCREEN_CONFIG,
+  TRAILER_CARD_ANIMATIONS,
+  TRAILER_CARD_THEMES,
+  TRAILER_FX_OPTIONS,
+  TRAILER_PRESET_PACKS,
+  TRAILER_TITLE_ANIMATIONS,
+  TRAILER_TITLE_THEMES,
+  drawAnimatedCinemaTitle,
+  drawChromaBackground,
+  drawChromaKeyedSource,
+  drawSplitScreenComposition,
+  drawTrailerCardOnCanvas,
+  drawTrailerFxOverlay,
+  type ChromaBgMode,
+  type ChromaKeyColorPreset,
+  type ChromaKeyConfig,
+  type SplitLayoutType,
+  type SplitScreenConfig,
+  type TitleAnimationType,
+  type TitleThemeType,
+  type TrailerCardAnimation,
+  type TrailerCardLayer,
+  type TrailerCardTheme,
+  type TrailerFxMode,
+} from '../lib/studioAdvancedFx';
+import {
+  computeRequestedExportDimensions,
+  probeSupportedVideoEncoderConfig,
+  runWebCodecsMp4Export,
+  waitForVideoSeekReady,
+  type ExportAudioSourceClip,
+} from '../lib/mp4ExportEngine';
 
 export interface VideoEditorStudioProps {
   lang: AppLang;
@@ -569,6 +611,231 @@ const drawCinemaVfxOnCanvas = (
       ctx.stroke();
     }
     ctx.restore();
+  } else if (kind === 'building_inferno') {
+    // Full Burning Building Inferno: Multi-story structure, blazing windows, towering flames, smoke & embers
+    const bw = unit * 4.2;
+    const bh = unit * 3.4;
+    const bx = sx - bw / 2;
+    const by = sy - bh / 2;
+    ctx.save();
+    // Rising dark smoke plumes behind & above building
+    for (let sm = 0; sm < 9; sm++) {
+      const spx = sx + ((sm % 5) - 2) * bw * 0.22 + Math.sin(prog * 6 + sm) * unit * 0.28;
+      const spy = by - unit * (0.25 + ((prog * 1.4 + sm * 0.14) % 1) * 2.6);
+      const sr = unit * (0.65 + (sm % 3) * 0.35);
+      const smG = ctx.createRadialGradient(spx, spy, 2, spx, spy, sr);
+      smG.addColorStop(0, 'rgba(30, 41, 59, 0.65)');
+      smG.addColorStop(1, 'rgba(15, 23, 42, 0)');
+      ctx.fillStyle = smG;
+      ctx.beginPath();
+      ctx.arc(spx, spy, sr, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // Building Silhouette + Glowing Fire Windows
+    ctx.fillStyle = 'rgba(15, 18, 25, 0.85)';
+    ctx.fillRect(bx, by, bw, bh);
+    const cols = 4;
+    const rows = 3;
+    const winW = bw / (cols * 1.8);
+    const winH = bh / (rows * 2.0);
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const wx = bx + bw * 0.12 + c * (bw * 0.21);
+        const wy = by + bh * 0.12 + r * (bh * 0.27);
+        const flicker = 0.65 + 0.35 * Math.sin(prog * 22 + r * 3 + c * 5);
+        ctx.fillStyle = `rgba(251, 146, 60, ${flicker})`;
+        ctx.fillRect(wx, wy, winW, winH);
+        ctx.fillStyle = `rgba(254, 240, 138, ${flicker * 0.9})`;
+        ctx.fillRect(wx + winW * 0.2, wy + winH * 0.2, winW * 0.6, winH * 0.6);
+      }
+    }
+    // Towering Animated Flames engulfing roofline & windows
+    ctx.globalCompositeOperation = 'screen';
+    for (let f = 0; f < 16; f++) {
+      const fx = bx + (f / 15) * bw;
+      const fy = by + (f % 3 === 0 ? bh * 0.55 : f % 2 === 0 ? bh * 0.25 : 0);
+      const wave = Math.sin(prog * 26 + f * 1.7);
+      const fh = unit * (1.2 + (f % 4) * 0.45 + wave * 0.25);
+      const fw = unit * (0.48 + (f % 3) * 0.14);
+      const fg = ctx.createRadialGradient(fx, fy - fh * 0.3, 2, fx, fy - fh * 0.35, fh);
+      fg.addColorStop(0, 'rgba(255, 255, 224, 0.96)');
+      fg.addColorStop(0.32, 'rgba(253, 224, 71, 0.88)');
+      fg.addColorStop(0.68, 'rgba(234, 88, 12, 0.7)');
+      fg.addColorStop(1, 'rgba(0, 0, 0, 0)');
+      ctx.fillStyle = fg;
+      ctx.beginPath();
+      ctx.ellipse(fx + wave * unit * 0.12, fy - fh * 0.35, fw, fh, wave * 0.12, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // Rising Ember Sparks
+    for (let e = 0; e < 24; e++) {
+      const exPos = bx + ((e * 47 + Math.sin(prog * 14 + e) * 18) % Math.max(10, bw));
+      const eyPos = by + bh * 0.4 - ((prog * 2.6 + e * 0.09) % 1) * (bh * 1.4);
+      ctx.fillStyle = e % 2 === 0 ? '#fef08a' : '#fb923c';
+      ctx.beginPath();
+      ctx.arc(exPos, eyPos, Math.max(1.5, unit * 0.06), 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  } else if (kind === 'person_ablaze') {
+    // Full-Body Human Fire Aura (can be dragged onto any character silhouette on screen)
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+    const bodyH = unit * 3.8;
+    const bodyW = unit * 1.5;
+    // Ambient fiery aura
+    const aura = ctx.createRadialGradient(sx, sy, unit * 0.2, sx, sy, bodyH * 0.72);
+    aura.addColorStop(0, 'rgba(253, 224, 71, 0.65)');
+    aura.addColorStop(0.45, 'rgba(234, 88, 12, 0.45)');
+    aura.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    ctx.fillStyle = aura;
+    ctx.beginPath();
+    ctx.arc(sx, sy, bodyH * 0.72, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Multi-point flame tongues around head, shoulders, torso & arms
+    const flameAnchors = [
+      { ox: 0, oy: -bodyH * 0.38, s: 0.75 }, // Head crown
+      { ox: -bodyW * 0.45, oy: -bodyH * 0.12, s: 0.85 }, // Left shoulder
+      { ox: bodyW * 0.45, oy: -bodyH * 0.12, s: 0.85 }, // Right shoulder
+      { ox: -bodyW * 0.55, oy: bodyH * 0.12, s: 0.78 }, // Left arm
+      { ox: bodyW * 0.55, oy: bodyH * 0.12, s: 0.78 }, // Right arm
+      { ox: 0, oy: 0, s: 1.15 }, // Core chest
+      { ox: -bodyW * 0.25, oy: bodyH * 0.34, s: 0.9 }, // Left leg
+      { ox: bodyW * 0.25, oy: bodyH * 0.34, s: 0.9 }, // Right leg
+    ];
+    flameAnchors.forEach((pt, idx) => {
+      const wave = Math.sin(prog * 24 + idx * 1.9);
+      const fx = sx + pt.ox + wave * unit * 0.09;
+      const fy = sy + pt.oy;
+      const fh = unit * (1.15 * pt.s + Math.abs(wave) * 0.32);
+      const fw = unit * (0.44 * pt.s);
+      const fg = ctx.createRadialGradient(fx, fy - fh * 0.25, 1, fx, fy - fh * 0.25, fh);
+      fg.addColorStop(0, 'rgba(255, 255, 240, 0.95)');
+      fg.addColorStop(0.35, 'rgba(253, 224, 71, 0.88)');
+      fg.addColorStop(0.7, 'rgba(220, 38, 38, 0.65)');
+      fg.addColorStop(1, 'rgba(0, 0, 0, 0)');
+      ctx.fillStyle = fg;
+      ctx.beginPath();
+      ctx.ellipse(fx, fy - fh * 0.28, fw, fh, wave * 0.18, 0, Math.PI * 2);
+      ctx.fill();
+    });
+    // Rising body embers
+    for (let e = 0; e < 18; e++) {
+      const exPos = sx + Math.sin(e * 2.1 + prog * 12) * bodyW * 0.65;
+      const eyPos = sy + bodyH * 0.45 - ((prog * 2.1 + e * 0.12) % 1) * (bodyH * 1.25);
+      ctx.fillStyle = e % 2 === 0 ? '#fef9c3' : '#f97316';
+      ctx.beginPath();
+      ctx.arc(exPos, eyPos, Math.max(1.5, unit * 0.055), 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  } else if (kind === 'matchstick_strike') {
+    // Matchstick Strike -> Ignition Spark Burst -> 360 Spinning Match Throw with Fire Trail
+    ctx.save();
+    const igniteEnd = 0.26;
+    if (prog < igniteEnd) {
+      // Striker strip & friction sparks at (sx, sy)
+      const sp = prog / igniteEnd;
+      ctx.fillStyle = '#451a03';
+      ctx.strokeStyle = '#f59e0b';
+      ctx.lineWidth = 2;
+      ctx.fillRect(sx - unit * 0.9, sy + unit * 0.12, unit * 1.8, unit * 0.34);
+      ctx.strokeRect(sx - unit * 0.9, sy + unit * 0.12, unit * 1.8, unit * 0.34);
+      // Friction slide along box
+      const mx = sx - unit * 0.6 + sp * unit * 1.2;
+      const my = sy - unit * 0.02;
+      ctx.save();
+      ctx.translate(mx, my);
+      ctx.rotate(-0.45);
+      ctx.fillStyle = '#fde68a';
+      ctx.fillRect(-unit * 0.75, -unit * 0.06, unit * 0.75, unit * 0.12);
+      ctx.fillStyle = '#dc2626';
+      ctx.beginPath();
+      ctx.arc(0, 0, unit * 0.13, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+      // Sparks flying from match head
+      ctx.globalCompositeOperation = 'screen';
+      for (let k = 0; k < 14; k++) {
+        const a = -Math.PI + (k / 13) * Math.PI;
+        const d = sp * unit * (0.6 + (k % 4) * 0.25);
+        ctx.fillStyle = k % 2 === 0 ? '#fef08a' : '#f97316';
+        ctx.beginPath();
+        ctx.arc(mx + Math.cos(a) * d, my + Math.sin(a) * d, Math.max(1.8, unit * 0.06), 0, Math.PI * 2);
+        ctx.fill();
+      }
+    } else {
+      // Spinning Throw from (sx, sy) -> (ex, ey) with curved arc & glowing fire comet trail
+      const throwP = (prog - igniteEnd) / (1 - igniteEnd);
+      const arcLift = Math.sin(throwP * Math.PI) * unit * 1.3;
+      const curX = sx + dx * throwP;
+      const curY = sy + dy * throwP - arcLift;
+      const spinAngle = throwP * Math.PI * 10; // rapid 5-revolution spin
+
+      // Curved comet fire trail
+      ctx.globalCompositeOperation = 'screen';
+      for (let tr = 0; tr < 12; tr++) {
+        const tp = Math.max(0, throwP - tr * 0.028);
+        const tLift = Math.sin(tp * Math.PI) * unit * 1.3;
+        const tx = sx + dx * tp;
+        const ty = sy + dy * tp - tLift;
+        const alpha = (1 - tr / 12) * 0.85;
+        const fr = unit * (0.42 - tr * 0.025);
+        const fg = ctx.createRadialGradient(tx, ty, 1, tx, ty, fr);
+        fg.addColorStop(0, `rgba(255, 255, 224, ${alpha})`);
+        fg.addColorStop(0.45, `rgba(251, 146, 60, ${alpha * 0.85})`);
+        fg.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = fg;
+        ctx.beginPath();
+        ctx.arc(tx, ty, fr, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // Rotating wooden matchstick & glowing flame tip
+      ctx.save();
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.translate(curX, curY);
+      ctx.rotate(spinAngle);
+      ctx.fillStyle = '#fde68a';
+      ctx.fillRect(-unit * 0.52, -unit * 0.055, unit * 0.9, unit * 0.11);
+      ctx.fillStyle = '#dc2626';
+      ctx.beginPath();
+      ctx.arc(unit * 0.42, 0, unit * 0.12, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalCompositeOperation = 'screen';
+      const tipG = ctx.createRadialGradient(unit * 0.46, 0, 1, unit * 0.46, 0, unit * 0.65);
+      tipG.addColorStop(0, 'rgba(255, 255, 255, 1)');
+      tipG.addColorStop(0.4, 'rgba(253, 224, 71, 0.92)');
+      tipG.addColorStop(1, 'rgba(234, 88, 12, 0)');
+      ctx.fillStyle = tipG;
+      ctx.beginPath();
+      ctx.arc(unit * 0.46, 0, unit * 0.65, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+    ctx.restore();
+  } else if (kind === 'fire_tornado') {
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+    const cx = sx + dx * Math.min(1, prog * 0.65);
+    const cy = sy + dy * Math.min(1, prog * 0.65);
+    for (let ring = 0; ring < 14; ring++) {
+      const f = ring / 13;
+      const rx = cx + Math.sin(prog * 22 + ring * 0.8) * unit * (0.2 + f * 0.4);
+      const ry = cy + unit * 1.4 - f * unit * 3.8;
+      const rw = unit * (0.35 + f * 1.25);
+      const rh = unit * (0.22 + f * 0.42);
+      const vg = ctx.createRadialGradient(rx, ry, 2, rx, ry, rw);
+      vg.addColorStop(0, 'rgba(254, 240, 138, 0.92)');
+      vg.addColorStop(0.55, 'rgba(249, 115, 22, 0.72)');
+      vg.addColorStop(1, 'rgba(0, 0, 0, 0)');
+      ctx.fillStyle = vg;
+      ctx.beginPath();
+      ctx.ellipse(rx, ry, rw, rh, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
   }
 
   ctx.restore();
@@ -633,10 +900,23 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
   // =========================================================================
   const [isLeftPanelOpen, setIsLeftPanelOpen] = useState<boolean>(true);
   const [isRightPanelOpen, setIsRightPanelOpen] = useState<boolean>(true);
+  const [mobilePanel, setMobilePanel] = useState<'tools' | 'timeline' | 'inspector'>('tools');
 
   // ACTIVE TOP TAB IN LEFT COLUMN (Studio Mode):
   const [activeTab, setActiveTab] = useState<
-    'Media' | 'Audio' | 'Titles' | 'VFX' | 'Transitions' | 'Effects' | 'Filters' | 'Stickers' | 'Templates'
+    | 'Media'
+    | 'Audio'
+    | 'Titles'
+    | 'VFX'
+    | 'Transitions'
+    | 'Effects'
+    | 'Filters'
+    | 'Stickers'
+    | 'Templates'
+    | 'ProFX'
+    | 'Chroma'
+    | 'Split'
+    | 'Trailer'
   >('Filters');
 
   // Sub-category filter and search query inside the active column
@@ -650,6 +930,10 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
   const [selectedMediaIds, setSelectedMediaIds] = useState<string[]>([]);
   const multiFileInputRef = useRef<HTMLInputElement | null>(null);
   const setupFileInputRef = useRef<HTMLInputElement | null>(null);
+  const chromaBgInputRef = useRef<HTMLInputElement | null>(null);
+  const splitLeftInputRef = useRef<HTMLInputElement | null>(null);
+  const splitRightInputRef = useRef<HTMLInputElement | null>(null);
+  const trailerCardInputRef = useRef<HTMLInputElement | null>(null);
 
   // Active Template / Background
   const [selectedTemplate, setSelectedTemplate] = useState<TemplateItem>(TEMPLATES_LIST[0]);
@@ -670,8 +954,36 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
   const [selectedStickerLayerId, setSelectedStickerLayerId] = useState<string | null>(null);
   const [selectedVfxLayerId, setSelectedVfxLayerId] = useState<string | null>(null);
   const [selectedFeatureType, setSelectedFeatureType] = useState<
-    'clip' | 'title' | 'sticker' | 'vfx' | 'effect' | 'filter' | 'audio' | 'transition' | 'speed'
+    | 'clip'
+    | 'title'
+    | 'sticker'
+    | 'vfx'
+    | 'effect'
+    | 'filter'
+    | 'audio'
+    | 'transition'
+    | 'speed'
+    | 'profx'
+    | 'chroma'
+    | 'split'
+    | 'trailer_card'
   >('clip');
+
+  // Chroma Key (Green Screen), Dual Split-Screen Join, & Movie Trailer Studio States
+  const [chromaConfig, setChromaConfig] = useState<ChromaKeyConfig>(DEFAULT_CHROMA_KEY_CONFIG);
+  const [splitScreenConfig, setSplitScreenConfig] = useState<SplitScreenConfig>(DEFAULT_SPLIT_SCREEN_CONFIG);
+  const [titleAnimType, setTitleAnimType] = useState<TitleAnimationType>('zoom_slam');
+  const [titleThemeType, setTitleThemeType] = useState<TitleThemeType>('blockbuster_gold');
+  const [trailerFxMode, setTrailerFxMode] = useState<TrailerFxMode>('none');
+  const [trailerCardLayers, setTrailerCardLayers] = useState<TrailerCardLayer[]>([]);
+  const [selectedTrailerCardId, setSelectedTrailerCardId] = useState<string | null>(null);
+  const [draftCardTitle, setDraftCardTitle] = useState<string>('THE LAST STAND');
+  const [draftCardSubtitle, setDraftCardSubtitle] = useState<string>('A CINEMA EVENT · DIRECTED BY YOU');
+  const [draftCardBadge, setDraftCardBadge] = useState<string>('COMING SOON · TRAILER');
+  const [draftCardTheme, setDraftCardTheme] = useState<TrailerCardTheme>('blockbuster_gold');
+  const [draftCardAnim, setDraftCardAnim] = useState<TrailerCardAnimation>('tilt_float');
+  const [draftCardImageUrl, setDraftCardImageUrl] = useState<string>('');
+  const [draftCardMediaType, setDraftCardMediaType] = useState<'video' | 'photo'>('photo');
 
   // Active Title Text & Visibility + Position/Timing (Starts clean with ZERO unwanted text)
   const [showTitleOverlay, setShowTitleOverlay] = useState<boolean>(false);
@@ -701,6 +1013,23 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
   const [colorGradeSearch, setColorGradeSearch] = useState<string>('');
   const [activeColorGradeId, setActiveColorGradeId] = useState<string | null>(null);
   const [colorGradeLimit, setColorGradeLimit] = useState<number>(60);
+
+  // 300 Pro Video Editing Features × 660 Adjustable Settings/Parts Engine
+  const [activeProFeature, setActiveProFeature] = useState<ProEditorFeature | null>(null);
+  const [proSettingOverrides, setProSettingOverrides] = useState<Record<string, number>>({});
+  const [proSettingsModuleFilter, setProSettingsModuleFilter] = useState<string>('all');
+  const [proSettingsSearch, setProSettingsSearch] = useState<string>('');
+  const [proSettingsPage, setProSettingsPage] = useState<number>(0);
+
+  const activeFeatureCatalog = useMemo(
+    () => (activeProFeature ? buildFeatureSettingsCatalog(activeProFeature.id) : []),
+    [activeProFeature?.id]
+  );
+
+  const proRenderDeltas = useMemo(
+    () => computeProRenderDeltas(activeProFeature, proSettingOverrides, activeFeatureCatalog),
+    [activeProFeature, proSettingOverrides, activeFeatureCatalog]
+  );
 
   // Playback State (Exact sum of uploaded/added timeline clips; 0 when empty)
   const totalDuration = timelineClips.reduce((acc, c) => acc + (c.durationSec || 4), 0);
@@ -752,6 +1081,20 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
     const activeVideoKeys = new Set(
       timelineClips.filter((c) => c.type === 'video' && c.url).map((c) => `video:${c.url}`)
     );
+    if (splitScreenConfig.leftMediaUrl && splitScreenConfig.leftMediaType === 'video') {
+      activeVideoKeys.add(`video:${splitScreenConfig.leftMediaUrl}`);
+    }
+    if (splitScreenConfig.rightMediaUrl && splitScreenConfig.rightMediaType === 'video') {
+      activeVideoKeys.add(`video:${splitScreenConfig.rightMediaUrl}`);
+    }
+    if (chromaConfig.bgMediaUrl && chromaConfig.bgMediaType === 'video') {
+      activeVideoKeys.add(`video:${chromaConfig.bgMediaUrl}`);
+    }
+    trailerCardLayers.forEach((tc) => {
+      if (tc.imageUrl && tc.mediaType === 'video') {
+        activeVideoKeys.add(`video:${tc.imageUrl}`);
+      }
+    });
     mediaCacheRef.current.forEach((el, key) => {
       if (el instanceof HTMLVideoElement && !activeVideoKeys.has(key)) {
         try {
@@ -767,9 +1110,12 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
       if (!clip.url) return;
       const cacheKey = `${clip.type}:${clip.url}`;
       if (!mediaCacheRef.current.has(cacheKey)) {
+        const isLocalAsset = clip.url.startsWith('blob:') || clip.url.startsWith('data:');
         if (clip.type === 'video') {
           const video = document.createElement('video');
-          video.crossOrigin = 'anonymous';
+          if (!isLocalAsset) {
+            video.crossOrigin = 'anonymous';
+          }
           video.playsInline = true;
           video.preload = 'auto';
           video.src = clip.url;
@@ -777,14 +1123,18 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
           mediaCacheRef.current.set(cacheKey, video);
         } else {
           const img = new Image();
-          img.crossOrigin = 'anonymous';
+          if (!isLocalAsset) {
+            img.crossOrigin = 'anonymous';
+          }
           img.src = clip.url;
           mediaCacheRef.current.set(cacheKey, img);
         }
       }
       if (clip.thumbnailUrl && !thumbCacheRef.current.has(clip.thumbnailUrl)) {
         const tImg = new Image();
-        tImg.crossOrigin = 'anonymous';
+        if (!clip.thumbnailUrl.startsWith('blob:') && !clip.thumbnailUrl.startsWith('data:')) {
+          tImg.crossOrigin = 'anonymous';
+        }
         tImg.src = clip.thumbnailUrl;
         thumbCacheRef.current.set(clip.thumbnailUrl, tImg);
       }
@@ -847,11 +1197,20 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
   const [isVideoAudioMuted, setIsVideoAudioMuted] = useState<boolean>(false);
   const [isVideoTrackVisible, setIsVideoTrackVisible] = useState<boolean>(true);
 
-  // Inspector State (Right Column): 'adjust' | 'video' | 'audio' | 'color' | 'speed'
-  const [activeInspectorTab, setActiveInspectorTab] = useState<'adjust' | 'video' | 'audio' | 'color' | 'speed'>('adjust');
+  // Inspector State (Right Column): 'adjust' | 'video' | 'audio' | 'color' | 'speed' | 'profx'
+  const [activeInspectorTab, setActiveInspectorTab] = useState<'adjust' | 'video' | 'audio' | 'color' | 'speed' | 'profx'>('adjust');
   const canvasOverlayRef = useRef<HTMLDivElement | null>(null);
   const canvasDragStateRef = useRef<{
-    mode: 'move_sticker' | 'resize_sticker' | 'move_title' | 'resize_title' | 'vfx_start' | 'vfx_end' | 'vfx_scale';
+    mode:
+      | 'move_sticker'
+      | 'resize_sticker'
+      | 'move_title'
+      | 'resize_title'
+      | 'vfx_start'
+      | 'vfx_end'
+      | 'vfx_scale'
+      | 'move_card'
+      | 'resize_card';
     id?: string;
     initScale?: number;
     originX?: number;
@@ -882,7 +1241,7 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
   const [colorTint, setColorTint] = useState<number>(0); // -100 to +100
   const [colorHighlights, setColorHighlights] = useState<number>(0); // -100 to +100
   const [colorShadows, setColorShadows] = useState<number>(0); // -100 to +100
-  const [colorVignette, setColorVignette] = useState<number>(30); // 0 to 100
+  const [colorVignette, setColorVignette] = useState<number>(0); // 0 to 100 (clean default: no round shade)
 
   // =========================================================================
   // SPEED CONTROLS (Right Inspector 'speed' tab)
@@ -901,6 +1260,7 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
   const [exportedVideoUrl, setExportedVideoUrl] = useState<string | null>(null);
   const [exportedVideoFilename, setExportedVideoFilename] = useState<string>('CineStudio_Export.mp4');
   const [exportedVideoSizeMb, setExportedVideoSizeMb] = useState<string>('');
+  const [exportedVideoMetaLabel, setExportedVideoMetaLabel] = useState<string>('');
   const exportCancelRef = useRef<boolean>(false);
 
   const clearExportedPreview = () => {
@@ -913,6 +1273,7 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
       return null;
     });
     setExportedVideoSizeMb('');
+    setExportedVideoMetaLabel('');
     setExportElapsedSec(0);
     setExportEstimatedTotalSec(0);
   };
@@ -1038,19 +1399,24 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
     overrideClips?: TimelineClip[],
     overrideName?: string,
     overrideRatio?: AspectRatioType,
-    overrideProjectId?: string
+    overrideProjectId?: string,
+    overrideThumb?: string
   ) => {
     const activeClips = overrideClips || timelineClips;
     const activeName = overrideName || projectName;
     const activeRatio = overrideRatio || selectedAspectRatio;
-    let thumb = '';
-    try {
-      if (playerCanvasRef.current) {
-        thumb = playerCanvasRef.current.toDataURL('image/jpeg', 0.6);
-      }
-    } catch {}
+    let thumb = overrideThumb || '';
     if (!thumb && activeClips.length > 0) {
-      thumb = activeClips[0]?.url || '';
+      const firstThumbClip = activeClips.find((c) => Boolean(c.thumbnailUrl) && !c.thumbnailUrl!.startsWith('blob:'));
+      const firstPhotoClip = activeClips.find((c) => c.type === 'photo' && Boolean(c.url) && !c.url.startsWith('blob:'));
+      thumb = firstThumbClip?.thumbnailUrl || firstPhotoClip?.url || '';
+    }
+    if (!thumb && studioView === 'editor' && activeClips.length > 0) {
+      try {
+        if (playerCanvasRef.current) {
+          thumb = playerCanvasRef.current.toDataURL('image/jpeg', 0.72);
+        }
+      } catch {}
     }
 
     const projId = overrideProjectId || currentEditingProjectId || `proj_${Date.now()}`;
@@ -1118,6 +1484,14 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
     setSelectedStickerLayerId(null);
     setSelectedVfxLayerId(null);
     setActiveEffect(null);
+    setChromaConfig(DEFAULT_CHROMA_KEY_CONFIG);
+    setSplitScreenConfig(DEFAULT_SPLIT_SCREEN_CONFIG);
+    setTitleAnimType('zoom_slam');
+    setTitleThemeType('blockbuster_gold');
+    setTrailerFxMode('none');
+    setTrailerCardLayers([]);
+    setSelectedTrailerCardId(null);
+    setColorVignette(0);
     setSelectedFeatureType('clip');
     currentTimeRef.current = 0;
     setCurrentTimeSec(0);
@@ -1368,52 +1742,144 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
         void ctx.resume();
       }
       const now = ctx.currentTime;
+      const volScale = isMuted || isAudioTrackMuted ? 0 : Math.min(0.55, (volume / 100) * 0.42);
       const masterGain = ctx.createGain();
-      masterGain.gain.setValueAtTime(isMuted || isAudioTrackMuted ? 0 : Math.min(0.45, (volume / 100) * 0.35), now);
+      masterGain.gain.setValueAtTime(volScale, now);
       masterGain.connect(ctx.destination);
 
-      const notes =
-        item.synthPreset === 'comedy'
-          ? [523.25, 659.25, 587.33, 783.99, 659.25]
-          : item.synthPreset === 'meme_boom'
-          ? [110, 82.41, 65.41]
-          : item.synthPreset === 'trailer'
-          ? [130.81, 130.81, 155.56, 196.0]
-          : item.synthPreset === 'lofi'
-          ? [261.63, 329.63, 392.0, 493.88]
-          : item.synthPreset === 'electronic'
-          ? [220, 261.63, 329.63, 440, 329.63]
-          : item.synthPreset === 'sfx_whoosh'
-          ? [300, 720, 220]
-          : [261.63, 329.63, 392.0, 523.25];
+      let previewMs = 1350;
 
-      notes.forEach((freq, idx) => {
-        const osc = ctx.createOscillator();
-        const noteGain = ctx.createGain();
-        osc.type =
-          item.synthPreset === 'meme_boom' || item.synthPreset === 'trailer'
-            ? 'sawtooth'
-            : item.synthPreset === 'comedy'
-            ? 'triangle'
-            : 'sine';
-        const tStart = now + idx * 0.22;
-        osc.frequency.setValueAtTime(freq, tStart);
-        if (item.synthPreset === 'sfx_whoosh') {
-          osc.frequency.exponentialRampToValueAtTime(Math.max(60, freq * 1.6), tStart + 0.2);
+      if (item.synthPreset === 'sfx_glass_break') {
+        // 1. Initial sharp glass crash white-noise transient
+        const bufLen = Math.floor(ctx.sampleRate * 0.35);
+        const noiseBuf = ctx.createBuffer(1, bufLen, ctx.sampleRate);
+        const data = noiseBuf.getChannelData(0);
+        for (let i = 0; i < bufLen; i++) {
+          data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (ctx.sampleRate * 0.08));
         }
-        noteGain.gain.setValueAtTime(0.001, tStart);
-        noteGain.gain.exponentialRampToValueAtTime(0.6, tStart + 0.04);
-        noteGain.gain.exponentialRampToValueAtTime(0.001, tStart + 0.26);
-        osc.connect(noteGain);
-        noteGain.connect(masterGain);
-        osc.start(tStart);
-        osc.stop(tStart + 0.28);
-      });
+        const noiseSrc = ctx.createBufferSource();
+        noiseSrc.buffer = noiseBuf;
+        const hp = ctx.createBiquadFilter();
+        hp.type = 'highpass';
+        hp.frequency.setValueAtTime(2200, now);
+        noiseSrc.connect(hp);
+        hp.connect(masterGain);
+        noiseSrc.start(now);
+
+        // 2. Cascading crystal shard chimes
+        const shardFreqs = [3420, 4880, 2860, 5620, 3910, 6180, 3150, 4410, 5230, 3690];
+        shardFreqs.forEach((f, idx) => {
+          const osc = ctx.createOscillator();
+          const g = ctx.createGain();
+          const t0 = now + idx * 0.055;
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(f, t0);
+          g.gain.setValueAtTime(0.32, t0);
+          g.gain.exponentialRampToValueAtTime(0.001, t0 + 0.16);
+          osc.connect(g);
+          g.connect(masterGain);
+          osc.start(t0);
+          osc.stop(t0 + 0.17);
+        });
+        previewMs = 950;
+      } else if (item.synthPreset === 'sfx_fire_burn') {
+        // Matchstick friction strike + ignition whoosh + crackling embers
+        const dur = 1.6;
+        const bufLen = Math.floor(ctx.sampleRate * dur);
+        const noiseBuf = ctx.createBuffer(1, bufLen, ctx.sampleRate);
+        const data = noiseBuf.getChannelData(0);
+        for (let i = 0; i < bufLen; i++) {
+          const t = i / ctx.sampleRate;
+          const crackle = Math.random() > 0.985 ? (Math.random() * 2 - 1) * 1.4 : 0;
+          const env = t < 0.16 ? t / 0.16 : Math.exp(-(t - 0.16) * 1.4);
+          data[i] = ((Math.random() * 2 - 1) * 0.45 + crackle) * env;
+        }
+        const src = ctx.createBufferSource();
+        src.buffer = noiseBuf;
+        const bp = ctx.createBiquadFilter();
+        bp.type = 'bandpass';
+        bp.frequency.setValueAtTime(650, now);
+        bp.frequency.linearRampToValueAtTime(1400, now + 0.25);
+        bp.frequency.linearRampToValueAtTime(480, now + dur);
+        src.connect(bp);
+        bp.connect(masterGain);
+        src.start(now);
+        previewMs = 1650;
+      } else if (item.synthPreset === 'sfx_punch_impact') {
+        const osc = ctx.createOscillator();
+        const g = ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(190, now);
+        osc.frequency.exponentialRampToValueAtTime(42, now + 0.18);
+        g.gain.setValueAtTime(0.95, now);
+        g.gain.exponentialRampToValueAtTime(0.001, now + 0.24);
+        osc.connect(g);
+        g.connect(masterGain);
+        osc.start(now);
+        osc.stop(now + 0.26);
+        previewMs = 450;
+      } else if (item.synthPreset === 'sfx_gunshot') {
+        const bufLen = Math.floor(ctx.sampleRate * 0.45);
+        const noiseBuf = ctx.createBuffer(1, bufLen, ctx.sampleRate);
+        const data = noiseBuf.getChannelData(0);
+        for (let i = 0; i < bufLen; i++) {
+          data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (ctx.sampleRate * 0.09));
+        }
+        const src = ctx.createBufferSource();
+        src.buffer = noiseBuf;
+        const lp = ctx.createBiquadFilter();
+        lp.type = 'lowpass';
+        lp.frequency.setValueAtTime(3400, now);
+        lp.frequency.exponentialRampToValueAtTime(320, now + 0.35);
+        src.connect(lp);
+        lp.connect(masterGain);
+        src.start(now);
+        previewMs = 600;
+      } else {
+        const notes =
+          item.synthPreset === 'comedy'
+            ? [523.25, 659.25, 587.33, 783.99, 659.25]
+            : item.synthPreset === 'meme_boom'
+            ? [110, 82.41, 65.41]
+            : item.synthPreset === 'trailer'
+            ? [130.81, 130.81, 155.56, 196.0]
+            : item.synthPreset === 'lofi'
+            ? [261.63, 329.63, 392.0, 493.88]
+            : item.synthPreset === 'electronic'
+            ? [220, 261.63, 329.63, 440, 329.63]
+            : item.synthPreset === 'sfx_whoosh'
+            ? [300, 720, 220]
+            : [261.63, 329.63, 392.0, 523.25];
+
+        notes.forEach((freq, idx) => {
+          const osc = ctx.createOscillator();
+          const noteGain = ctx.createGain();
+          osc.type =
+            item.synthPreset === 'meme_boom' || item.synthPreset === 'trailer'
+              ? 'sawtooth'
+              : item.synthPreset === 'comedy'
+              ? 'triangle'
+              : 'sine';
+          const tStart = now + idx * 0.22;
+          osc.frequency.setValueAtTime(freq, tStart);
+          if (item.synthPreset === 'sfx_whoosh') {
+            osc.frequency.exponentialRampToValueAtTime(Math.max(60, freq * 1.6), tStart + 0.2);
+          }
+          noteGain.gain.setValueAtTime(0.001, tStart);
+          noteGain.gain.exponentialRampToValueAtTime(0.6, tStart + 0.04);
+          noteGain.gain.exponentialRampToValueAtTime(0.001, tStart + 0.26);
+          osc.connect(noteGain);
+          noteGain.connect(masterGain);
+          osc.start(tStart);
+          osc.stop(tStart + 0.28);
+        });
+        previewMs = notes.length * 240 + 150;
+      }
 
       setPreviewingAudioId(item.id);
       audioPreviewTimerRef.current = window.setTimeout(() => {
         setPreviewingAudioId(null);
-      }, notes.length * 240 + 150);
+      }, previewMs);
     } catch {}
   };
 
@@ -1545,6 +2011,13 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
     isMuted,
     isAudioTrackMuted,
     volume,
+    proRenderDeltas,
+    chromaConfig,
+    splitScreenConfig,
+    titleAnimType,
+    titleThemeType,
+    trailerFxMode,
+    trailerCardLayers,
   });
 
   useEffect(() => {
@@ -1588,6 +2061,13 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
       isMuted,
       isAudioTrackMuted,
       volume,
+      proRenderDeltas,
+      chromaConfig,
+      splitScreenConfig,
+      titleAnimType,
+      titleThemeType,
+      trailerFxMode,
+      trailerCardLayers,
     };
   }, [
     activeFilter,
@@ -1629,6 +2109,13 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
     isMuted,
     isAudioTrackMuted,
     volume,
+    proRenderDeltas,
+    chromaConfig,
+    splitScreenConfig,
+    titleAnimType,
+    titleThemeType,
+    trailerFxMode,
+    trailerCardLayers,
   ]);
 
   // Continuous Sequential Video Drawing Loop across ALL clips in timelineClips
@@ -1647,6 +2134,33 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
     let wasPlaying = isPlayingRef.current;
     const lastValidFrameCanvas = document.createElement('canvas');
     let lastValidFrameClipUrl: string | null = null;
+
+    // Preload media elements by arbitrary URL (used for Split Screen, Chroma BG & Trailer Cards)
+    const getOrCreateUrlMedia = (url: string, mType: 'video' | 'photo') => {
+      const cacheKey = `${mType}:${url}`;
+      const existing = mediaCacheRef.current.get(cacheKey);
+      if (existing) return existing;
+      const isLocalAsset = url.startsWith('blob:') || url.startsWith('data:');
+      if (mType === 'video') {
+        const video = document.createElement('video');
+        if (!isLocalAsset) {
+          video.crossOrigin = 'anonymous';
+        }
+        video.playsInline = true;
+        video.preload = 'auto';
+        video.src = url;
+        mediaCacheRef.current.set(cacheKey, video);
+        return video;
+      } else {
+        const img = new Image();
+        if (!isLocalAsset) {
+          img.crossOrigin = 'anonymous';
+        }
+        img.src = url;
+        mediaCacheRef.current.set(cacheKey, img);
+        return img;
+      }
+    };
 
     // Preload media elements for all clips in timeline
     const getOrCreateMedia = (clip: TimelineClip) => {
@@ -1790,11 +2304,30 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
         setActiveClipIndex(resolvedIdx);
       }
 
+      // Collect keys of videos allowed to play simultaneously (active clip + split slots + chroma bg + card video)
+      const keepPlayingKeys = new Set<string>();
+      if (activeClip && activeClip.type === 'video') {
+        keepPlayingKeys.add(`video:${activeClip.url}`);
+      }
+      if (p.splitScreenConfig.enabled) {
+        if (p.splitScreenConfig.leftMediaUrl && p.splitScreenConfig.leftMediaType === 'video') {
+          keepPlayingKeys.add(`video:${p.splitScreenConfig.leftMediaUrl}`);
+        }
+        if (p.splitScreenConfig.rightMediaUrl && p.splitScreenConfig.rightMediaType === 'video') {
+          keepPlayingKeys.add(`video:${p.splitScreenConfig.rightMediaUrl}`);
+        }
+      }
+      if (p.chromaConfig.enabled && p.chromaConfig.bgMode === 'custom_media' && p.chromaConfig.bgMediaUrl && p.chromaConfig.bgMediaType === 'video') {
+        keepPlayingKeys.add(`video:${p.chromaConfig.bgMediaUrl}`);
+      }
+      p.trailerCardLayers.forEach((tc) => {
+        if (tc.imageUrl && tc.mediaType === 'video') keepPlayingKeys.add(`video:${tc.imageUrl}`);
+      });
+
       // Pause any non-active cached videos so audio/decoding doesn't overlap
       mediaCacheRef.current.forEach((el, key) => {
         if (el instanceof HTMLVideoElement) {
-          const isCurrentVideo = activeClip && activeClip.type === 'video' && key === `video:${activeClip.url}`;
-          if (!isCurrentVideo && !el.paused) {
+          if (!keepPlayingKeys.has(key) && !el.paused) {
             el.pause();
           }
         }
@@ -1803,33 +2336,91 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.save();
 
-      // Combined Filter + Real Color Grading Formulas (bypass ctx.filter completely when neutral for zero GPU overhead)
+      // Combined Filter + Color Grading + ProFX 660-Setting Engine
+      const pr = p.proRenderDeltas;
       const baseFlt = p.activeFilter.cssFilter !== 'none' ? `${p.activeFilter.cssFilter} ` : '';
-      const b = 100 + p.colorBrightness + p.colorExposure * 0.4 + p.colorHighlights * 0.2 + p.colorShadows * 0.15;
-      const c = 100 + p.colorContrast + (p.colorHighlights - p.colorShadows) * 0.15;
-      const s = 100 + p.colorSaturation;
-      const w = p.colorWarmth > 0 ? `sepia(${p.colorWarmth * 0.4}%) ` : '';
-      const t = p.colorTint !== 0 ? `hue-rotate(${p.colorTint}deg) ` : '';
+      const b = 100 + p.colorBrightness + p.colorExposure * 0.4 + p.colorHighlights * 0.2 + p.colorShadows * 0.15 + pr.brightness;
+      const c = 100 + p.colorContrast + (p.colorHighlights - p.colorShadows) * 0.15 + pr.contrast;
+      const s = 100 + p.colorSaturation + pr.saturation;
+      const wTotal = Math.max(0, p.colorWarmth + pr.warmth);
+      const tTotal = p.colorTint + pr.tint;
+      const w = wTotal > 0 ? `sepia(${wTotal * 0.4}%) ` : '';
+      const t = tTotal !== 0 ? `hue-rotate(${tTotal}deg) ` : '';
+      const blurStr = pr.blur > 0.05 ? `blur(${pr.blur.toFixed(1)}px) ` : '';
       const isNeutralFilter =
         !baseFlt &&
         !w &&
         !t &&
+        !blurStr &&
         Math.abs(b - 100) < 0.5 &&
         Math.abs(c - 100) < 0.5 &&
         Math.abs(s - 100) < 0.5;
       ctx.filter = isNeutralFilter
         ? 'none'
-        : `${baseFlt}${w}${t}brightness(${Math.max(10, b)}%) contrast(${Math.max(10, c)}%) saturate(${Math.max(0, s)}%)`;
+        : `${baseFlt}${w}${t}${blurStr}brightness(${Math.max(10, b)}%) contrast(${Math.max(10, c)}%) saturate(${Math.max(0, s)}%)`;
       ctx.globalAlpha = p.opacity / 100;
 
-      ctx.translate(canvas.width / 2 + p.posX, canvas.height / 2 + p.posY);
+      const fxSecTime = isPlayingRef.current ? currentTimeRef.current : now / 1000;
+      let bassShakeX = 0;
+      let bassShakeY = 0;
+      if (p.trailerFxMode === 'bass_shake') {
+        const beat = Math.pow(Math.max(0, Math.sin(fxSecTime * 4.5)), 8);
+        if (beat > 0.1) {
+          bassShakeX = Math.sin(fxSecTime * 52) * 10 * beat;
+          bassShakeY = Math.cos(fxSecTime * 48) * 7 * beat;
+        }
+      }
+
+      ctx.translate(canvas.width / 2 + p.posX + bassShakeX, canvas.height / 2 + p.posY + bassShakeY);
       ctx.rotate((p.rotationDeg * Math.PI) / 180);
       ctx.scale((p.scaleX / 100) * (p.flipH ? -1 : 1), (p.scaleY / 100) * (p.flipV ? -1 : 1));
 
-      // Helper to draw a clip frame centered-cover (with instant thumbnail fallback during video seek/buffer)
+      // Helper to sync secondary video elements cleanly with timeline time
+      const syncSecondaryVideo = (el: HTMLImageElement | HTMLVideoElement | null | undefined, muted = true) => {
+        if (!(el instanceof HTMLVideoElement)) return;
+        el.muted = muted;
+        const vidDur = isFinite(el.duration) && el.duration > 0 ? el.duration : 0;
+        const tTarget = vidDur > 0 ? Math.min(Math.max(0, vidDur - 0.04), currentTimeRef.current % vidDur) : currentTimeRef.current;
+        if (isPlayingRef.current) {
+          if (p.isReversePlayback) {
+            if (!el.paused) el.pause();
+            if (el.readyState >= 1 && !el.seeking && Math.abs(el.currentTime - tTarget) > 0.08) {
+              try {
+                el.currentTime = tTarget;
+              } catch {}
+            }
+          } else {
+            if (el.readyState >= 1 && !el.seeking && Math.abs(el.currentTime - tTarget) > 0.9) {
+              try {
+                el.currentTime = tTarget;
+              } catch {}
+            }
+            if (el.paused && el.readyState >= 2) {
+              el.play().catch(() => {});
+            }
+          }
+        } else {
+          if (!el.paused) el.pause();
+          if (el.readyState >= 1 && !el.seeking && Math.abs(el.currentTime - tTarget) > 0.06) {
+            try {
+              el.currentTime = tTarget;
+            } catch {}
+          }
+        }
+      };
+
+      // Helper to draw a clip frame centered-cover (with instant thumbnail fallback & real-time Chroma Key support)
       const drawClipFrame = (clipItem: TimelineClip | undefined, localT: number, syncMediaPlayback: boolean) => {
         if (!p.isVideoTrackVisible || !clipItem?.url) return false;
         const mediaEl = getOrCreateMedia(clipItem);
+        const chromaBgEl =
+          p.chromaConfig.enabled && p.chromaConfig.bgMode === 'custom_media' && p.chromaConfig.bgMediaUrl
+            ? getOrCreateUrlMedia(p.chromaConfig.bgMediaUrl, p.chromaConfig.bgMediaType || 'photo')
+            : null;
+        if (chromaBgEl instanceof HTMLVideoElement) {
+          syncSecondaryVideo(chromaBgEl, true);
+        }
+
         if (mediaEl instanceof HTMLVideoElement) {
           mediaEl.muted = p.isMuted || p.isAudioTrackMuted;
           mediaEl.volume = Math.max(0, Math.min(1, p.volume / 100));
@@ -1884,7 +2475,12 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
             } else {
               drawH = canvas.width / vidAspect;
             }
-            ctx.drawImage(mediaEl, -drawW / 2, -drawH / 2, drawW, drawH);
+            if (p.chromaConfig.enabled) {
+              drawChromaBackground(ctx, canvas.width, canvas.height, p.chromaConfig, fxSecTime, chromaBgEl, mediaEl);
+              drawChromaKeyedSource(ctx, mediaEl, mediaEl.videoWidth, mediaEl.videoHeight, canvas.width, canvas.height, p.chromaConfig, 420);
+            } else {
+              ctx.drawImage(mediaEl, -drawW / 2, -drawH / 2, drawW, drawH);
+            }
             if (!mediaEl.seeking) {
               if (lastValidFrameCanvas.width !== canvas.width || lastValidFrameCanvas.height !== canvas.height) {
                 lastValidFrameCanvas.width = canvas.width;
@@ -1908,13 +2504,18 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
             return true;
           }
           if (lastValidFrameClipUrl === clipItem.url && lastValidFrameCanvas.width > 0) {
-            ctx.drawImage(
-              lastValidFrameCanvas,
-              -canvas.width / 2,
-              -canvas.height / 2,
-              canvas.width,
-              canvas.height
-            );
+            if (p.chromaConfig.enabled) {
+              drawChromaBackground(ctx, canvas.width, canvas.height, p.chromaConfig, fxSecTime, chromaBgEl, lastValidFrameCanvas as unknown as HTMLImageElement);
+              drawChromaKeyedSource(ctx, lastValidFrameCanvas, lastValidFrameCanvas.width, lastValidFrameCanvas.height, canvas.width, canvas.height, p.chromaConfig, 420);
+            } else {
+              ctx.drawImage(
+                lastValidFrameCanvas,
+                -canvas.width / 2,
+                -canvas.height / 2,
+                canvas.width,
+                canvas.height
+              );
+            }
             return true;
           }
           // Instant cached thumbnail fallback while decoder buffers first frame (prevents black blink)
@@ -1938,7 +2539,12 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
               } else {
                 drawH = canvas.width / imgAspect;
               }
-              ctx.drawImage(tImg, -drawW / 2, -drawH / 2, drawW, drawH);
+              if (p.chromaConfig.enabled) {
+                drawChromaBackground(ctx, canvas.width, canvas.height, p.chromaConfig, fxSecTime, chromaBgEl, tImg);
+                drawChromaKeyedSource(ctx, tImg, tImg.naturalWidth, tImg.naturalHeight, canvas.width, canvas.height, p.chromaConfig, 420);
+              } else {
+                ctx.drawImage(tImg, -drawW / 2, -drawH / 2, drawW, drawH);
+              }
               return true;
             }
           }
@@ -1947,16 +2553,21 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
             lastSyncedClipId = clipItem.id;
           }
           if (mediaEl.complete && mediaEl.naturalWidth > 0) {
-            const imgAspect = mediaEl.naturalWidth / mediaEl.naturalHeight;
-            const canvasAspect = canvas.width / canvas.height;
-            let drawW = canvas.width;
-            let drawH = canvas.height;
-            if (imgAspect > canvasAspect) {
-              drawW = canvas.height * imgAspect;
+            if (p.chromaConfig.enabled) {
+              drawChromaBackground(ctx, canvas.width, canvas.height, p.chromaConfig, fxSecTime, chromaBgEl, mediaEl);
+              drawChromaKeyedSource(ctx, mediaEl, mediaEl.naturalWidth, mediaEl.naturalHeight, canvas.width, canvas.height, p.chromaConfig, 420);
             } else {
-              drawH = canvas.width / imgAspect;
+              const imgAspect = mediaEl.naturalWidth / mediaEl.naturalHeight;
+              const canvasAspect = canvas.width / canvas.height;
+              let drawW = canvas.width;
+              let drawH = canvas.height;
+              if (imgAspect > canvasAspect) {
+                drawW = canvas.height * imgAspect;
+              } else {
+                drawH = canvas.width / imgAspect;
+              }
+              ctx.drawImage(mediaEl, -drawW / 2, -drawH / 2, drawW, drawH);
             }
-            ctx.drawImage(mediaEl, -drawW / 2, -drawH / 2, drawW, drawH);
             return true;
           }
         }
@@ -2013,7 +2624,31 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
       }
 
       let drawn = false;
-      if (activeTrObj) {
+      if (p.splitScreenConfig.enabled) {
+        const leftUrl = p.splitScreenConfig.leftMediaUrl || activeClip?.url || '';
+        const leftType: 'video' | 'photo' = p.splitScreenConfig.leftMediaUrl
+          ? p.splitScreenConfig.leftMediaType
+          : activeClip?.type || 'photo';
+        const fallbackRightClip = clips[1] || activeClip;
+        const rightUrl = p.splitScreenConfig.rightMediaUrl || fallbackRightClip?.url || '';
+        const rightType: 'video' | 'photo' = p.splitScreenConfig.rightMediaUrl
+          ? p.splitScreenConfig.rightMediaType
+          : fallbackRightClip?.type || 'photo';
+        const leftEl = leftUrl ? getOrCreateUrlMedia(leftUrl, leftType) : null;
+        const rightEl = rightUrl ? getOrCreateUrlMedia(rightUrl, rightType) : null;
+        if (leftEl instanceof HTMLVideoElement) {
+          if (activeClip && leftUrl === activeClip.url) {
+            drawClipFrame(activeClip, localTime, true);
+            ctx.clearRect(-canvas.width / 2, -canvas.height / 2, canvas.width, canvas.height);
+          } else {
+            syncSecondaryVideo(leftEl, p.isMuted || p.isAudioTrackMuted);
+          }
+        }
+        if (rightEl instanceof HTMLVideoElement && rightUrl !== leftUrl) {
+          syncSecondaryVideo(rightEl, true);
+        }
+        drawn = drawSplitScreenComposition(ctx, canvas.width, canvas.height, p.splitScreenConfig, leftEl, rightEl);
+      } else if (activeTrObj) {
         const effType = activeTrObj.effectType;
         if (effType === 'slide' || effType === 'whip') {
           ctx.save();
@@ -2158,14 +2793,58 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
         ctx.restore();
       }
 
-      // Draw custom vignette if requested
-      if (p.colorVignette > 0) {
+      // Draw custom vignette + ProFX engine optical effects (glow, chromatic, film grain, letterbox)
+      const combinedVignette = Math.min(95, p.colorVignette + pr.vignette);
+      if (combinedVignette > 0) {
         const vigRadius = Math.min(canvas.width, canvas.height);
         const vigGrad = ctx.createRadialGradient(0, 0, vigRadius * 0.25, 0, 0, vigRadius * 0.7);
         vigGrad.addColorStop(0, 'rgba(0,0,0,0)');
-        vigGrad.addColorStop(1, `rgba(0,0,0,${(p.colorVignette / 100) * 0.85})`);
+        vigGrad.addColorStop(1, `rgba(0,0,0,${(combinedVignette / 100) * 0.85})`);
         ctx.fillStyle = vigGrad;
         ctx.fillRect(-canvas.width / 2, -canvas.height / 2, canvas.width, canvas.height);
+      }
+      if (pr.glow > 0) {
+        ctx.save();
+        ctx.filter = 'none';
+        ctx.globalCompositeOperation = 'screen';
+        const gGrad = ctx.createRadialGradient(0, 0, 12, 0, 0, canvas.width * 0.6);
+        gGrad.addColorStop(0, `rgba(255, 232, 185, ${(pr.glow / 100) * 0.35})`);
+        gGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+        ctx.fillStyle = gGrad;
+        ctx.fillRect(-canvas.width / 2, -canvas.height / 2, canvas.width, canvas.height);
+        ctx.restore();
+      }
+      if (pr.chromatic > 0) {
+        ctx.save();
+        ctx.filter = 'none';
+        ctx.globalCompositeOperation = 'screen';
+        const shiftPx = (pr.chromatic / 100) * 6;
+        ctx.fillStyle = `rgba(255, 40, 90, 0.08)`;
+        ctx.fillRect(-canvas.width / 2 + shiftPx, -canvas.height / 2, canvas.width, canvas.height);
+        ctx.fillStyle = `rgba(34, 211, 238, 0.08)`;
+        ctx.fillRect(-canvas.width / 2 - shiftPx, -canvas.height / 2, canvas.width, canvas.height);
+        ctx.restore();
+      }
+      if (pr.filmGrain > 0) {
+        ctx.save();
+        ctx.filter = 'none';
+        ctx.fillStyle = `rgba(255, 255, 255, ${(pr.filmGrain / 100) * 0.14})`;
+        const tStep = Math.floor(now / 50);
+        for (let g = 0; g < 45; g++) {
+          const gx = (((g * 293 + tStep * 67) % canvas.width) - canvas.width / 2);
+          const gy = (((g * 179 + tStep * 41) % canvas.height) - canvas.height / 2);
+          ctx.fillRect(gx, gy, 2, 2);
+        }
+        ctx.restore();
+      }
+      if (pr.letterbox > 0) {
+        const barH = (pr.letterbox / 100) * canvas.height;
+        ctx.save();
+        ctx.filter = 'none';
+        ctx.fillStyle = '#000000';
+        ctx.fillRect(-canvas.width / 2, -canvas.height / 2, canvas.width, barH);
+        ctx.fillRect(-canvas.width / 2, canvas.height / 2 - barH, canvas.width, barH);
+        ctx.restore();
       }
 
       // Transition live preview badge overlay while previewing
@@ -2184,47 +2863,35 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
         ctx.restore();
       }
 
+      // Trailer Visual FX Overlay (Anamorphic Flare, Flash Cuts, Countdown, Ember Storm, etc.)
+      if (p.trailerFxMode !== 'none') {
+        drawTrailerFxOverlay(ctx, canvas.width, canvas.height, p.trailerFxMode, fxSecTime);
+      }
+
       ctx.restore();
 
       // Screen-space Overlays (aligned 1:1 with interactive on-screen round handles!)
-      // 1. Render Title ONLY within [titleStartSec .. titleStartSec + titleDurationSec]
+      // 1. Render Animated Cinema Title ONLY within [titleStartSec .. titleStartSec + titleDurationSec]
       const tCur = currentTimeRef.current;
       if (
         p.showTitleOverlay &&
         p.movieTitle &&
         (p.totalDuration <= 0 || (tCur >= p.titleStartSec - 0.05 && tCur <= p.titleStartSec + p.titleDurationSec + 0.05))
       ) {
-        ctx.save();
-        ctx.filter = 'none';
-        ctx.globalAlpha = Math.max(0, Math.min(1, p.titleOpacity / 100));
-        const tx = (p.titleXPct / 100) * canvas.width;
-        const ty = (p.titleYPct / 100) * canvas.height;
-        ctx.translate(tx, ty);
-        ctx.scale(p.titleScale, p.titleScale);
-        ctx.textAlign = 'center';
-
-        if (p.subtitle) {
-          ctx.font = '600 16px system-ui, -apple-system, sans-serif';
-          ctx.fillStyle = 'rgba(255, 255, 255, 0.88)';
-          ctx.shadowColor = 'rgba(0,0,0,0.9)';
-          ctx.shadowBlur = 8;
-          ctx.fillText(p.subtitle.toUpperCase(), 0, -42);
-        }
-
-        ctx.font = '900 56px "Impact", "Arial Black", sans-serif';
-        ctx.fillStyle = '#ffffff';
-        ctx.shadowColor = 'rgba(0, 0, 0, 0.95)';
-        ctx.shadowBlur = 18;
-        ctx.fillText(p.movieTitle.toUpperCase(), 0, 18);
-
-        if (p.directorText) {
-          ctx.font = '600 12px system-ui, -apple-system, sans-serif';
-          ctx.fillStyle = 'rgba(255, 255, 255, 0.78)';
-          ctx.shadowColor = 'rgba(0,0,0,0.8)';
-          ctx.shadowBlur = 6;
-          ctx.fillText(p.directorText.toUpperCase(), 0, 48);
-        }
-        ctx.restore();
+        drawAnimatedCinemaTitle(ctx, canvas.width, canvas.height, {
+          movieTitle: p.movieTitle,
+          subtitle: p.subtitle,
+          directorText: p.directorText,
+          titleXPct: p.titleXPct,
+          titleYPct: p.titleYPct,
+          titleScale: p.titleScale,
+          titleOpacity: p.titleOpacity,
+          titleStartSec: p.titleStartSec,
+          globalTimeSec: tCur,
+          animationType: p.titleAnimType,
+          themeType: p.titleThemeType,
+          exportScaleRatio: canvas.width / 1280,
+        });
       }
 
       // 2. Render Independent Timeline Stickers / Emojis (positioned & scaled interactively!)
@@ -2263,6 +2930,17 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
       if (p.vfxLayers.length > 0) {
         p.vfxLayers.forEach((vLayer) => {
           drawCinemaVfxOnCanvas(ctx, canvas.width, canvas.height, vLayer, tCur);
+        });
+      }
+
+      // 4. Render Image-to-Trailer Animated Cards
+      if (p.trailerCardLayers.length > 0) {
+        p.trailerCardLayers.forEach((card) => {
+          const cardSrc = card.imageUrl ? getOrCreateUrlMedia(card.imageUrl, card.mediaType) : null;
+          if (cardSrc instanceof HTMLVideoElement) {
+            syncSecondaryVideo(cardSrc, true);
+          }
+          drawTrailerCardOnCanvas(ctx, canvas.width, canvas.height, card, cardSrc, tCur);
         });
       }
 
@@ -2488,6 +3166,96 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
     setStudioView('editor');
   };
 
+  // Direct quick upload for Chroma BG, Split Screen Slot 1/2, & Image-to-Trailer Card
+  const handleQuickSlotUpload = (
+    file: File,
+    onReady: (url: string, mediaType: 'video' | 'photo', title: string, item: MediaItem) => void
+  ) => {
+    const url = URL.createObjectURL(file);
+    const isVideo = file.type.startsWith('video/') || /\.(mp4|mov|webm|m4v|mkv|3gp|avi)$/i.test(file.name);
+    const id = `slot_media_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    localMediaUrlMapRef.current.set(id, url);
+    const cleanTitle = file.name.replace(/\.[^/.]+$/, '');
+    const mType: 'video' | 'photo' = isVideo ? 'video' : 'photo';
+    const item: MediaItem = {
+      id,
+      title: cleanTitle,
+      duration: isVideo ? '00:10' : '00:05',
+      durationSec: isVideo ? 10.0 : 5.0,
+      url,
+      thumbnailUrl: isVideo ? undefined : url,
+      type: mType,
+      category: isVideo ? 'Video' : 'Photo',
+    };
+    setMediaGallery((prev) => [item, ...prev]);
+    void saveLocalMediaRecord({
+      id,
+      file,
+      name: file.name,
+      mimeType: file.type || (isVideo ? 'video/mp4' : 'image/jpeg'),
+      mediaType: mType,
+      duration: item.duration,
+      durationSec: item.durationSec,
+      createdAt: Date.now(),
+    });
+    onReady(url, mType, cleanTitle, item);
+  };
+
+  // Add an Image-to-Trailer Animated Card onto canvas & timeline (auto-ensures base backdrop clip if empty)
+  const handleAddTrailerCard = (override?: {
+    imageUrl?: string;
+    mediaType?: 'video' | 'photo';
+    title?: string;
+    subtitle?: string;
+    badgeText?: string;
+    theme?: TrailerCardTheme;
+    animation?: TrailerCardAnimation;
+  }) => {
+    const fallbackClip = timelineClips[activeClipIndex] || timelineClips[0] || mediaGallery[0];
+    const resolvedUrl = override?.imageUrl ?? draftCardImageUrl ?? fallbackClip?.url ?? '';
+    const resolvedType = override?.mediaType ?? (draftCardImageUrl ? draftCardMediaType : fallbackClip?.type || 'photo');
+
+    if (timelineClips.length === 0 && resolvedUrl) {
+      const baseClip: TimelineClip = {
+        id: `trailer_base_${Date.now()}`,
+        mediaId: fallbackClip?.id || `tb_${Date.now()}`,
+        title: override?.title || draftCardTitle || 'Trailer Card Scene',
+        durationSec: 6.0,
+        url: resolvedUrl,
+        thumbnailUrl: resolvedType === 'photo' ? resolvedUrl : fallbackClip?.thumbnailUrl,
+        type: resolvedType,
+      };
+      setTimelineClips([baseClip]);
+      setActiveClipIndex(0);
+    }
+
+    const startT = Number(Math.max(0, currentTimeRef.current).toFixed(1));
+    const card: TrailerCardLayer = {
+      id: `tcard_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`,
+      imageUrl: resolvedUrl,
+      mediaType: resolvedType,
+      title: override?.title ?? (draftCardTitle.trim() || 'THE PREMIERE'),
+      subtitle: override?.subtitle ?? (draftCardSubtitle.trim() || 'IN CINEMAS SOON'),
+      badgeText: override?.badgeText ?? (draftCardBadge.trim() || 'OFFICIAL TRAILER'),
+      theme: override?.theme ?? draftCardTheme,
+      animation: override?.animation ?? draftCardAnim,
+      startTimeSec: startT,
+      durationSec: 5.0,
+      scale: 0.92,
+      xPct: 50,
+      yPct: 50,
+      opacity: 100,
+    };
+    setTrailerCardLayers((prev) => [...prev, card]);
+    setSelectedTrailerCardId(card.id);
+    setSelectedStickerLayerId(null);
+    setSelectedVfxLayerId(null);
+    setSelectedFeatureType('trailer_card');
+    setActiveInspectorTab('adjust');
+    setIsRightPanelOpen(true);
+    logEditorTelemetry('edit_timeline');
+  };
+
   // Filtered lists for the active tab (with sub-category and search query filtering)
   const filteredFilters = useMemo(() => {
     const q = searchQuery.toLowerCase();
@@ -2579,6 +3347,44 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
     );
   }, [colorGradeSearch]);
 
+  const filteredProFeatures = useMemo(() => {
+    const q = searchQuery.toLowerCase().trim();
+    return PRO_EDITOR_FEATURES.filter((feat) => {
+      const matchCat = activeSubCategory === 'All' || feat.category === activeSubCategory;
+      const matchQ =
+        !q ||
+        feat.name.toLowerCase().includes(q) ||
+        feat.category.toLowerCase().includes(q) ||
+        String(feat.index).includes(q);
+      return matchCat && matchQ;
+    });
+  }, [activeSubCategory, searchQuery]);
+
+  const activePreviewThumbUrl = useMemo(() => {
+    const clip = timelineClips[activeClipIndex] || timelineClips[0];
+    if (clip) {
+      if (clip.thumbnailUrl) return clip.thumbnailUrl;
+      if (clip.type === 'photo' && clip.url) return clip.url;
+    }
+    const galPhoto = mediaGallery.find((m) => m.thumbnailUrl || (m.type === 'photo' && m.url));
+    if (galPhoto) return galPhoto.thumbnailUrl || galPhoto.url;
+    return FILTERS_LIST[0]?.thumbnail || '';
+  }, [timelineClips, activeClipIndex, mediaGallery]);
+
+  const filteredProSettings = useMemo(() => {
+    if (!activeProFeature) return [];
+    const q = proSettingsSearch.toLowerCase().trim();
+    return activeFeatureCatalog.filter((s) => {
+      const matchMod = proSettingsModuleFilter === 'all' || s.moduleId === proSettingsModuleFilter;
+      const matchQ =
+        !q ||
+        s.name.toLowerCase().includes(q) ||
+        s.partLabel.toLowerCase().includes(q) ||
+        s.moduleTitle.toLowerCase().includes(q);
+      return matchMod && matchQ;
+    });
+  }, [activeProFeature, activeFeatureCatalog, proSettingsModuleFilter, proSettingsSearch]);
+
   // =========================================================================
   // REAL MULTI-CLIP VIDEO EXPORT (ALL TIMELINE CLIPS -> PLAYABLE VIDEO FILE)
   // Combines all videos/photos on timeline in sequence with transitions,
@@ -2616,52 +3422,40 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
       }
     });
 
-    const isMobileUA = typeof navigator !== 'undefined' && /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+    const reqDims = computeRequestedExportDimensions(projectResolution, selectedAspectRatio);
+    const probedWebCodecs = await probeSupportedVideoEncoderConfig(
+      reqDims.outW,
+      reqDims.outH,
+      projectResolution,
+      30
+    ).catch(() => null);
 
-    const getOutputDimensions = (res: '4K' | '1080p' | '720p') => {
-      const makeEven = (n: number) => Math.max(2, Math.floor(n / 2) * 2);
-      const scaleToMaxEdge = (w: number, h: number, maxEdge: number) => {
-        const longest = Math.max(w, h);
-        if (longest <= maxEdge) return { outW: makeEven(w), outH: makeEven(h) };
-        const s = maxEdge / longest;
-        return { outW: makeEven(w * s), outH: makeEven(h * s) };
-      };
+    if (exportCancelRef.current) {
+      setIsExporting(false);
+      return;
+    }
 
-      let rawW = 1920;
-      let rawH = 1080;
-      if (res === '4K') {
-        if (selectedAspectRatio === '9:16') { rawW = 2160; rawH = 3840; }
-        else if (selectedAspectRatio === '1:1') { rawW = 2160; rawH = 2160; }
-        else if (selectedAspectRatio === '4:5') { rawW = 2160; rawH = 2700; }
-        else if (selectedAspectRatio === '21:9') { rawW = 3840; rawH = 1620; }
-        else if (selectedAspectRatio === '4:3') { rawW = 2880; rawH = 2160; }
-        else { rawW = 3840; rawH = 2160; }
-        // Android/mobile MediaRecorder hardware H.264 maxes out safely at 1920px (higher causes blank/black gallery files)
-        return scaleToMaxEdge(rawW, rawH, isMobileUA ? 1920 : 2560);
+    const getFallbackDimensions = () => {
+      const makeAligned16 = (n: number) => Math.max(64, Math.floor(n / 16) * 16);
+      const isMobileUA = typeof navigator !== 'undefined' && /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+      const maxFallbackEdge = isMobileUA ? 1920 : reqDims.outW > 1920 ? 2560 : 1920;
+      const longest = Math.max(reqDims.outW, reqDims.outH);
+      if (longest <= maxFallbackEdge) {
+        return { outW: makeAligned16(reqDims.outW), outH: makeAligned16(reqDims.outH) };
       }
-      if (res === '720p') {
-        if (selectedAspectRatio === '9:16') { rawW = 720; rawH = 1280; }
-        else if (selectedAspectRatio === '1:1') { rawW = 720; rawH = 720; }
-        else if (selectedAspectRatio === '4:5') { rawW = 720; rawH = 900; }
-        else if (selectedAspectRatio === '21:9') { rawW = 1680; rawH = 720; }
-        else if (selectedAspectRatio === '4:3') { rawW = 960; rawH = 720; }
-        else { rawW = 1280; rawH = 720; }
-        return scaleToMaxEdge(rawW, rawH, isMobileUA ? 1280 : 1680);
-      }
-      // 1080p
-      if (selectedAspectRatio === '9:16') { rawW = 1080; rawH = 1920; }
-      else if (selectedAspectRatio === '1:1') { rawW = 1080; rawH = 1080; }
-      else if (selectedAspectRatio === '4:5') { rawW = 1080; rawH = 1350; }
-      else if (selectedAspectRatio === '21:9') { rawW = 2560; rawH = 1080; }
-      else if (selectedAspectRatio === '4:3') { rawW = 1440; rawH = 1080; }
-      else { rawW = 1920; rawH = 1080; }
-      return scaleToMaxEdge(rawW, rawH, 1920);
+      const s = maxFallbackEdge / longest;
+      return { outW: makeAligned16(reqDims.outW * s), outH: makeAligned16(reqDims.outH * s) };
     };
 
-    const { outW, outH } = getOutputDimensions(projectResolution);
+    const fallbackDims = getFallbackDimensions();
+    let outW = probedWebCodecs ? probedWebCodecs.outW : fallbackDims.outW;
+    let outH = probedWebCodecs ? probedWebCodecs.outH : fallbackDims.outH;
+
     const exportCanvas = document.createElement('canvas');
     exportCanvas.width = outW;
     exportCanvas.height = outH;
+    // Keep canvas inside visible onscreen compositor container so mobile Blink never culls GPU textures
+    exportCanvas.style.cssText = 'width:4px;height:4px;position:absolute;inset:0;pointer-events:none;';
     const eCtx = exportCanvas.getContext('2d', { alpha: false });
     if (!eCtx) {
       setIsExporting(false);
@@ -2669,34 +3463,18 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
       return;
     }
 
-    // Mount export <video> tags inside a tiny compositor-active DOM container so Android Chromium uploads video frames to GPU textures
+    // Mount export <video> tags AND exportCanvas inside an onscreen compositor-active DOM container
     const exportHostDiv = document.createElement('div');
     exportHostDiv.style.cssText =
-      'position:fixed;left:-9999px;top:0;width:32px;height:32px;opacity:0.01;pointer-events:none;overflow:hidden;z-index:-1;';
+      'position:fixed;right:2px;bottom:2px;width:4px;height:4px;opacity:0.04;pointer-events:none;overflow:hidden;z-index:1;';
+    exportHostDiv.appendChild(exportCanvas);
     document.body.appendChild(exportHostDiv);
 
     const exportMediaMap = new Map<string, HTMLImageElement | HTMLVideoElement>();
     const lastValidFrames = new Map<string, HTMLCanvasElement>();
     let exportAudioCtx: AudioContext | null = null;
     let audioDest: MediaStreamAudioDestinationNode | null = null;
-
-    try {
-      const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-      if (AudioCtx) {
-        exportAudioCtx = new AudioCtx();
-        if (exportAudioCtx.state === 'suspended') {
-          await exportAudioCtx.resume();
-        }
-        audioDest = exportAudioCtx.createMediaStreamDestination();
-        // Steady inaudible clock keeps MediaRecorder audio muxer active across photo & video clips
-        const keepAliveOsc = exportAudioCtx.createOscillator();
-        const keepAliveGain = exportAudioCtx.createGain();
-        keepAliveGain.gain.value = 0.00001;
-        keepAliveOsc.connect(keepAliveGain);
-        keepAliveGain.connect(audioDest);
-        keepAliveOsc.start();
-      }
-    } catch {}
+    let isDeterministicSeekMode = Boolean(probedWebCodecs);
 
     const cleanupExportResources = () => {
       exportMediaMap.forEach((el) => {
@@ -2710,6 +3488,11 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
       });
       exportMediaMap.clear();
       lastValidFrames.clear();
+      if (exportCanvas.parentNode) {
+        try {
+          exportCanvas.parentNode.removeChild(exportCanvas);
+        } catch {}
+      }
       if (exportHostDiv.parentNode) {
         try {
           exportHostDiv.parentNode.removeChild(exportHostDiv);
@@ -2738,7 +3521,7 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
       });
     };
 
-    const waitForSeek = (vid: HTMLVideoElement, targetSec: number, timeoutMs = 1500) =>
+    const waitForSeek = (vid: HTMLVideoElement, targetSec: number, timeoutMs = 1800) =>
       new Promise<void>((resolve) => {
         const clamped = isFinite(vid.duration) && vid.duration > 0 ? Math.min(Math.max(0, vid.duration - 0.04), Math.max(0, targetSec)) : Math.max(0, targetSec);
         if (Math.abs(vid.currentTime - clamped) <= 0.05 && vid.readyState >= 2) {
@@ -2762,26 +3545,44 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
         }
       });
 
-    const captureSnapshot = (key: string, vid: HTMLVideoElement) => {
-      if (vid.readyState < 2 || vid.videoWidth <= 0 || vid.videoHeight <= 0) return;
+    const captureSnapshot = (key: string, source: HTMLVideoElement | HTMLImageElement) => {
+      const srcW = source instanceof HTMLVideoElement ? source.videoWidth : source.naturalWidth;
+      const srcH = source instanceof HTMLVideoElement ? source.videoHeight : source.naturalHeight;
+      if (source instanceof HTMLVideoElement && source.readyState < 2) return;
+      if (srcW <= 0 || srcH <= 0) return;
       let snap = lastValidFrames.get(key);
       if (!snap) {
         snap = document.createElement('canvas');
-        const scale = Math.min(1, 720 / Math.max(vid.videoWidth, vid.videoHeight));
-        snap.width = Math.max(2, Math.floor((vid.videoWidth * scale) / 2) * 2);
-        snap.height = Math.max(2, Math.floor((vid.videoHeight * scale) / 2) * 2);
+        const scale = Math.min(1, 720 / Math.max(srcW, srcH));
+        snap.width = Math.max(2, Math.floor((srcW * scale) / 2) * 2);
+        snap.height = Math.max(2, Math.floor((srcH * scale) / 2) * 2);
         lastValidFrames.set(key, snap);
       }
       const sCtx = snap.getContext('2d');
       if (sCtx) {
         try {
-          sCtx.drawImage(vid, 0, 0, snap.width, snap.height);
+          sCtx.drawImage(source, 0, 0, snap.width, snap.height);
         } catch {}
       }
     };
 
-    // Preload ALL timeline clips cleanly before recording starts
-    const uniqueMediaUrls = Array.from(new Set(timelineClips.map((c) => `${c.type}::${c.url}`)));
+    // Preload ALL timeline clips + Chroma BG + Split Slots + Trailer Card media cleanly before recording starts
+    const exportUrlEntries: string[] = timelineClips.map((c) => `${c.type}::${c.url}`);
+    if (chromaConfig.enabled && chromaConfig.bgMode === 'custom_media' && chromaConfig.bgMediaUrl) {
+      exportUrlEntries.push(`${chromaConfig.bgMediaType || 'photo'}::${chromaConfig.bgMediaUrl}`);
+    }
+    if (splitScreenConfig.enabled) {
+      if (splitScreenConfig.leftMediaUrl) {
+        exportUrlEntries.push(`${splitScreenConfig.leftMediaType}::${splitScreenConfig.leftMediaUrl}`);
+      }
+      if (splitScreenConfig.rightMediaUrl) {
+        exportUrlEntries.push(`${splitScreenConfig.rightMediaType}::${splitScreenConfig.rightMediaUrl}`);
+      }
+    }
+    trailerCardLayers.forEach((tc) => {
+      if (tc.imageUrl) exportUrlEntries.push(`${tc.mediaType}::${tc.imageUrl}`);
+    });
+    const uniqueMediaUrls = Array.from(new Set(exportUrlEntries));
     await Promise.all(
       uniqueMediaUrls.map(
         (key) =>
@@ -2793,6 +3594,19 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
               resolve();
               return;
             }
+            // Pre-seed cached thumbnail so frame 0 NEVER renders black even while decoder warms
+            const clipWithThumb = timelineClips.find((c) => c.url === url && c.thumbnailUrl);
+            if (clipWithThumb?.thumbnailUrl) {
+              const tImg = thumbCacheRef.current.get(clipWithThumb.thumbnailUrl) || new Image();
+              if (!clipWithThumb.thumbnailUrl.startsWith('blob:') && !clipWithThumb.thumbnailUrl.startsWith('data:')) {
+                tImg.crossOrigin = 'anonymous';
+              }
+              tImg.onload = () => captureSnapshot(key, tImg);
+              if (!tImg.src) tImg.src = clipWithThumb.thumbnailUrl;
+              thumbCacheRef.current.set(clipWithThumb.thumbnailUrl, tImg);
+              if (tImg.complete && tImg.naturalWidth > 0) captureSnapshot(key, tImg);
+            }
+
             if (mType === 'video') {
               const vid = document.createElement('video');
               if (!url.startsWith('blob:') && !url.startsWith('data:')) {
@@ -2802,28 +3616,23 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
               vid.setAttribute('playsinline', 'true');
               vid.setAttribute('webkit-playsinline', 'true');
               vid.preload = 'auto';
-              vid.style.cssText = 'width:32px;height:32px;object-fit:cover;';
+              vid.style.cssText = 'width:4px;height:4px;position:absolute;inset:0;object-fit:cover;';
               vid.muted = isMuted || isAudioTrackMuted;
               vid.volume = Math.max(0, Math.min(1, volume / 100));
               vid.playbackRate = Math.min(8, Math.max(0.25, playbackSpeed));
               exportHostDiv.appendChild(vid);
 
-              const timer = window.setTimeout(resolve, 7500);
+              const timer = window.setTimeout(resolve, 8000);
               const done = () => {
                 window.clearTimeout(timer);
                 resolve();
               };
+              vid.addEventListener('canplaythrough', done, { once: true });
               vid.addEventListener('canplay', done, { once: true });
               vid.addEventListener('loadeddata', done, { once: true });
               vid.addEventListener('error', done, { once: true });
               vid.src = url;
               vid.load();
-              if (exportAudioCtx && audioDest && !isMuted && !isAudioTrackMuted) {
-                try {
-                  const srcNode = exportAudioCtx.createMediaElementSource(vid);
-                  srcNode.connect(audioDest);
-                } catch {}
-              }
               exportMediaMap.set(key, vid);
             } else {
               const img = new Image();
@@ -2850,7 +3659,7 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
       return;
     }
 
-    // Warm-prime every video decoder into GPU texture memory before starting MediaRecorder
+    // Warm-prime every video decoder into GPU texture memory before encoding starts
     setExportStatusText(isMl ? 'വീഡിയോ ഫ്രെയിമുകൾ ഡീകോഡ് ചെയ്യുന്നു...' : 'Decoding initial video frames...');
     for (const [key, el] of exportMediaMap.entries()) {
       if (exportCancelRef.current) break;
@@ -2858,20 +3667,16 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
         const url = key.slice('video::'.length);
         const firstMatchingClip = timelineClips.find((c) => c.type === 'video' && c.url === url);
         const firstStart = firstMatchingClip?.sourceStartSec || 0;
-        const origMuted = el.muted;
         try {
           el.muted = true;
-          await waitForSeek(el, firstStart, 1400);
+          await waitForSeek(el, firstStart, 1600);
           await el.play().catch(() => {});
-          await new Promise((r) => window.setTimeout(r, 90));
+          await new Promise((r) => window.setTimeout(r, 140));
           captureSnapshot(key, el);
           el.pause();
-          await waitForSeek(el, firstStart, 900);
+          await waitForSeek(el, firstStart, 1100);
           captureSnapshot(key, el);
-        } catch {
-        } finally {
-          el.muted = origMuted;
-        }
+        } catch {}
       }
     }
 
@@ -2880,58 +3685,6 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
       setIsExporting(false);
       return;
     }
-
-    if (typeof MediaRecorder === 'undefined' || typeof exportCanvas.captureStream !== 'function') {
-      cleanupExportResources();
-      setIsExporting(false);
-      setExportError(
-        isMl
-          ? 'ഈ ബ്രൗസറിൽ വീഡിയോ റെക്കോർഡിംഗ് സപ്പോർട്ട് ലഭ്യമല്ല. ദയവായി Chrome അപ്‌ഡേറ്റ് ചെയ്യുക.'
-          : 'Video MediaRecorder is not supported in this browser.'
-      );
-      return;
-    }
-
-    const mimeCandidates = [
-      'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
-      'video/mp4;codecs=avc1.4D401E,mp4a.40.2',
-      'video/mp4;codecs=avc1',
-      'video/mp4',
-      'video/webm;codecs=vp8,opus',
-      'video/webm;codecs=vp8',
-      'video/webm;codecs=vp9,opus',
-      'video/webm',
-    ];
-    const selectedMime = mimeCandidates.find((m) => MediaRecorder.isTypeSupported(m)) || '';
-    const targetBitrate = projectResolution === '4K' ? 8_000_000 : projectResolution === '1080p' ? 5_000_000 : 2_500_000;
-
-    const stream = exportCanvas.captureStream(30);
-    if (audioDest) {
-      audioDest.stream.getAudioTracks().forEach((tr) => stream.addTrack(tr));
-    }
-
-    let recorder: MediaRecorder;
-    try {
-      recorder = selectedMime
-        ? new MediaRecorder(stream, { mimeType: selectedMime, videoBitsPerSecond: targetBitrate })
-        : new MediaRecorder(stream, { videoBitsPerSecond: targetBitrate });
-    } catch {
-      try {
-        recorder = new MediaRecorder(stream);
-      } catch {
-        cleanupExportResources();
-        setIsExporting(false);
-        setExportError(isMl ? 'വീഡിയോ എൻകോഡർ ആരംഭിക്കാനായില്ല.' : 'Could not start video recorder.');
-        return;
-      }
-    }
-
-    const chunks: BlobPart[] = [];
-    recorder.ondataavailable = (ev) => {
-      if (ev.data && ev.data.size > 0) {
-        chunks.push(ev.data);
-      }
-    };
 
     const lastClipIdByVideoKey = new Map<string, string>();
     let frameTick = 0;
@@ -2948,10 +3701,41 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
       return true;
     };
 
-    const drawExportClip = (clipItem: TimelineClip | undefined, localT: number) => {
+    const syncSecondaryExportVideo = (key: string, el: HTMLImageElement | HTMLVideoElement | undefined, tPos: number, muted = true) => {
+      if (!(el instanceof HTMLVideoElement)) return;
+      const vidDur = isFinite(el.duration) && el.duration > 0 ? el.duration : 0;
+      const tTarget = vidDur > 0 ? Math.min(Math.max(0, vidDur - 0.04), tPos % vidDur) : tPos;
+      if (!isDeterministicSeekMode) {
+        el.muted = muted;
+        if (!isReversePlayback && el.paused && el.readyState >= 2) {
+          el.play().catch(() => {
+            el.muted = true;
+            el.play().catch(() => {});
+          });
+        }
+        if (!el.seeking && Math.abs(el.currentTime - tTarget) > (el.paused ? 0.04 : 0.25)) {
+          try {
+            el.currentTime = tTarget;
+          } catch {}
+        }
+      }
+      if (el.readyState >= 2 && el.videoWidth > 0 && !el.seeking && frameTick % 6 === 0) {
+        captureSnapshot(key, el);
+      }
+    };
+
+    const drawExportClip = (clipItem: TimelineClip | undefined, localT: number, tGlobal = 0) => {
       if (!isVideoTrackVisible || !clipItem?.url) return false;
       const key = `${clipItem.type}::${clipItem.url}`;
       const el = exportMediaMap.get(key);
+      const chromaBgKey =
+        chromaConfig.enabled && chromaConfig.bgMode === 'custom_media' && chromaConfig.bgMediaUrl
+          ? `${chromaConfig.bgMediaType || 'photo'}::${chromaConfig.bgMediaUrl}`
+          : '';
+      const chromaBgEl = chromaBgKey ? exportMediaMap.get(chromaBgKey) || null : null;
+      if (chromaBgEl instanceof HTMLVideoElement) {
+        syncSecondaryExportVideo(chromaBgKey, chromaBgEl, tGlobal, true);
+      }
 
       if (el instanceof HTMLVideoElement) {
         const vidDur = isFinite(el.duration) && el.duration > 0 ? el.duration : clipItem.durationSec;
@@ -2962,28 +3746,34 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
         const isEnteringNewClip = prevClipId !== clipItem.id;
         lastClipIdByVideoKey.set(key, clipItem.id);
 
-        const timeDiff = Math.abs(el.currentTime - targetVideoTime);
-        const shouldSeek =
-          (isEnteringNewClip && timeDiff > 0.14) ||
-          (isReversePlayback && timeDiff > 0.06) ||
-          (!el.seeking && timeDiff > 1.25);
+        if (!isDeterministicSeekMode) {
+          if (!isReversePlayback && el.paused && el.readyState >= 2) {
+            el.play().catch(() => {
+              el.muted = true;
+              el.play().catch(() => {});
+            });
+          }
+          const timeDiff = Math.abs(el.currentTime - targetVideoTime);
+          const shouldSeek =
+            (isEnteringNewClip && timeDiff > 0.08) ||
+            (isReversePlayback && timeDiff > 0.04) ||
+            (el.paused && timeDiff > 0.04) ||
+            (!el.seeking && timeDiff > 0.35);
 
-        if (shouldSeek && !el.seeking) {
-          try {
-            el.currentTime = targetVideoTime;
-          } catch {}
+          if (shouldSeek && !el.seeking) {
+            try {
+              el.currentTime = targetVideoTime;
+            } catch {}
+          }
         }
 
-        if (!isReversePlayback && el.paused && el.readyState >= 2) {
-          el.play().catch(() => {
-            el.muted = true;
-            el.play().catch(() => {});
-          });
-        }
-
-        if (!el.seeking && el.readyState >= 2 && el.videoWidth > 0 && el.videoHeight > 0) {
-          if (frameTick % 4 === 0 || isEnteringNewClip) {
+        if (el.readyState >= 2 && el.videoWidth > 0 && el.videoHeight > 0) {
+          if (!el.seeking && (frameTick % 4 === 0 || isEnteringNewClip)) {
             captureSnapshot(key, el);
+          }
+          if (chromaConfig.enabled) {
+            drawChromaBackground(eCtx, outW, outH, chromaConfig, tGlobal, chromaBgEl, el);
+            return drawChromaKeyedSource(eCtx, el, el.videoWidth, el.videoHeight, outW, outH, chromaConfig, 540);
           }
           return drawImageContainCover(el, el.videoWidth, el.videoHeight);
         }
@@ -2991,38 +3781,57 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
         // Zero-black-frame fallback during brief seeks or initial buffer
         const cachedSnap = lastValidFrames.get(key);
         if (cachedSnap && cachedSnap.width > 0 && cachedSnap.height > 0) {
+          if (chromaConfig.enabled) {
+            drawChromaBackground(eCtx, outW, outH, chromaConfig, tGlobal, chromaBgEl, cachedSnap);
+            return drawChromaKeyedSource(eCtx, cachedSnap, cachedSnap.width, cachedSnap.height, outW, outH, chromaConfig, 540);
+          }
           return drawImageContainCover(cachedSnap, cachedSnap.width, cachedSnap.height);
         }
         if (clipItem.thumbnailUrl) {
           const thumbImg = thumbCacheRef.current.get(clipItem.thumbnailUrl);
           if (thumbImg && thumbImg.complete && thumbImg.naturalWidth > 0) {
+            if (chromaConfig.enabled) {
+              drawChromaBackground(eCtx, outW, outH, chromaConfig, tGlobal, chromaBgEl, thumbImg);
+              return drawChromaKeyedSource(eCtx, thumbImg, thumbImg.naturalWidth, thumbImg.naturalHeight, outW, outH, chromaConfig, 540);
+            }
             return drawImageContainCover(thumbImg, thumbImg.naturalWidth, thumbImg.naturalHeight);
           }
         }
       } else if (el instanceof HTMLImageElement && el.complete && el.naturalWidth > 0) {
+        if (chromaConfig.enabled) {
+          drawChromaBackground(eCtx, outW, outH, chromaConfig, tGlobal, chromaBgEl, el);
+          return drawChromaKeyedSource(eCtx, el, el.naturalWidth, el.naturalHeight, outW, outH, chromaConfig, 540);
+        }
         return drawImageContainCover(el, el.naturalWidth, el.naturalHeight);
       }
       return false;
     };
 
-    const isNeutralExportFilter =
-      activeFilter.cssFilter === 'none' &&
-      colorBrightness === 0 &&
-      colorContrast === 0 &&
-      colorSaturation === 0 &&
-      colorExposure === 0 &&
-      colorWarmth === 0 &&
-      colorTint === 0 &&
-      colorHighlights === 0 &&
-      colorShadows === 0;
-
     const renderSingleExportFrame = (tPos: number) => {
       const { clip: activeClip, index: activeIdx, localTime } = getClipAtTime(tPos, timelineClips);
 
+      const keepExportVideoKeys = new Set<string>();
+      if (activeClip && activeClip.type === 'video') {
+        keepExportVideoKeys.add(`video::${activeClip.url}`);
+      }
+      if (splitScreenConfig.enabled) {
+        if (splitScreenConfig.leftMediaUrl && splitScreenConfig.leftMediaType === 'video') {
+          keepExportVideoKeys.add(`video::${splitScreenConfig.leftMediaUrl}`);
+        }
+        if (splitScreenConfig.rightMediaUrl && splitScreenConfig.rightMediaType === 'video') {
+          keepExportVideoKeys.add(`video::${splitScreenConfig.rightMediaUrl}`);
+        }
+      }
+      if (chromaConfig.enabled && chromaConfig.bgMode === 'custom_media' && chromaConfig.bgMediaUrl && chromaConfig.bgMediaType === 'video') {
+        keepExportVideoKeys.add(`video::${chromaConfig.bgMediaUrl}`);
+      }
+      trailerCardLayers.forEach((tc) => {
+        if (tc.imageUrl && tc.mediaType === 'video') keepExportVideoKeys.add(`video::${tc.imageUrl}`);
+      });
+
       exportMediaMap.forEach((el, k) => {
         if (el instanceof HTMLVideoElement) {
-          const isCur = activeClip && activeClip.type === 'video' && k === `video::${activeClip.url}`;
-          if (!isCur && !el.paused) el.pause();
+          if (!keepExportVideoKeys.has(k) && !el.paused) el.pause();
         }
       });
 
@@ -3031,21 +3840,40 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
       eCtx.fillRect(0, 0, outW, outH);
 
       eCtx.save();
-      if (isNeutralExportFilter) {
-        eCtx.filter = 'none';
-      } else {
-        const baseFlt = activeFilter.cssFilter !== 'none' ? `${activeFilter.cssFilter} ` : '';
-        const b = 100 + colorBrightness + colorExposure * 0.4 + colorHighlights * 0.2 + colorShadows * 0.15;
-        const c = 100 + colorContrast + (colorHighlights - colorShadows) * 0.15;
-        const s = 100 + colorSaturation;
-        const w = colorWarmth > 0 ? `sepia(${colorWarmth * 0.4}%) ` : '';
-        const t = colorTint !== 0 ? `hue-rotate(${colorTint}deg) ` : '';
-        eCtx.filter = `${baseFlt}${w}${t}brightness(${Math.max(10, b)}%) contrast(${Math.max(10, c)}%) saturate(${Math.max(0, s)}%)`;
-      }
+      const pr = proRenderDeltas;
+      const baseFlt = activeFilter.cssFilter !== 'none' ? `${activeFilter.cssFilter} ` : '';
+      const b = 100 + colorBrightness + colorExposure * 0.4 + colorHighlights * 0.2 + colorShadows * 0.15 + pr.brightness;
+      const c = 100 + colorContrast + (colorHighlights - colorShadows) * 0.15 + pr.contrast;
+      const s = 100 + colorSaturation + pr.saturation;
+      const wTotal = Math.max(0, colorWarmth + pr.warmth);
+      const tTotal = colorTint + pr.tint;
+      const w = wTotal > 0 ? `sepia(${wTotal * 0.4}%) ` : '';
+      const t = tTotal !== 0 ? `hue-rotate(${tTotal}deg) ` : '';
+      const blurStr = pr.blur > 0.05 ? `blur(${pr.blur.toFixed(1)}px) ` : '';
+      const isNeutralExportFilter =
+        !baseFlt &&
+        !w &&
+        !t &&
+        !blurStr &&
+        Math.abs(b - 100) < 0.5 &&
+        Math.abs(c - 100) < 0.5 &&
+        Math.abs(s - 100) < 0.5;
+      eCtx.filter = isNeutralExportFilter
+        ? 'none'
+        : `${baseFlt}${w}${t}${blurStr}brightness(${Math.max(10, b)}%) contrast(${Math.max(10, c)}%) saturate(${Math.max(0, s)}%)`;
       eCtx.globalAlpha = opacity / 100;
 
       const scaleFactor = outW / canvasDims.width;
-      eCtx.translate(outW / 2 + posX * scaleFactor, outH / 2 + posY * scaleFactor);
+      let bassShakeX = 0;
+      let bassShakeY = 0;
+      if (trailerFxMode === 'bass_shake') {
+        const beat = Math.pow(Math.max(0, Math.sin(tPos * 4.5)), 8);
+        if (beat > 0.1) {
+          bassShakeX = Math.sin(tPos * 52) * 10 * beat * scaleFactor;
+          bassShakeY = Math.cos(tPos * 48) * 7 * beat * scaleFactor;
+        }
+      }
+      eCtx.translate(outW / 2 + posX * scaleFactor + bassShakeX, outH / 2 + posY * scaleFactor + bassShakeY);
       eCtx.rotate((rotationDeg * Math.PI) / 180);
       eCtx.scale((scaleX / 100) * (flipH ? -1 : 1), (scaleY / 100) * (flipV ? -1 : 1));
 
@@ -3076,60 +3904,81 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
         }
       }
 
-      if (seamTr) {
+      if (splitScreenConfig.enabled) {
+        const leftUrl = splitScreenConfig.leftMediaUrl || activeClip?.url || '';
+        const leftType: 'video' | 'photo' = splitScreenConfig.leftMediaUrl
+          ? splitScreenConfig.leftMediaType
+          : activeClip?.type || 'photo';
+        const fallbackRightClip = timelineClips[1] || activeClip;
+        const rightUrl = splitScreenConfig.rightMediaUrl || fallbackRightClip?.url || '';
+        const rightType: 'video' | 'photo' = splitScreenConfig.rightMediaUrl
+          ? splitScreenConfig.rightMediaType
+          : fallbackRightClip?.type || 'photo';
+        const leftKey = `${leftType}::${leftUrl}`;
+        const rightKey = `${rightType}::${rightUrl}`;
+        const leftEl = (leftUrl ? exportMediaMap.get(leftKey) || lastValidFrames.get(leftKey) : null) || null;
+        const rightEl = (rightUrl ? exportMediaMap.get(rightKey) || lastValidFrames.get(rightKey) : null) || null;
+        if (leftEl instanceof HTMLVideoElement) {
+          syncSecondaryExportVideo(leftKey, leftEl, activeClip && leftUrl === activeClip.url ? localTime : tPos, isMuted || isAudioTrackMuted);
+        }
+        if (rightEl instanceof HTMLVideoElement && rightKey !== leftKey) {
+          syncSecondaryExportVideo(rightKey, rightEl, tPos, true);
+        }
+        drawSplitScreenComposition(eCtx, outW, outH, splitScreenConfig, leftEl, rightEl);
+      } else if (seamTr) {
         const effType = seamTr.effectType;
         if (effType === 'slide' || effType === 'whip') {
           eCtx.save();
           eCtx.translate(-trProgress * outW, 0);
-          drawExportClip(trOutClip, trOutLocal);
+          drawExportClip(trOutClip, trOutLocal, tPos);
           eCtx.restore();
           eCtx.save();
           eCtx.translate((1 - trProgress) * outW, 0);
-          drawExportClip(trInClip, trInLocal);
+          drawExportClip(trInClip, trInLocal, tPos);
           eCtx.restore();
         } else if (effType === 'zoom') {
           eCtx.save();
           eCtx.scale(1 + trProgress * 0.45, 1 + trProgress * 0.45);
           eCtx.globalAlpha = Math.max(0, 1 - trProgress);
-          drawExportClip(trOutClip, trOutLocal);
+          drawExportClip(trOutClip, trOutLocal, tPos);
           eCtx.restore();
           eCtx.save();
           eCtx.scale(0.72 + trProgress * 0.28, 0.72 + trProgress * 0.28);
           eCtx.globalAlpha = trProgress;
-          drawExportClip(trInClip, trInLocal);
+          drawExportClip(trInClip, trInLocal, tPos);
           eCtx.restore();
         } else if (effType === 'cube3d') {
           eCtx.save();
           eCtx.scale(Math.max(0.05, Math.abs(Math.cos(trProgress * Math.PI))), 1);
-          drawExportClip(trProgress < 0.5 ? trOutClip : trInClip, trProgress < 0.5 ? trOutLocal : trInLocal);
+          drawExportClip(trProgress < 0.5 ? trOutClip : trInClip, trProgress < 0.5 ? trOutLocal : trInLocal, tPos);
           eCtx.restore();
         } else if (effType === 'wipe') {
-          drawExportClip(trOutClip, trOutLocal);
+          drawExportClip(trOutClip, trOutLocal, tPos);
           eCtx.save();
           eCtx.beginPath();
           eCtx.arc(0, 0, Math.max(1, trProgress * Math.hypot(outW / 2, outH / 2)), 0, Math.PI * 2);
           eCtx.clip();
-          drawExportClip(trInClip, trInLocal);
+          drawExportClip(trInClip, trInLocal, tPos);
           eCtx.restore();
         } else if (effType === 'glitch') {
           const jitterX = Math.sin(trProgress * 45) * 28 * scaleFactor * (1 - Math.abs(trProgress - 0.5) * 2);
           eCtx.save();
           eCtx.translate(jitterX, 0);
-          drawExportClip(trProgress < 0.5 ? trOutClip : trInClip, trProgress < 0.5 ? trOutLocal : trInLocal);
+          drawExportClip(trProgress < 0.5 ? trOutClip : trInClip, trProgress < 0.5 ? trOutLocal : trInLocal, tPos);
           eCtx.restore();
         } else if (effType === 'flash') {
-          drawExportClip(trProgress < 0.5 ? trOutClip : trInClip, trProgress < 0.5 ? trOutLocal : trInLocal);
+          drawExportClip(trProgress < 0.5 ? trOutClip : trInClip, trProgress < 0.5 ? trOutLocal : trInLocal, tPos);
           eCtx.fillStyle = `rgba(255, 255, 255, ${Math.sin(trProgress * Math.PI) * 0.92})`;
           eCtx.fillRect(-outW / 2, -outH / 2, outW, outH);
         } else {
-          drawExportClip(trOutClip, trOutLocal);
+          drawExportClip(trOutClip, trOutLocal, tPos);
           eCtx.save();
           eCtx.globalAlpha = trProgress;
-          drawExportClip(trInClip, trInLocal);
+          drawExportClip(trInClip, trInLocal, tPos);
           eCtx.restore();
         }
       } else {
-        drawExportClip(activeClip, localTime);
+        drawExportClip(activeClip, localTime, tPos);
       }
 
       if (activeEffect) {
@@ -3170,13 +4019,62 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
         eCtx.restore();
       }
 
-      if (colorVignette > 0) {
+      const combinedExportVignette = Math.min(95, colorVignette + pr.vignette);
+      if (combinedExportVignette > 0) {
         const vigRadius = Math.min(outW, outH);
         const vigGrad = eCtx.createRadialGradient(0, 0, vigRadius * 0.25, 0, 0, vigRadius * 0.7);
         vigGrad.addColorStop(0, 'rgba(0,0,0,0)');
-        vigGrad.addColorStop(1, `rgba(0,0,0,${(colorVignette / 100) * 0.85})`);
+        vigGrad.addColorStop(1, `rgba(0,0,0,${(combinedExportVignette / 100) * 0.85})`);
         eCtx.fillStyle = vigGrad;
         eCtx.fillRect(-outW / 2, -outH / 2, outW, outH);
+      }
+
+      if (pr.glow > 0) {
+        eCtx.save();
+        eCtx.filter = 'none';
+        eCtx.globalCompositeOperation = 'screen';
+        const gGrad = eCtx.createRadialGradient(0, 0, 12, 0, 0, outW * 0.6);
+        gGrad.addColorStop(0, `rgba(255, 232, 185, ${(pr.glow / 100) * 0.35})`);
+        gGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+        eCtx.fillStyle = gGrad;
+        eCtx.fillRect(-outW / 2, -outH / 2, outW, outH);
+        eCtx.restore();
+      }
+      if (pr.chromatic > 0) {
+        eCtx.save();
+        eCtx.filter = 'none';
+        eCtx.globalCompositeOperation = 'screen';
+        const shiftPx = (pr.chromatic / 100) * 6 * scaleFactor;
+        eCtx.fillStyle = 'rgba(255, 40, 90, 0.08)';
+        eCtx.fillRect(-outW / 2 + shiftPx, -outH / 2, outW, outH);
+        eCtx.fillStyle = 'rgba(34, 211, 238, 0.08)';
+        eCtx.fillRect(-outW / 2 - shiftPx, -outH / 2, outW, outH);
+        eCtx.restore();
+      }
+      if (pr.filmGrain > 0) {
+        eCtx.save();
+        eCtx.filter = 'none';
+        eCtx.fillStyle = `rgba(255, 255, 255, ${(pr.filmGrain / 100) * 0.14})`;
+        const tStep = Math.floor(tPos * 24);
+        for (let g = 0; g < 45; g++) {
+          const gx = (((g * 293 + tStep * 67) % outW) - outW / 2);
+          const gy = (((g * 179 + tStep * 41) % outH) - outH / 2);
+          eCtx.fillRect(gx, gy, Math.max(2, 2 * scaleFactor), Math.max(2, 2 * scaleFactor));
+        }
+        eCtx.restore();
+      }
+      if (pr.letterbox > 0) {
+        const barH = (pr.letterbox / 100) * outH;
+        eCtx.save();
+        eCtx.filter = 'none';
+        eCtx.fillStyle = '#000000';
+        eCtx.fillRect(-outW / 2, -outH / 2, outW, barH);
+        eCtx.fillRect(-outW / 2, outH / 2 - barH, outW, barH);
+        eCtx.restore();
+      }
+
+      if (trailerFxMode !== 'none') {
+        drawTrailerFxOverlay(eCtx, outW, outH, trailerFxMode, tPos);
       }
 
       eCtx.restore();
@@ -3187,36 +4085,20 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
         tPos >= titleStartSec - 0.05 &&
         tPos <= titleStartSec + titleDurationSec + 0.05
       ) {
-        eCtx.save();
-        eCtx.filter = 'none';
-        eCtx.globalAlpha = Math.max(0, Math.min(1, titleOpacity / 100));
-        const tx = (titleXPct / 100) * outW;
-        const ty = (titleYPct / 100) * outH;
-        const tScale = (outW / 1280) * titleScale;
-        eCtx.translate(tx, ty);
-        eCtx.scale(tScale, tScale);
-        eCtx.textAlign = 'center';
-        if (subtitle) {
-          eCtx.font = `600 18px system-ui, -apple-system, sans-serif`;
-          eCtx.fillStyle = 'rgba(255, 255, 255, 0.88)';
-          eCtx.shadowColor = 'rgba(0,0,0,0.9)';
-          eCtx.shadowBlur = 10;
-          eCtx.fillText(subtitle.toUpperCase(), 0, -42);
-        }
-        eCtx.font = `900 58px "Impact", "Arial Black", sans-serif`;
-        eCtx.fillStyle = '#ffffff';
-        eCtx.shadowColor = 'rgba(0, 0, 0, 0.95)';
-        eCtx.shadowBlur = 18;
-        eCtx.fillText(movieTitle.toUpperCase(), 0, 18);
-
-        if (directorText) {
-          eCtx.font = `600 13px system-ui, -apple-system, sans-serif`;
-          eCtx.fillStyle = 'rgba(255, 255, 255, 0.78)';
-          eCtx.shadowColor = 'rgba(0,0,0,0.8)';
-          eCtx.shadowBlur = 6;
-          eCtx.fillText(directorText.toUpperCase(), 0, 48);
-        }
-        eCtx.restore();
+        drawAnimatedCinemaTitle(eCtx, outW, outH, {
+          movieTitle,
+          subtitle,
+          directorText,
+          titleXPct,
+          titleYPct,
+          titleScale,
+          titleOpacity,
+          titleStartSec,
+          globalTimeSec: tPos,
+          animationType: titleAnimType,
+          themeType: titleThemeType,
+          exportScaleRatio: outW / 1280,
+        });
       }
 
       if (activeStickers.length > 0) {
@@ -3256,6 +4138,21 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
         });
       }
 
+      if (trailerCardLayers.length > 0) {
+        trailerCardLayers.forEach((card) => {
+          const cardKey = `${card.mediaType}::${card.imageUrl}`;
+          const cardEl = card.imageUrl ? exportMediaMap.get(cardKey) : null;
+          if (cardEl instanceof HTMLVideoElement) {
+            syncSecondaryExportVideo(cardKey, cardEl, tPos, true);
+          }
+          const cardSource =
+            cardEl instanceof HTMLVideoElement && cardEl.readyState < 2
+              ? (lastValidFrames.get(cardKey) as unknown as HTMLImageElement | undefined) || null
+              : cardEl || null;
+          drawTrailerCardOnCanvas(eCtx, outW, outH, card, cardSource, tPos);
+        });
+      }
+
       return activeIdx;
     };
 
@@ -3263,22 +4160,108 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
     const speedFactor = Math.max(0.25, Math.min(8, playbackSpeed));
     const exportWallDurationSec = exactTotalSec / speedFactor;
 
-    // Paint frame 0 before starting recorder so the very first keyframe has valid pixels
-    renderSingleExportFrame(isReversePlayback ? exactTotalSec : 0);
+    let capturedProjectThumb = '';
+    const tryCaptureThumb = () => {
+      if (capturedProjectThumb) return;
+      try {
+        const snapUrl = exportCanvas.toDataURL('image/jpeg', 0.72);
+        if (snapUrl && snapUrl.length > 1500) {
+          capturedProjectThumb = snapUrl;
+        }
+      } catch {}
+    };
 
-    recorder.onstop = () => {
-      cleanupExportResources();
-      stream.getTracks().forEach((t) => t.stop());
+    // Seek all active HTMLVideoElement sources synchronously before WebCodecs frame capture
+    const prepareExportVideosAtTime = async (tPos: number) => {
+      const seekPromises: Promise<void>[] = [];
+      const queueSeek = (url: string, type: 'video' | 'photo', targetSec: number) => {
+        if (!url || type !== 'video') return;
+        const el = exportMediaMap.get(`video::${url}`);
+        if (el instanceof HTMLVideoElement) {
+          seekPromises.push(waitForVideoSeekReady(el, targetSec, 900));
+        }
+      };
 
-      if (exportCancelRef.current) {
-        setIsExporting(false);
-        setExportProgress(0);
-        setExportStatusText('');
-        return;
+      const { clip: activeClip, localTime } = getClipAtTime(tPos, timelineClips);
+      if (activeClip) {
+        queueSeek(activeClip.url, activeClip.type, (activeClip.sourceStartSec || 0) + localTime);
       }
 
-      const finalMime = recorder.mimeType || selectedMime || 'video/webm';
-      const blob = new Blob(chunks, { type: finalMime });
+      if (timelineClips.length >= 2) {
+        let seamAcc = 0;
+        for (let i = 0; i < timelineClips.length - 1; i++) {
+          seamAcc += timelineClips[i].durationSec || 4;
+          const tr = clipTransitionObjects[i];
+          if (tr) {
+            const half = (tr.durationSec || 0.8) / 2;
+            if (tPos >= seamAcc - half && tPos <= seamAcc + half) {
+              const trProgress = (tPos - (seamAcc - half)) / (half * 2);
+              const outClip = timelineClips[i];
+              const inClip = timelineClips[i + 1];
+              queueSeek(
+                outClip.url,
+                outClip.type,
+                (outClip.sourceStartSec || 0) + Math.max(0, (outClip.durationSec || 4) - half + trProgress * half)
+              );
+              queueSeek(inClip.url, inClip.type, (inClip.sourceStartSec || 0) + trProgress * half);
+              break;
+            }
+          }
+        }
+      }
+
+      if (chromaConfig.enabled && chromaConfig.bgMode === 'custom_media' && chromaConfig.bgMediaUrl && chromaConfig.bgMediaType === 'video') {
+        const bgEl = exportMediaMap.get(`video::${chromaConfig.bgMediaUrl}`);
+        if (bgEl instanceof HTMLVideoElement) {
+          const vd = isFinite(bgEl.duration) && bgEl.duration > 0 ? bgEl.duration : 0;
+          seekPromises.push(waitForVideoSeekReady(bgEl, vd > 0 ? tPos % vd : tPos, 900));
+        }
+      }
+
+      if (splitScreenConfig.enabled) {
+        const leftUrl = splitScreenConfig.leftMediaUrl || activeClip?.url || '';
+        const leftType = splitScreenConfig.leftMediaUrl ? splitScreenConfig.leftMediaType : activeClip?.type || 'photo';
+        const fallbackRight = timelineClips[1] || activeClip;
+        const rightUrl = splitScreenConfig.rightMediaUrl || fallbackRight?.url || '';
+        const rightType = splitScreenConfig.rightMediaUrl ? splitScreenConfig.rightMediaType : fallbackRight?.type || 'photo';
+        if (leftType === 'video' && leftUrl) {
+          const lEl = exportMediaMap.get(`video::${leftUrl}`);
+          if (lEl instanceof HTMLVideoElement) {
+            const vd = isFinite(lEl.duration) && lEl.duration > 0 ? lEl.duration : 0;
+            const lt = activeClip && leftUrl === activeClip.url ? (activeClip.sourceStartSec || 0) + localTime : vd > 0 ? tPos % vd : tPos;
+            seekPromises.push(waitForVideoSeekReady(lEl, lt, 900));
+          }
+        }
+        if (rightType === 'video' && rightUrl && rightUrl !== leftUrl) {
+          const rEl = exportMediaMap.get(`video::${rightUrl}`);
+          if (rEl instanceof HTMLVideoElement) {
+            const vd = isFinite(rEl.duration) && rEl.duration > 0 ? rEl.duration : 0;
+            seekPromises.push(waitForVideoSeekReady(rEl, vd > 0 ? tPos % vd : tPos, 900));
+          }
+        }
+      }
+
+      trailerCardLayers.forEach((tc) => {
+        if (
+          tc.imageUrl &&
+          tc.mediaType === 'video' &&
+          tPos >= tc.startTimeSec - 0.1 &&
+          tPos <= tc.startTimeSec + tc.durationSec + 0.1
+        ) {
+          const cEl = exportMediaMap.get(`video::${tc.imageUrl}`);
+          if (cEl instanceof HTMLVideoElement) {
+            const vd = isFinite(cEl.duration) && cEl.duration > 0 ? cEl.duration : 0;
+            seekPromises.push(waitForVideoSeekReady(cEl, vd > 0 ? tPos % vd : tPos, 900));
+          }
+        }
+      });
+
+      if (seekPromises.length > 0) {
+        await Promise.all(seekPromises);
+      }
+    };
+
+    const finalizeCompletedExportBlob = (blob: Blob, finalMime: string) => {
       if (blob.size < 1024) {
         setIsExporting(false);
         setExportProgress(0);
@@ -3299,6 +4282,7 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
       setExportedVideoUrl(blobUrl);
       setExportedVideoFilename(safeName);
       setExportedVideoSizeMb(sizeMb);
+      setExportedVideoMetaLabel(`${ext.toUpperCase()} · ${outW}×${outH} (${projectResolution})`);
 
       try {
         const link = document.createElement('a');
@@ -3309,7 +4293,7 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
         document.body.removeChild(link);
       } catch {}
 
-      saveCurrentProjectToStorage();
+      saveCurrentProjectToStorage(undefined, undefined, undefined, undefined, capturedProjectThumb || undefined);
       logEditorTelemetry('export_video', timelineClips, exactTotalSec);
       setIsExporting(false);
       setExportProgress(100);
@@ -3317,7 +4301,203 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
       setExportStatusText(isMl ? 'വീഡിയോ എക്സ്പോർട്ട് പൂർത്തിയായി!' : 'Video export ready!');
     };
 
-    recorder.start(100);
+    // -------------------------------------------------------------------------
+    // ENGINE 1 (PRIMARY): Deterministic WebCodecs H.264 MP4 + AAC Export
+    // Guarantees smooth full-motion video (zero Frame-0 image freeze) & true 4K/1080p/720p!
+    // -------------------------------------------------------------------------
+    if (probedWebCodecs) {
+      let timelineCursorSec = 0;
+      const audioSourceClips: ExportAudioSourceClip[] = timelineClips.map((c) => {
+        const entry: ExportAudioSourceClip = {
+          url: c.url,
+          type: c.type,
+          startTimelineSec: timelineCursorSec,
+          durationSec: c.durationSec || 4,
+          sourceStartSec: c.sourceStartSec || 0,
+        };
+        timelineCursorSec += c.durationSec || 4;
+        return entry;
+      });
+
+      setExportEstimatedTotalSec(exportWallDurationSec);
+      try {
+        const mp4Blob = await runWebCodecsMp4Export({
+          exportCanvas,
+          outW,
+          outH,
+          probedConfig: probedWebCodecs,
+          fps: 30,
+          exactTotalSec,
+          speedFactor,
+          isReversePlayback,
+          clips: audioSourceClips,
+          volumePct: volume,
+          isMuted: isMuted || isAudioTrackMuted,
+          prepareFrameAtTime: prepareExportVideosAtTime,
+          renderFrameAtTime: (tPos) => {
+            frameTick += 1;
+            return renderSingleExportFrame(tPos);
+          },
+          onAfterFirstFrame: tryCaptureThumb,
+          onProgress: (pct, elapsedWallSec, activeIdx) => {
+            setExportElapsedSec(elapsedWallSec);
+            setExportProgress(pct);
+            setExportStatusText(
+              isMl
+                ? `MP4 (${outW}×${outH}) എക്സ്പോർട്ട് (${Math.max(1, activeIdx + 1)}/${timelineClips.length})`
+                : `Encoding MP4 ${outW}×${outH} (${Math.max(1, activeIdx + 1)}/${timelineClips.length})`
+            );
+          },
+          shouldCancel: () => exportCancelRef.current,
+        });
+
+        if (exportCancelRef.current) {
+          cleanupExportResources();
+          setIsExporting(false);
+          setExportProgress(0);
+          setExportStatusText('');
+          return;
+        }
+
+        if (mp4Blob && mp4Blob.size > 1024) {
+          cleanupExportResources();
+          finalizeCompletedExportBlob(mp4Blob, 'video/mp4');
+          return;
+        }
+      } catch (webCodecsErr) {
+        console.warn('WebCodecs MP4 export unavailable or interrupted, switching to MediaRecorder:', webCodecsErr);
+      }
+    }
+
+    // -------------------------------------------------------------------------
+    // ENGINE 2 (FALLBACK): Upgraded MP4-first MediaRecorder Engine
+    // -------------------------------------------------------------------------
+    isDeterministicSeekMode = false;
+    outW = fallbackDims.outW;
+    outH = fallbackDims.outH;
+    exportCanvas.width = outW;
+    exportCanvas.height = outH;
+
+    if (typeof MediaRecorder === 'undefined' || typeof exportCanvas.captureStream !== 'function') {
+      cleanupExportResources();
+      setIsExporting(false);
+      setExportError(
+        isMl
+          ? 'ഈ ബ്രൗസറിൽ വീഡിയോ റെക്കോർഡിംഗ് സപ്പോർട്ട് ലഭ്യമല്ല. ദയവായി Chrome അപ്‌ഡേറ്റ് ചെയ്യുക.'
+          : 'Video MediaRecorder is not supported in this browser.'
+      );
+      return;
+    }
+
+    try {
+      const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      if (AudioCtx) {
+        exportAudioCtx = new AudioCtx();
+        if (exportAudioCtx.state === 'suspended') {
+          await exportAudioCtx.resume();
+        }
+        audioDest = exportAudioCtx.createMediaStreamDestination();
+        const keepAliveOsc = exportAudioCtx.createOscillator();
+        const keepAliveGain = exportAudioCtx.createGain();
+        keepAliveGain.gain.value = 0.00001;
+        keepAliveOsc.connect(keepAliveGain);
+        keepAliveGain.connect(audioDest);
+        keepAliveOsc.start();
+        if (!isMuted && !isAudioTrackMuted) {
+          exportMediaMap.forEach((el) => {
+            if (el instanceof HTMLVideoElement) {
+              try {
+                el.muted = false;
+                const srcNode = exportAudioCtx!.createMediaElementSource(el);
+                srcNode.connect(audioDest!);
+              } catch {}
+            }
+          });
+        }
+      }
+    } catch {}
+
+    // Prioritize MP4 first so mobile Phone Gallery apps recognize and play the video natively
+    const mimeCandidates = [
+      'video/mp4;codecs=avc1.64002a,mp4a.40.2',
+      'video/mp4;codecs=avc1.4D4028,mp4a.40.2',
+      'video/mp4;codecs=avc1.640028,mp4a.40.2',
+      'video/mp4',
+      'video/webm;codecs=vp9,opus',
+      'video/webm;codecs=vp8,opus',
+      'video/webm;codecs=vp9',
+      'video/webm;codecs=vp8',
+      'video/webm',
+    ];
+    const selectedMime = mimeCandidates.find((m) => MediaRecorder.isTypeSupported(m)) || '';
+    const targetBitrate = projectResolution === '4K' ? 12_000_000 : projectResolution === '1080p' ? 8_000_000 : 4_200_000;
+
+    const stream = exportCanvas.captureStream(30);
+    if (audioDest) {
+      audioDest.stream.getAudioTracks().forEach((tr) => stream.addTrack(tr));
+    }
+
+    let recorder: MediaRecorder;
+    try {
+      recorder = selectedMime
+        ? new MediaRecorder(stream, { mimeType: selectedMime, videoBitsPerSecond: targetBitrate })
+        : new MediaRecorder(stream, { videoBitsPerSecond: targetBitrate });
+    } catch {
+      try {
+        recorder = new MediaRecorder(stream);
+      } catch {
+        cleanupExportResources();
+        setIsExporting(false);
+        setExportError(isMl ? 'വീഡിയോ എൻകോഡർ ആരംഭിക്കാനായില്ല.' : 'Could not start video recorder.');
+        return;
+      }
+    }
+
+    const chunks: BlobPart[] = [];
+    recorder.ondataavailable = (ev) => {
+      if (ev.data && ev.data.size > 0) {
+        chunks.push(ev.data);
+      }
+    };
+
+    const initialFramePos = isReversePlayback ? exactTotalSec : 0;
+    await prepareExportVideosAtTime(initialFramePos);
+    renderSingleExportFrame(initialFramePos);
+    await new Promise((r) => window.setTimeout(r, 140));
+    renderSingleExportFrame(initialFramePos);
+    tryCaptureThumb();
+    const videoTrack = stream.getVideoTracks()[0] as unknown as { requestFrame?: () => void };
+    if (videoTrack && typeof videoTrack.requestFrame === 'function') {
+      try {
+        videoTrack.requestFrame();
+      } catch {}
+    }
+
+    recorder.onstop = () => {
+      cleanupExportResources();
+      stream.getTracks().forEach((t) => t.stop());
+
+      if (exportCancelRef.current) {
+        setIsExporting(false);
+        setExportProgress(0);
+        setExportStatusText('');
+        return;
+      }
+
+      const finalMime = recorder.mimeType || selectedMime || 'video/mp4';
+      const blob = new Blob(chunks, { type: finalMime });
+      finalizeCompletedExportBlob(blob, finalMime);
+    };
+
+    if (selectedMime.includes('mp4')) {
+      recorder.start();
+    } else {
+      recorder.start(1000);
+    }
+
+    renderSingleExportFrame(initialFramePos);
+    await new Promise((r) => window.setTimeout(r, 80));
+
     const startMs = performance.now();
     let finishing = false;
     setExportEstimatedTotalSec(exportWallDurationSec);
@@ -3340,6 +4520,9 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
       const tPos = isReversePlayback ? Math.max(0, exactTotalSec - elapsedTimeline) : elapsedTimeline;
 
       const activeIdx = renderSingleExportFrame(tPos);
+      if (frameTick === 8) {
+        tryCaptureThumb();
+      }
 
       const pct = Math.min(99, Math.max(4, Math.round((elapsedWallSec / exportWallDurationSec) * 100)));
       if (frameTick % 3 === 0) {
@@ -3356,7 +4539,10 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
         requestAnimationFrame(stepExportFrame);
       } else {
         finishing = true;
-        setExportProgress(100);
+        tryCaptureThumb();
+        setExportElapsedSec(exportWallDurationSec);
+        setExportProgress(99);
+        setExportStatusText(isMl ? 'വീഡിയോ ഡൗൺലോഡിനായി തയ്യാറാക്കുന്നു...' : 'Finalizing & downloading video...');
         try {
           if (recorder.state === 'recording') {
             recorder.requestData();
@@ -3368,7 +4554,7 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
               recorder.stop();
             } catch {}
           }
-        }, 120);
+        }, 160);
       }
     };
 
@@ -3460,15 +4646,27 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                     >
                       <div className="flex items-center gap-3 min-w-0">
                         <div className="w-16 h-12 rounded-xl overflow-hidden bg-black shrink-0 relative border border-[#2a3647] flex items-center justify-center">
-                          {proj.thumbnailUrl ? (
-                            <img src={proj.thumbnailUrl} alt={proj.name} className="w-full h-full object-cover" />
-                          ) : (
-                            <div className="w-full h-full bg-gradient-to-br from-teal-950 via-zinc-900 to-black flex flex-col items-center justify-center p-1 text-center">
-                              <Film className="w-4 h-4 text-teal-400 mb-0.5" />
-                              <span className="text-[7px] font-black text-zinc-300 truncate max-w-full">{proj.name}</span>
-                            </div>
-                          )}
-                          <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                          {(() => {
+                            const safeThumb =
+                              proj.thumbnailUrl && !proj.thumbnailUrl.startsWith('blob:')
+                                ? proj.thumbnailUrl
+                                : proj.clips?.find((c) => Boolean(c.thumbnailUrl) && !c.thumbnailUrl!.startsWith('blob:'))?.thumbnailUrl || '';
+                            return safeThumb ? (
+                              <img
+                                src={safeThumb}
+                                alt={proj.name}
+                                onError={(e) => {
+                                  e.currentTarget.style.display = 'none';
+                                }}
+                                className="w-full h-full object-cover relative z-10"
+                              />
+                            ) : null;
+                          })()}
+                          <div className="absolute inset-0 bg-gradient-to-br from-teal-950 via-zinc-900 to-black flex flex-col items-center justify-center p-1 text-center">
+                            <Film className="w-4 h-4 text-teal-400 mb-0.5" />
+                            <span className="text-[7px] font-black text-zinc-300 truncate max-w-full">{proj.name}</span>
+                          </div>
+                          <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-20">
                             <Play className="w-4 h-4 text-white fill-white" />
                           </div>
                         </div>
@@ -3825,7 +5023,7 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
   // Dynamic Collapsible Panels & Expandable Screen, Split Playhead, Color Grading
   // =========================================================================
   return (
-    <div className="fixed inset-0 z-50 bg-[#0c0f12] text-zinc-100 flex flex-col font-sans select-none overflow-hidden">
+    <div className="fixed inset-0 z-50 bg-[#080b10] text-zinc-100 flex flex-col font-sans select-none overflow-hidden">
       {/* Hidden file input for adding to Media Gallery pool */}
       <input
         ref={multiFileInputRef}
@@ -3835,9 +5033,90 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
         className="hidden"
         onChange={(e) => handleUserDeviceUpload(e, false)}
       />
+      <input
+        ref={chromaBgInputRef}
+        type="file"
+        accept="video/*,image/*"
+        className="hidden"
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          if (f) {
+            handleQuickSlotUpload(f, (url, mediaType, title) => {
+              setChromaConfig((prev) => ({
+                ...prev,
+                enabled: true,
+                bgMode: 'custom_media',
+                bgMediaUrl: url,
+                bgMediaType: mediaType,
+                bgLabel: title,
+              }));
+            });
+          }
+          e.target.value = '';
+        }}
+      />
+      <input
+        ref={splitLeftInputRef}
+        type="file"
+        accept="video/*,image/*"
+        className="hidden"
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          if (f) {
+            handleQuickSlotUpload(f, (url, mediaType, title) => {
+              setSplitScreenConfig((prev) => ({
+                ...prev,
+                enabled: true,
+                leftMediaUrl: url,
+                leftMediaType: mediaType,
+                leftLabel: title,
+              }));
+            });
+          }
+          e.target.value = '';
+        }}
+      />
+      <input
+        ref={splitRightInputRef}
+        type="file"
+        accept="video/*,image/*"
+        className="hidden"
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          if (f) {
+            handleQuickSlotUpload(f, (url, mediaType, title) => {
+              setSplitScreenConfig((prev) => ({
+                ...prev,
+                enabled: true,
+                rightMediaUrl: url,
+                rightMediaType: mediaType,
+                rightLabel: title,
+              }));
+            });
+          }
+          e.target.value = '';
+        }}
+      />
+      <input
+        ref={trailerCardInputRef}
+        type="file"
+        accept="video/*,image/*"
+        className="hidden"
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          if (f) {
+            handleQuickSlotUpload(f, (url, mediaType) => {
+              setDraftCardImageUrl(url);
+              setDraftCardMediaType(mediaType);
+              handleAddTrailerCard({ imageUrl: url, mediaType });
+            });
+          }
+          e.target.value = '';
+        }}
+      />
 
       {/* TOP APPLICATION BAR */}
-      <div className="h-9 bg-[#101417] border-b border-[#21262d] flex items-center justify-between px-2 sm:px-3 shrink-0 text-zinc-300 overflow-x-auto no-scrollbar gap-2">
+      <div className="h-11 bg-[#10151d] border-b border-[#1f2937] flex items-center justify-between px-2.5 sm:px-3.5 shrink-0 text-zinc-300 overflow-x-auto no-scrollbar gap-2">
         <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
           <div
             className="flex items-center gap-1.5 cursor-pointer hover:opacity-85"
@@ -3847,10 +5126,10 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
             }}
             title="Return to Studio Home"
           >
-            <div className="w-4 h-4 rounded bg-teal-400 text-black flex items-center justify-center font-black text-[10px]">
+            <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-teal-400 to-cyan-400 text-black flex items-center justify-center font-black text-xs shadow">
               ▶
             </div>
-            <span className="font-extrabold text-white text-xs tracking-tight">CineStudio 4K</span>
+            <span className="font-extrabold text-white text-xs sm:text-sm tracking-tight">CineStudio 4K</span>
           </div>
 
           <button
@@ -3859,10 +5138,10 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
               saveCurrentProjectToStorage();
               setStudioView('welcome');
             }}
-            className="px-2 py-0.5 rounded bg-zinc-800 hover:bg-zinc-700 text-[11px] font-semibold text-zinc-300 flex items-center gap-1 cursor-pointer"
+            className="min-h-[32px] px-2.5 py-1 rounded-lg bg-[#18202c] hover:bg-[#222d3d] border border-[#2b3648] text-[11px] font-semibold text-zinc-200 flex items-center gap-1.5 cursor-pointer transition-colors"
             title="Home"
           >
-            <Home className="w-3 h-3 text-teal-400" />
+            <Home className="w-3.5 h-3.5 text-teal-400" />
             <span>Home</span>
           </button>
 
@@ -3872,51 +5151,52 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
               saveCurrentProjectToStorage();
               openNewProjectSetup(undefined, 'Project');
             }}
-            className="px-2.5 py-0.5 rounded-lg bg-gradient-to-r from-[#bef264] to-[#38bdf8] text-black font-extrabold text-[11px] flex items-center gap-1 shadow hover:opacity-95 cursor-pointer"
+            className="min-h-[32px] px-3 py-1 rounded-lg bg-gradient-to-r from-[#bef264] to-[#38bdf8] text-black font-extrabold text-[11px] flex items-center gap-1 shadow hover:opacity-95 cursor-pointer"
             title="Create New Project"
           >
-            <Plus className="w-3 h-3 stroke-[3]" />
+            <Plus className="w-3.5 h-3.5 stroke-[3]" />
             <span>New Project</span>
           </button>
 
           {/* Format Badge */}
-          <div
+          <button
+            type="button"
             onClick={() => {
               saveCurrentProjectToStorage();
               setStudioView('new_project_setup');
             }}
-            className="flex items-center gap-1 px-2 py-0.5 rounded bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-teal-300 font-bold text-[10px] cursor-pointer"
+            className="min-h-[32px] flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#18202c] hover:bg-[#222d3d] border border-[#2b3648] text-teal-300 font-bold text-[11px] cursor-pointer transition-colors"
             title="Click to change video format"
           >
-            <Tv className="w-3 h-3 text-teal-400" />
+            <Tv className="w-3.5 h-3.5 text-teal-400" />
             <span>{selectedAspectRatio}</span>
-            <span className="text-zinc-500 font-normal">({projectResolution})</span>
-          </div>
+            <span className="text-zinc-400 font-normal">({projectResolution})</span>
+          </button>
 
           {/* Quick Panel Toggle Buttons */}
-          <div className="h-4 w-px bg-zinc-800 mx-1 hidden sm:block" />
+          <div className="h-5 w-px bg-[#1f2937] mx-0.5 hidden sm:block" />
 
           <button
             type="button"
             onClick={() => setIsLeftPanelOpen(!isLeftPanelOpen)}
-            className={`px-2 py-0.5 rounded text-[10px] font-semibold flex items-center gap-1 cursor-pointer transition-colors ${
-              isLeftPanelOpen ? 'bg-teal-500/20 text-teal-300 border border-teal-500/40' : 'bg-zinc-800 text-zinc-400 hover:text-white'
+            className={`min-h-[32px] px-2.5 py-1 rounded-lg text-[11px] font-semibold flex items-center gap-1.5 cursor-pointer transition-colors ${
+              isLeftPanelOpen ? 'bg-teal-500/20 text-teal-300 border border-teal-500/40' : 'bg-[#18202c] border border-[#2b3648] text-zinc-300 hover:text-white'
             }`}
             title="Toggle Left Tools Panel (ഇടത് പാനൽ)"
           >
-            <LayoutGrid className="w-3 h-3" />
+            <LayoutGrid className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">{isLeftPanelOpen ? 'Hide Tools' : 'Show Tools'}</span>
           </button>
 
           <button
             type="button"
             onClick={() => setIsRightPanelOpen(!isRightPanelOpen)}
-            className={`px-2 py-0.5 rounded text-[10px] font-semibold flex items-center gap-1 cursor-pointer transition-colors ${
-              isRightPanelOpen ? 'bg-teal-500/20 text-teal-300 border border-teal-500/40' : 'bg-zinc-800 text-zinc-400 hover:text-white'
+            className={`min-h-[32px] px-2.5 py-1 rounded-lg text-[11px] font-semibold flex items-center gap-1.5 cursor-pointer transition-colors ${
+              isRightPanelOpen ? 'bg-teal-500/20 text-teal-300 border border-teal-500/40' : 'bg-[#18202c] border border-[#2b3648] text-zinc-300 hover:text-white'
             }`}
             title="Toggle Right Inspector Panel (ഇൻസ്പെക്ടർ പാനൽ)"
           >
-            <Sliders className="w-3 h-3" />
+            <Sliders className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">{isRightPanelOpen ? 'Hide Inspector' : 'Inspector'}</span>
           </button>
         </div>
@@ -3931,14 +5211,14 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
               setProjectName(val);
               saveCurrentProjectToStorage(undefined, val);
             }}
-            className="bg-transparent hover:bg-zinc-800/60 focus:bg-zinc-900 border border-transparent focus:border-zinc-700 rounded px-1.5 py-0.5 text-zinc-200 font-bold truncate text-xs outline-none transition-colors"
+            className="bg-transparent hover:bg-[#18202c] focus:bg-[#0c1017] border border-transparent focus:border-[#2b3648] rounded-lg px-2 py-1 text-zinc-100 font-bold truncate text-xs outline-none transition-colors"
             title="Click to rename project (പേര് മാറ്റുക)"
           />
           <Check className="w-3.5 h-3.5 text-teal-400 shrink-0" />
         </div>
 
         {/* Right Tools & Vibrant Teal Export Button */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0">
           <button
             type="button"
             onClick={() => {
@@ -3949,11 +5229,11 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
               setExportStatusText('');
               setShowExportModal(true);
             }}
-            className="px-3.5 py-1 bg-teal-400 hover:bg-teal-300 text-zinc-950 font-black rounded-lg text-xs flex items-center gap-1 cursor-pointer shadow-md transition-all"
+            className="min-h-[34px] px-4 py-1.5 bg-gradient-to-r from-teal-400 to-emerald-400 hover:from-teal-300 hover:to-emerald-300 text-zinc-950 font-black rounded-xl text-xs flex items-center gap-1.5 cursor-pointer shadow-md transition-all"
           >
-            <Download className="w-3 h-3 stroke-[2.5]" />
+            <Download className="w-3.5 h-3.5 stroke-[2.5]" />
             <span>Export ({projectResolution})</span>
-            <ChevronDown className="w-3 h-3" />
+            <ChevronDown className="w-3.5 h-3.5" />
           </button>
 
           <button
@@ -3962,7 +5242,7 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
               saveCurrentProjectToStorage();
               onBackToStoryboard();
             }}
-            className="p-1 rounded hover:bg-zinc-800 text-zinc-400 hover:text-rose-400 cursor-pointer"
+            className="min-h-[34px] min-w-[34px] p-1.5 rounded-lg bg-[#18202c] hover:bg-rose-500/20 border border-[#2b3648] text-zinc-400 hover:text-rose-400 flex items-center justify-center cursor-pointer transition-colors"
             title="Close and Return to Storyboard"
           >
             <X className="w-4 h-4" />
@@ -3970,26 +5250,42 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
         </div>
       </div>
 
+      {/* MAIN STUDIO WORKSPACE (RESPONSIVE MOBILE DOCK + DESKTOP 3-COL WORKSTATION) */}
+      <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
       {/* =========================================================================
-          2. UPPER SECTION: EXACT 3-COLUMN HORIZONTAL STUDIO (TOOLS LEFT | PLAYER CENTER | INSPECTOR RIGHT)
+          2. UPPER SECTION: CENTER PLAYER TOP ON MOBILE | 3-COL HORIZONTAL ON DESKTOP
           ========================================================================= */}
-      <div className="h-[56%] flex flex-row border-b border-[#21262d] overflow-hidden relative shrink-0">
+      <div
+        className={`flex flex-col md:flex-row border-b border-[#1f2937] overflow-hidden relative ${
+          mobilePanel === 'timeline' ? 'shrink-0 md:flex-[54] md:min-h-0' : 'flex-1 min-h-0 md:flex-[54]'
+        }`}
+      >
         {/* COLUMN 1: LEFT TOOLS & MEDIA BROWSER */}
-        {isLeftPanelOpen && (
-          <div className="order-1 w-[36%] sm:w-[37%] min-w-0 md:max-w-[460px] h-full bg-[#171b20] border-r border-[#21262d] flex flex-col shrink-0 transition-all duration-300">
-            {/* Top Category Tabs Bar with Live Item Counters */}
-            <div className="flex items-center justify-between px-1 border-b border-[#21262d] bg-[#14181d] shrink-0 text-[10px] font-medium text-zinc-400">
+        {(isLeftPanelOpen || mobilePanel === 'tools') && (
+          <div
+            className={`${
+              mobilePanel === 'tools' ? 'flex order-3 flex-1 min-h-0 w-full' : 'hidden'
+            } ${
+              isLeftPanelOpen ? 'md:flex' : 'md:hidden'
+            } md:order-1 md:w-[35%] lg:w-[390px] xl:w-[440px] md:h-full bg-[#10151d] md:border-r border-[#1f2937] flex-col shrink-0 transition-all duration-300`}
+          >
+            {/* Top Category Tabs Bar */}
+            <div className="flex items-center justify-between px-1.5 border-b border-[#1f2937] bg-[#0c1017] shrink-0 text-[10px] font-medium text-zinc-400">
               <div className="flex items-center gap-1 overflow-x-auto no-scrollbar py-1">
                 {[
-                  { id: 'Filters', label: `Filters`, icon: Palette },
-                  { id: 'Audio', label: `Audio`, icon: Music },
-                  { id: 'Transitions', label: `Transitions`, icon: SlidersHorizontal },
-                  { id: 'Effects', label: `Effects`, icon: Sparkles },
-                  { id: 'Titles', label: `Titles`, icon: Type },
-                  { id: 'VFX', label: `VFX`, icon: Crosshair },
-                  { id: 'Templates', label: `Templates`, icon: Layers },
-                  { id: 'Media', label: `Media`, icon: Video },
-                  { id: 'Stickers', label: `Stickers`, icon: Smile },
+                  { id: 'Filters', label: 'Filters', icon: Palette },
+                  { id: 'Chroma', label: 'Chroma', icon: Scissors },
+                  { id: 'Split', label: 'Split Join', icon: Split },
+                  { id: 'Trailer', label: 'Trailer', icon: Clapperboard },
+                  { id: 'ProFX', label: 'Pro FX', icon: Wand2 },
+                  { id: 'Audio', label: 'Audio', icon: Music },
+                  { id: 'Transitions', label: 'Transitions', icon: SlidersHorizontal },
+                  { id: 'Effects', label: 'Effects', icon: Sparkles },
+                  { id: 'Titles', label: 'Titles', icon: Type },
+                  { id: 'VFX', label: 'VFX', icon: Crosshair },
+                  { id: 'Templates', label: 'Templates', icon: Layers },
+                  { id: 'Media', label: 'Media', icon: Video },
+                  { id: 'Stickers', label: 'Stickers', icon: Smile },
                 ].map((tab) => {
                   const IconComp = tab.icon;
                   const isActive = activeTab === tab.id;
@@ -4003,13 +5299,27 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                         setSearchQuery('');
                         setItemRenderLimit(100);
                       }}
-                      className={`py-0.5 px-1.5 flex flex-col items-center gap-0.5 cursor-pointer transition-colors relative whitespace-nowrap ${
-                        isActive ? 'text-teal-400 font-bold' : 'hover:text-zinc-200'
+                      className={`min-h-[36px] py-1 px-2 rounded-lg flex flex-col items-center justify-center gap-0.5 cursor-pointer transition-colors relative whitespace-nowrap ${
+                        isActive ? 'text-teal-300 bg-teal-500/15 font-bold' : 'hover:text-zinc-200 hover:bg-[#18202c]'
                       }`}
                     >
-                      <IconComp className={`w-3 h-3 sm:w-3.5 sm:h-3.5 ${tab.id === 'VFX' && !isActive ? 'text-rose-400' : ''}`} />
-                      <span className="text-[9px] sm:text-[10px]">{tab.label}</span>
-                      {isActive && <div className="absolute bottom-0 inset-x-0 h-0.5 bg-teal-400 rounded-t" />}
+                      <IconComp
+                        className={`w-3.5 h-3.5 ${
+                          tab.id === 'VFX' && !isActive
+                            ? 'text-rose-400'
+                            : tab.id === 'Chroma' && !isActive
+                            ? 'text-emerald-400'
+                            : tab.id === 'Split' && !isActive
+                            ? 'text-cyan-400'
+                            : tab.id === 'Trailer' && !isActive
+                            ? 'text-amber-400'
+                            : tab.id === 'ProFX' && !isActive
+                            ? 'text-amber-400'
+                            : ''
+                        }`}
+                      />
+                      <span className="text-[9.5px] sm:text-[10px]">{tab.label}</span>
+                      {isActive && <div className="absolute bottom-0 inset-x-1 h-0.5 bg-teal-400 rounded-t" />}
                     </button>
                   );
                 })}
@@ -4019,17 +5329,17 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
               <button
                 type="button"
                 onClick={() => setIsLeftPanelOpen(false)}
-                className="p-0.5 sm:p-1 rounded hover:bg-zinc-800 text-zinc-400 hover:text-white cursor-pointer shrink-0"
+                className="min-h-[32px] min-w-[32px] p-1 rounded-lg hover:bg-[#18202c] text-zinc-400 hover:text-white cursor-pointer shrink-0 flex items-center justify-center"
                 title="Collapse Tools Panel (ഹൈഡ് ചെയ്യുക)"
               >
-                <ChevronLeft className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                <ChevronLeft className="w-4 h-4" />
               </button>
             </div>
 
             {/* Sub Layout: Left Tree Sub-sidebar + Main Dynamic Content Column */}
             <div className="flex-1 flex overflow-hidden min-h-0">
               {/* Sub-Sidebar */}
-              <div className="w-[58px] sm:w-24 bg-[#14181d] border-r border-[#21262d] p-1 sm:p-2 space-y-1 text-[10px] sm:text-[11px] shrink-0 text-zinc-400 overflow-y-auto no-scrollbar">
+              <div className="w-[64px] sm:w-28 bg-[#0c1017] border-r border-[#1f2937] p-1.5 sm:p-2 space-y-1 text-[10px] sm:text-[11px] shrink-0 text-zinc-400 overflow-y-auto no-scrollbar">
                 <div className="pt-0.5">
                   <div className="flex items-center gap-1 py-1 px-1 text-zinc-200 font-semibold cursor-pointer">
                     <ChevronDown className="w-3 h-3 text-teal-400" />
@@ -4038,6 +5348,14 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                   <div className="pl-1 space-y-0.5">
                     {(activeTab === 'Filters'
                       ? ['All', 'Cinematic', 'Retro', 'Portrait', 'Nature', 'Black & White', 'Sci-Fi', 'Moody', 'Vivid', 'Anime & Pastel', 'Sunset Gold']
+                      : activeTab === 'Chroma'
+                      ? ['All', 'Green Screen', 'Blue Screen', 'BG Studio']
+                      : activeTab === 'Split'
+                      ? ['All', 'Side by Side', 'Top Bottom', 'PiP Overlay']
+                      : activeTab === 'Trailer'
+                      ? ['All', 'Presets', 'Card Builder', 'Title Motion', 'Trailer FX']
+                      : activeTab === 'ProFX'
+                      ? ['All', ...PRO_FEATURE_CATEGORIES]
                       : activeTab === 'Audio'
                       ? ['All', 'Funny & Meme SFX', 'Comedy Tracks', 'Cinematic Score', 'Background Music', 'Trailer Hits', 'Upbeat Beat', 'Lo-Fi Chill', 'Electronic', 'Sound Effects']
                       : activeTab === 'Transitions'
@@ -4063,11 +5381,11 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                             setItemRenderLimit(100);
                             if (activeTab === 'Media') setMediaFilter(sub as any);
                           }}
-                          className={`py-1 px-1.5 rounded text-[10px] cursor-pointer truncate transition-colors ${
-                            isCur ? 'text-teal-400 bg-teal-950/40 font-bold' : 'hover:text-zinc-200 hover:bg-zinc-800/50'
+                          className={`min-h-[28px] flex items-center py-1 px-2 rounded-lg text-[10px] cursor-pointer truncate transition-colors ${
+                            isCur ? 'text-teal-300 bg-teal-500/15 border border-teal-500/30 font-bold' : 'hover:text-zinc-200 hover:bg-[#18202c]'
                           }`}
                         >
-                          {sub}
+                          <span className="truncate">{sub}</span>
                         </div>
                       );
                     })}
@@ -4079,19 +5397,19 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                   <button
                     type="button"
                     onClick={() => multiFileInputRef.current?.click()}
-                    className="w-full py-1.5 bg-zinc-800 hover:bg-teal-500 hover:text-black text-teal-400 font-bold rounded text-[10px] border border-teal-500/30 flex items-center justify-center gap-1 cursor-pointer transition-all"
+                    className="w-full min-h-[34px] py-1.5 bg-[#18202c] hover:bg-teal-400 hover:text-black text-teal-300 font-bold rounded-lg text-[10px] border border-teal-500/30 flex items-center justify-center gap-1 cursor-pointer transition-all"
                   >
-                    <Upload className="w-3 h-3" />
-                    <span>Upload Media</span>
+                    <Upload className="w-3.5 h-3.5" />
+                    <span>Upload</span>
                   </button>
                 </div>
               </div>
 
               {/* Dynamic Content Grid with Feature Guide Banner & Full Details */}
-              <div className="flex-1 min-w-0 flex flex-col p-1 sm:p-2 overflow-y-auto no-scrollbar space-y-1.5 sm:space-y-2 min-h-0">
+              <div className="flex-1 min-w-0 flex flex-col p-1.5 sm:p-2.5 overflow-y-auto no-scrollbar space-y-2 min-h-0">
                 {/* Search Bar */}
                 <div className="relative shrink-0">
-                  <Search className="w-3 h-3 absolute left-2 top-2 text-zinc-500" />
+                  <Search className="w-3.5 h-3.5 absolute left-2.5 top-2.5 text-zinc-500" />
                   <input
                     type="text"
                     value={searchQuery}
@@ -4099,30 +5417,64 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                       setSearchQuery(e.target.value);
                       setItemRenderLimit(100);
                     }}
-                    placeholder={`Search ${activeTab} (${activeTab === 'Media' ? mediaGallery.length : activeTab === 'VFX' ? 1200 : 600})...`}
-                    className="w-full bg-[#111418] border border-zinc-800 rounded-lg pl-7 pr-2 py-1 text-[11px] text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-teal-400"
+                    placeholder={`Search ${activeTab}...`}
+                    className="w-full min-h-[34px] bg-[#0c1017] border border-[#242e3d] rounded-xl pl-8 pr-2.5 py-1.5 text-[11px] text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-teal-400"
                   />
                 </div>
 
                 {/* Live Guide Banner explaining how the selected feature works */}
-                <div className="p-2 rounded-lg bg-teal-950/30 border border-teal-500/30 text-[10px] text-zinc-300 leading-relaxed shrink-0">
+                <div className="p-2.5 rounded-xl bg-teal-950/25 border border-teal-500/30 text-[10px] text-zinc-300 leading-relaxed shrink-0">
                   <div className="flex items-center justify-between font-bold text-teal-300 mb-0.5">
                     <span>
-                      {activeTab === 'Transitions' && '✨ ട്രാൻസിഷൻസ് ഗൈഡ് (600 Transitions)'}
-                      {activeTab === 'Filters' && '🎨 ഫിൽട്ടറുകൾ ഗൈഡ് (600 Filters)'}
-                      {activeTab === 'Audio' && '🎵 ബാഗ്രൗണ്ട് മ്യൂസിക് & SFX (600 Tracks)'}
-                      {activeTab === 'Effects' && '🌟 വിഷ്വൽ ഇഫക്റ്റുകൾ (600 Effects)'}
-                      {activeTab === 'Titles' && '🔤 ടൈറ്റിൽ സ്റ്റൈലുകൾ (600 Titles)'}
-                      {activeTab === 'VFX' && '🔫 സിനിമ ആക്ഷൻ VFX (1,200 Gun, Blood & FX)'}
-                      {activeTab === 'Templates' && '🎬 ടെംപ്ലേറ്റുകൾ (600 Templates)'}
-                      {activeTab === 'Stickers' && '🏷️ സ്റ്റിക്കറുകൾ & ഇമോജി (600 Stickers)'}
-                      {activeTab === 'Media' && `📁 മീഡിയ പൂൾ (${mediaGallery.length} Files)`}
+                      {activeTab === 'Transitions' && '✨ ട്രാൻസിഷൻസ് ഗൈഡ്'}
+                      {activeTab === 'Filters' && '🎨 ഫിൽട്ടറുകൾ ഗൈഡ്'}
+                      {activeTab === 'Chroma' && '🟩 ഗ്രീൻ സ്ക്രീൻ / ക്രോമാ കീ സ്റ്റുഡിയോ'}
+                      {activeTab === 'Split' && '🌗 ഡ്യുവൽ സ്പ്ലിറ്റ് (2 വീഡിയോ / ഫോട്ടോ ഒരുമിച്ച്)'}
+                      {activeTab === 'Trailer' && '🎬 മൂവി ട്രെയിലർ & ഇമേജ് കാർഡ് സ്റ്റുഡിയോ'}
+                      {activeTab === 'ProFX' && '⚡ പ്രോ എഡിറ്റിംഗ് (1,200 ഫീച്ചറുകൾ × 660 പാർട്ട്സ്)'}
+                      {activeTab === 'Audio' && '🎵 ബാഗ്രൗണ്ട് മ്യൂസിക് & SFX'}
+                      {activeTab === 'Effects' && '🌟 വിഷ്വൽ ഇഫക്റ്റുകൾ'}
+                      {activeTab === 'Titles' && '🔤 ടൈറ്റിൽ സ്റ്റൈലുകൾ & ആനിമേഷൻ'}
+                      {activeTab === 'VFX' && '🔫 സിനിമ ആക്ഷൻ VFX'}
+                      {activeTab === 'Templates' && '🎬 ടെംപ്ലേറ്റുകൾ'}
+                      {activeTab === 'Stickers' && '🏷️ സ്റ്റിക്കറുകൾ & ഇമോജി'}
+                      {activeTab === 'Media' && '📁 മീഡിയ പൂൾ'}
                     </span>
+                    {activeTab === 'Chroma' && chromaConfig.enabled && (
+                      <button
+                        type="button"
+                        onClick={() => setChromaConfig(DEFAULT_CHROMA_KEY_CONFIG)}
+                        className="text-[10px] text-rose-400 hover:text-rose-300 underline cursor-pointer"
+                      >
+                        Turn Off Chroma
+                      </button>
+                    )}
+                    {activeTab === 'Split' && splitScreenConfig.enabled && (
+                      <button
+                        type="button"
+                        onClick={() => setSplitScreenConfig(DEFAULT_SPLIT_SCREEN_CONFIG)}
+                        className="text-[10px] text-rose-400 hover:text-rose-300 underline cursor-pointer"
+                      >
+                        Reset Split
+                      </button>
+                    )}
+                    {activeTab === 'ProFX' && activeProFeature && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setActiveProFeature(null);
+                          setProSettingOverrides({});
+                        }}
+                        className="text-[10px] text-rose-400 hover:text-rose-300 underline cursor-pointer"
+                      >
+                        Clear Pro FX
+                      </button>
+                    )}
                     {activeTab === 'Effects' && activeEffect && (
                       <button
                         type="button"
                         onClick={() => setActiveEffect(null)}
-                        className="text-[9px] text-rose-400 hover:text-rose-300 underline cursor-pointer"
+                        className="text-[10px] text-rose-400 hover:text-rose-300 underline cursor-pointer"
                       >
                         Clear Effect
                       </button>
@@ -4134,9 +5486,9 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                           setVfxLayers([]);
                           setSelectedVfxLayerId(null);
                         }}
-                        className="text-[9px] text-rose-400 hover:text-rose-300 underline cursor-pointer"
+                        className="text-[10px] text-rose-400 hover:text-rose-300 underline cursor-pointer"
                       >
-                        Clear All ({vfxLayers.length})
+                        Clear All
                       </button>
                     )}
                     {activeTab === 'Stickers' && activeStickers.length > 0 && (
@@ -4146,9 +5498,9 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                           setActiveStickers([]);
                           setSelectedStickerLayerId(null);
                         }}
-                        className="text-[9px] text-rose-400 hover:text-rose-300 underline cursor-pointer"
+                        className="text-[10px] text-rose-400 hover:text-rose-300 underline cursor-pointer"
                       >
-                        Clear ({activeStickers.length})
+                        Clear All
                       </button>
                     )}
                   </div>
@@ -4157,14 +5509,22 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                       'ഏതെങ്കിലും ട്രാൻസിഷനിൽ ടച്ച് ചെയ്യുമ്പോൾ തന്നെ മുകളിലെ വീഡിയോ സ്ക്രീനിൽ അത് ലൈവായി പ്രവർത്തിക്കുന്നത് കാണാം. രണ്ട് ക്ലിപ്പുകൾക്കിടയിലും ഓട്ടോമാറ്റിക്കായി ചേർക്കപ്പെടും.'}
                     {activeTab === 'Filters' &&
                       'ഏതെങ്കിലും ഫിൽട്ടർ ക്ലിക്ക് ചെയ്താൽ വീഡിയോയിൽ ഉടൻ നിറം മാറുന്നത് കാണാം. കളർ ഗ്രേഡിംഗ് പാനലും വലത് സൈഡിൽ തുറക്കും.'}
+                    {activeTab === 'Chroma' &&
+                      'ഗ്രീൻ സ്ക്രീൻ / ബ്ലൂ സ്ക്രീൻ കട്ട് ചെയ്ത് ഇഷ്ടമുള്ള സ്റ്റുഡിയോ ബാഗ്രൗണ്ടോ നിങ്ങളുടെ ഫോട്ടോ/വീഡിയോയോ പിന്നിൽ വെക്കാം! ലൈവായും എക്സ്പോർട്ടിലും വർക്ക് ചെയ്യും.'}
+                    {activeTab === 'Split' &&
+                      'രണ്ട് ഫോട്ടോകളോ വീഡിയോകളോ ഒരേ സ്ക്രീനിൽ ബോർഡർ ഇല്ലാതെ (Seamless Frame) അല്ലെങ്കിൽ Divider Border ഓപ്ഷനോടെ ജോയിൻ ചെയ്യാം.'}
+                    {activeTab === 'Trailer' &&
+                      'ഹോളിവുഡ് സ്റ്റൈൽ ആനിമേറ്റഡ് ടൈറ്റിലുകൾ, ലെൻസ് ഫ്ലെയർ, കൗണ്ട്‌ഡൗൺ, ഇമേജ്-ടു-ട്രെയിലർ ആനിമേറ്റഡ് പോസ്റ്റർ കാർഡുകൾ എന്നിവ നിമിഷങ്ങൾക്കുള്ളിൽ നിർമ്മിക്കാം.'}
+                    {activeTab === 'ProFX' &&
+                      '1,200 പ്രോ ഫീച്ചറുകളിൽ ഏതെങ്കിലും ഒന്ന് തിരഞ്ഞെടുത്താൽ വലതുവശത്തുള്ള "Pro 660" പാനലിൽ 12 മോഡ്യൂളുകളിലായി 660 സെറ്റിംഗ്സ്/പാർട്ടുകൾ ലൈവായി അഡ്ജസ്റ്റ് ചെയ്യാം.'}
                     {activeTab === 'Audio' &&
                       'ബാഗ്രൗണ്ട് മ്യൂസിക്, കോമഡി, മീം സൗണ്ടുകൾ എന്നിവയിൽ 🔊 ക്ലിക്ക് ചെയ്താൽ അപ്പോൾ തന്നെ ശബ്ദം കേൾക്കാനും ടൈംലൈനിൽ ആഡ് ചെയ്യാനും സാധിക്കും.'}
                     {activeTab === 'Effects' &&
-                      'ലൈറ്റ് ലീക്ക്, പാർട്ടിക്കിൾസ്, ഗ്ലിച്ച്, ഫോഗ്, നിയോൺ തുടങ്ങിയ 600 ഇഫക്റ്റുകളിൽ ക്ലിക്ക് ചെയ്താൽ സ്ക്രീനിൽ തത്സമയം അപ്ലൈ ആകും.'}
+                      'ലൈറ്റ് ലീക്ക്, പാർട്ടിക്കിൾസ്, ഗ്ലിച്ച്, ഫോഗ്, നിയോൺ തുടങ്ങിയ വിഷ്വൽ ഇഫക്റ്റുകളിൽ ക്ലിക്ക് ചെയ്താൽ സ്ക്രീനിൽ തത്സമയം അപ്ലൈ ആകും.'}
                     {activeTab === 'Titles' &&
                       'ഏത് ടൈറ്റിലിൽ ക്ലിക്ക് ചെയ്താലും ടൈംലൈനിൽ ചേരും; സ്ക്രീനിലെ റൗണ്ട് ഹാൻഡിൽ വഴി വലിപ്പം കൂട്ടാനും നീക്കാനും വലതു സൈഡിൽ അഡ്ജസ്റ്റ് ചെയ്യാനും സാധിക്കും.'}
                     {activeTab === 'VFX' &&
-                      'തോക്കിൽ നിന്നുള്ള വെടിയുണ്ട ശരീരത്തിൽ കയറുന്നത് (Gun→Body), രക്തം തെറിക്കൽ, സ്ഫോടനം, മിന്നൽ തുടങ്ങി 1,200 സിനിമ VFX! ടച്ച് ചെയ്യുമ്പോൾ താഴെ VFX ടൈംലൈനും വലത് സൈഡിൽ റൂട്ട്/സൈസ് അഡ്ജസ്റ്റും വരും.'}
+                      'തോക്കിൽ നിന്നുള്ള വെടിയുണ്ട ശരീരത്തിൽ കയറുന്നത് (Gun→Body), രക്തം തെറിക്കൽ, സ്ഫോടനം, മിന്നൽ തുടങ്ങി സിനിമ ആക്ഷൻ VFX! ടച്ച് ചെയ്യുമ്പോൾ താഴെ VFX ടൈംലൈനും വലത് സൈഡിൽ റൂട്ട്/സൈസ് അഡ്ജസ്റ്റും വരും.'}
                     {activeTab === 'Templates' &&
                       'റെഡിമെയ്ഡ് ടൈറ്റിൽ, സബ്ടൈറ്റിൽ, ഡയറക്ടർ ക്രെഡിറ്റുകൾ ഒറ്റ ക്ലിക്കിൽ വീഡിയോയിൽ ചേർക്കാം.'}
                     {activeTab === 'Stickers' &&
@@ -4174,12 +5534,11 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                   </p>
                 </div>
 
-                {/* SECTION 1: FILTERS TAB (600 Items with full details) */}
+                {/* SECTION 1: FILTERS TAB */}
                 {activeTab === 'Filters' && (
                   <div className="space-y-2">
                     <div className="flex items-center justify-between text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
                       <span>Cinematic Filters &amp; LUTs</span>
-                      <span className="text-teal-400">{filteredFilters.length} Items</span>
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 sm:gap-2">
                       {filteredFilters.slice(0, itemRenderLimit).map((f) => {
@@ -4193,31 +5552,32 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                               setActiveInspectorTab('color');
                               setIsRightPanelOpen(true);
                               saveCurrentProjectToStorage();
+                              logEditorTelemetry('edit_timeline');
                             }}
-                            className={`rounded-lg border overflow-hidden cursor-pointer group transition-all ${
+                            className={`rounded-xl border overflow-hidden cursor-pointer group transition-all ${
                               isCur
                                 ? 'border-teal-400 ring-2 ring-teal-400/50 shadow-md bg-teal-950/30'
-                                : 'border-zinc-800 bg-zinc-900/60 hover:border-zinc-600'
+                                : 'border-[#242e3d] bg-[#141a24] hover:border-teal-400/60'
                             }`}
                           >
                             <div className="aspect-video bg-black overflow-hidden relative">
                               <img
-                                src={f.thumbnail}
+                                src={activePreviewThumbUrl || f.thumbnail}
                                 alt={f.name}
                                 style={{ filter: f.cssFilter }}
                                 className="w-full h-full object-cover group-hover:scale-105 transition-transform"
                               />
                               {isCur && (
-                                <div className="absolute top-1 right-1 w-4 h-4 rounded-full bg-teal-400 text-black flex items-center justify-center font-bold text-[9px]">
+                                <div className="absolute top-1.5 right-1.5 w-4 h-4 rounded-full bg-teal-400 text-black flex items-center justify-center font-bold text-[9px]">
                                   ✓
                                 </div>
                               )}
-                              <span className="absolute bottom-1 left-1 px-1 py-0.2 rounded bg-black/80 text-[8px] font-mono text-zinc-300">
+                              <span className="absolute bottom-1 left-1 px-1.5 py-0.5 rounded bg-black/80 text-[8px] font-mono text-zinc-300">
                                 {f.category}
                               </span>
                             </div>
-                            <div className="p-1.5 space-y-0.5">
-                              <div className="truncate text-[10px] font-bold text-zinc-200 group-hover:text-teal-300">
+                            <div className="p-2 space-y-0.5">
+                              <div className="truncate text-[10.5px] font-bold text-zinc-200 group-hover:text-teal-300">
                                 {f.name}
                               </div>
                               <div className="text-[8.5px] text-zinc-400 line-clamp-2 leading-snug">
@@ -4233,28 +5593,27 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                         <button
                           type="button"
                           onClick={() => setItemRenderLimit((n) => n + 150)}
-                          className="flex-1 py-1.5 rounded bg-zinc-800 hover:bg-zinc-700 text-teal-300 font-bold text-[10px] cursor-pointer"
+                          className="flex-1 min-h-[36px] py-1.5 rounded-xl bg-[#18202c] hover:bg-[#222d3d] border border-[#2b3648] text-teal-300 font-bold text-[11px] cursor-pointer"
                         >
-                          + Load More ({filteredFilters.length - itemRenderLimit} remaining)
+                          + Load More
                         </button>
                         <button
                           type="button"
                           onClick={() => setItemRenderLimit(filteredFilters.length)}
-                          className="px-3 py-1.5 rounded bg-teal-500/20 border border-teal-500/40 text-teal-300 font-bold text-[10px] cursor-pointer"
+                          className="min-h-[36px] px-3.5 py-1.5 rounded-xl bg-teal-500/20 border border-teal-500/40 text-teal-300 font-bold text-[11px] cursor-pointer"
                         >
-                          Show All {filteredFilters.length}
+                          Show All
                         </button>
                       </div>
                     )}
                   </div>
                 )}
 
-                {/* SECTION 2: AUDIO TAB (600 Tracks + Real Audio Preview Synthesizer + Details) */}
+                {/* SECTION 2: AUDIO TAB */}
                 {activeTab === 'Audio' && (
                   <div className="space-y-2">
                     <div className="flex items-center justify-between text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
                       <span>Background Music &amp; Meme SFX</span>
-                      <span className="text-teal-400">{filteredAudio.length} Tracks</span>
                     </div>
                     <div className="space-y-1.5">
                       {filteredAudio.slice(0, itemRenderLimit).map((a) => {
@@ -4270,44 +5629,53 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                               setIsRightPanelOpen(true);
                               playAudioPreview(a);
                               saveCurrentProjectToStorage();
+                              logEditorTelemetry('edit_timeline');
                             }}
-                            className={`p-2 rounded-lg border flex items-start justify-between gap-2 cursor-pointer group transition-all ${
+                            className={`p-2.5 rounded-xl border flex items-start justify-between gap-2 cursor-pointer group transition-all ${
                               isCur
                                 ? 'bg-emerald-950/40 border-emerald-400 text-emerald-200'
-                                : 'bg-zinc-900/50 border-zinc-800 hover:border-zinc-600 text-zinc-300'
+                                : 'bg-[#141a24] border-[#242e3d] hover:border-emerald-400/60 text-zinc-300'
                             }`}
                           >
-                            <div className="flex items-start gap-2 min-w-0 flex-1">
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setActiveAudio(a);
-                                  playAudioPreview(a);
-                                }}
-                                className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5 cursor-pointer transition-colors ${
-                                  isPrev
-                                    ? 'bg-amber-400 text-black animate-pulse'
-                                    : isCur
-                                    ? 'bg-emerald-400 text-black'
-                                    : 'bg-zinc-800 text-zinc-300 hover:bg-teal-400 hover:text-black'
-                                }`}
-                                title="Play Audio Preview"
-                              >
-                                {isPrev ? <Volume2 className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5 fill-current" />}
-                              </button>
+                            <div className="flex items-start gap-2.5 min-w-0 flex-1">
+                              <div className="relative w-14 h-10 rounded-lg overflow-hidden bg-black shrink-0 border border-emerald-500/30">
+                                <img
+                                  src={activePreviewThumbUrl}
+                                  alt={a.title}
+                                  className="w-full h-full object-cover opacity-55"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setActiveAudio(a);
+                                    playAudioPreview(a);
+                                    logEditorTelemetry('edit_timeline');
+                                  }}
+                                  className={`absolute inset-0 flex items-center justify-center cursor-pointer transition-colors ${
+                                    isPrev
+                                      ? 'bg-amber-400/80 text-black animate-pulse'
+                                      : isCur
+                                      ? 'bg-emerald-400/75 text-black'
+                                      : 'bg-black/45 text-white hover:bg-teal-400/85 hover:text-black'
+                                  }`}
+                                  title="Play Audio Preview"
+                                >
+                                  {isPrev ? <Volume2 className="w-4 h-4" /> : <Play className="w-4 h-4 fill-current" />}
+                                </button>
+                              </div>
                               <div className="min-w-0 flex-1">
-                                <span className="font-bold text-[10px] block truncate">{a.title}</span>
+                                <span className="font-bold text-[10.5px] block truncate">{a.title}</span>
                                 <span className="text-[9px] text-teal-400 font-mono block">
                                   {a.category} · {a.bpm} BPM · {a.mood} · {a.duration}
                                 </span>
-                                <span className="text-[8.5px] text-zinc-400 block leading-snug pt-0.5">
+                                <span className="text-[8.5px] text-zinc-400 block leading-snug pt-0.5 line-clamp-2">
                                   {a.description}
                                 </span>
                               </div>
                             </div>
                             {isCur && (
-                              <span className="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-bold text-[8px] shrink-0">
+                              <span className="px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 font-bold text-[8.5px] shrink-0">
                                 Active
                               </span>
                             )}
@@ -4320,28 +5688,27 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                         <button
                           type="button"
                           onClick={() => setItemRenderLimit((n) => n + 150)}
-                          className="flex-1 py-1.5 rounded bg-zinc-800 hover:bg-zinc-700 text-teal-300 font-bold text-[10px] cursor-pointer"
+                          className="flex-1 min-h-[36px] py-1.5 rounded-xl bg-[#18202c] hover:bg-[#222d3d] border border-[#2b3648] text-teal-300 font-bold text-[11px] cursor-pointer"
                         >
-                          + Load More ({filteredAudio.length - itemRenderLimit} remaining)
+                          + Load More
                         </button>
                         <button
                           type="button"
                           onClick={() => setItemRenderLimit(filteredAudio.length)}
-                          className="px-3 py-1.5 rounded bg-teal-500/20 border border-teal-500/40 text-teal-300 font-bold text-[10px] cursor-pointer"
+                          className="min-h-[36px] px-3.5 py-1.5 rounded-xl bg-teal-500/20 border border-teal-500/40 text-teal-300 font-bold text-[11px] cursor-pointer"
                         >
-                          Show All {filteredAudio.length}
+                          Show All
                         </button>
                       </div>
                     )}
                   </div>
                 )}
 
-                {/* SECTION 3: TRANSITIONS TAB (600 Live-Animated Transitions with Full Guide Details) */}
+                {/* SECTION 3: TRANSITIONS TAB */}
                 {activeTab === 'Transitions' && (
                   <div className="space-y-2">
                     <div className="flex items-center justify-between text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
                       <span>Live Video Transitions</span>
-                      <span className="text-teal-400">{filteredTransitions.length} Items</span>
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                       {filteredTransitions.slice(0, itemRenderLimit).map((t) => {
@@ -4350,26 +5717,27 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                           <div
                             key={t.id}
                             onClick={() => handleSelectTransition(t)}
-                            className={`p-2 rounded-lg border cursor-pointer flex items-start gap-2.5 group transition-all text-left ${
+                            className={`p-2 rounded-xl border cursor-pointer flex flex-col group transition-all text-left ${
                               isSel
                                 ? 'border-teal-400 bg-teal-950/40 ring-1 ring-teal-400/50'
-                                : 'border-zinc-800 bg-zinc-900/60 hover:border-teal-400'
+                                : 'border-[#242e3d] bg-[#141a24] hover:border-teal-400'
                             }`}
                           >
-                            <div
-                              className={`w-9 h-9 rounded-lg flex flex-col items-center justify-center font-black text-[9px] shrink-0 transition-colors ${
-                                isSel
-                                  ? 'bg-teal-400 text-black'
-                                  : 'bg-zinc-800 text-teal-400 group-hover:bg-teal-400 group-hover:text-black'
-                              }`}
-                            >
-                              <span>{t.icon}</span>
-                              <span className="text-[7px] font-mono opacity-80">{t.durationSec}s</span>
+                            <div className="aspect-video bg-black overflow-hidden relative rounded-lg mb-1.5 w-full">
+                              <img
+                                src={activePreviewThumbUrl}
+                                alt={t.name}
+                                className="w-full h-full object-cover opacity-80 group-hover:scale-105 transition-transform"
+                              />
+                              <div className="absolute inset-0 bg-gradient-to-r from-teal-500/35 via-transparent to-cyan-500/45 flex items-center justify-between px-2">
+                                <span className="px-1.5 py-0.5 rounded bg-black/75 text-teal-300 font-black text-[9px]">{t.icon}</span>
+                                <span className="px-1.5 py-0.5 rounded bg-black/75 text-zinc-200 font-mono text-[8px]">{t.durationSec}s</span>
+                              </div>
                             </div>
                             <div className="min-w-0 flex-1">
                               <div className="flex items-center justify-between gap-1">
-                                <span className="text-[10px] font-bold text-zinc-100 truncate">{t.name}</span>
-                                <span className="text-[8px] px-1 rounded bg-zinc-800 text-teal-300 font-mono shrink-0">
+                                <span className="text-[10.5px] font-bold text-zinc-100 truncate">{t.name}</span>
+                                <span className="text-[8px] px-1.5 py-0.5 rounded bg-[#1e2736] text-teal-300 font-mono shrink-0">
                                   {t.category}
                                 </span>
                               </div>
@@ -4386,28 +5754,27 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                         <button
                           type="button"
                           onClick={() => setItemRenderLimit((n) => n + 150)}
-                          className="flex-1 py-1.5 rounded bg-zinc-800 hover:bg-zinc-700 text-teal-300 font-bold text-[10px] cursor-pointer"
+                          className="flex-1 min-h-[38px] py-1.5 rounded-xl bg-[#18202c] hover:bg-[#222d3d] border border-[#2b3648] text-teal-300 font-bold text-[11px] cursor-pointer whitespace-nowrap"
                         >
-                          + Load More ({filteredTransitions.length - itemRenderLimit} remaining)
+                          + Load More
                         </button>
                         <button
                           type="button"
                           onClick={() => setItemRenderLimit(filteredTransitions.length)}
-                          className="px-3 py-1.5 rounded bg-teal-500/20 border border-teal-500/40 text-teal-300 font-bold text-[10px] cursor-pointer"
+                          className="min-h-[38px] px-3.5 py-1.5 rounded-xl bg-teal-500/20 border border-teal-500/40 text-teal-300 font-bold text-[11px] cursor-pointer whitespace-nowrap"
                         >
-                          Show All {filteredTransitions.length}
+                          Show All ({filteredTransitions.length})
                         </button>
                       </div>
                     )}
                   </div>
                 )}
 
-                {/* SECTION 4: EFFECTS TAB (600 Live Canvas VFX Overlays with Full Descriptions) */}
+                {/* SECTION 4: EFFECTS TAB */}
                 {activeTab === 'Effects' && (
                   <div className="space-y-2">
                     <div className="flex items-center justify-between text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
-                      <span>Visual Overlays &amp; VFX</span>
-                      <span className="text-teal-400">{filteredEffects.length} Items</span>
+                      <span>Visual Overlays &amp; VFX ({filteredEffects.length})</span>
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                       {filteredEffects.slice(0, itemRenderLimit).map((eff) => {
@@ -4422,26 +5789,39 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                                 setSelectedFeatureType('effect');
                                 setActiveInspectorTab('adjust');
                                 setIsRightPanelOpen(true);
+                                logEditorTelemetry('edit_timeline');
                               }
                             }}
-                            className={`p-2 rounded-lg border cursor-pointer flex items-start gap-2 group transition-all text-left ${
+                            className={`p-2 rounded-xl border cursor-pointer flex flex-col group transition-all text-left ${
                               isCur
                                 ? 'border-teal-400 bg-teal-950/40 ring-1 ring-teal-400/50'
-                                : 'border-zinc-800 bg-zinc-900/60 hover:border-teal-400'
+                                : 'border-[#242e3d] bg-[#141a24] hover:border-teal-400'
                             }`}
                           >
-                            <div
-                              className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5"
-                              style={{ backgroundColor: `${eff.accentColor}22`, border: `1px solid ${eff.accentColor}66` }}
-                            >
-                              <Sparkles className="w-3.5 h-3.5" style={{ color: eff.accentColor }} />
+                            <div className="aspect-video w-full rounded-lg overflow-hidden bg-black relative mb-1.5">
+                              <img
+                                src={activePreviewThumbUrl}
+                                alt={eff.name}
+                                className="w-full h-full object-cover opacity-80 group-hover:scale-105 transition-transform"
+                              />
+                              <div
+                                className="absolute inset-0 mix-blend-screen opacity-55"
+                                style={{ background: `radial-gradient(circle at 30% 35%, ${eff.accentColor}, transparent 70%)` }}
+                              />
+                              <div className="absolute top-1.5 left-1.5 w-6 h-6 rounded-md bg-black/75 flex items-center justify-center border border-white/15">
+                                <Sparkles className="w-3.5 h-3.5" style={{ color: eff.accentColor }} />
+                              </div>
+                              {isCur && (
+                                <span className="absolute top-1.5 right-1.5 px-1.5 py-0.5 rounded bg-teal-400 text-black text-[8px] font-black">
+                                  ON ✓
+                                </span>
+                              )}
                             </div>
                             <div className="min-w-0 flex-1">
                               <div className="flex items-center justify-between gap-1">
-                                <span className="text-[10px] font-bold text-zinc-100 truncate">{eff.name}</span>
-                                {isCur && <span className="text-[8px] font-bold text-teal-300">ON ✓</span>}
+                                <span className="text-[10.5px] font-bold text-zinc-100 truncate">{eff.name}</span>
                               </div>
-                              <span className="text-[8px] text-teal-400 font-mono block">{eff.category}</span>
+                              <span className="text-[8.5px] text-teal-400 font-mono block">{eff.category}</span>
                               <p className="text-[8.5px] text-zinc-400 leading-snug pt-0.5 line-clamp-2">
                                 {eff.description}
                               </p>
@@ -4455,30 +5835,77 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                         <button
                           type="button"
                           onClick={() => setItemRenderLimit((n) => n + 150)}
-                          className="flex-1 py-1.5 rounded bg-zinc-800 hover:bg-zinc-700 text-teal-300 font-bold text-[10px] cursor-pointer"
+                          className="flex-1 min-h-[36px] py-1.5 rounded-xl bg-[#18202c] hover:bg-[#222d3d] border border-[#2b3648] text-teal-300 font-bold text-[11px] cursor-pointer"
                         >
-                          + Load More ({filteredEffects.length - itemRenderLimit} remaining)
+                          + Load More
                         </button>
                         <button
                           type="button"
                           onClick={() => setItemRenderLimit(filteredEffects.length)}
-                          className="px-3 py-1.5 rounded bg-teal-500/20 border border-teal-500/40 text-teal-300 font-bold text-[10px] cursor-pointer"
+                          className="min-h-[36px] px-3.5 py-1.5 rounded-xl bg-teal-500/20 border border-teal-500/40 text-teal-300 font-bold text-[11px] cursor-pointer"
                         >
-                          Show All {filteredEffects.length}
+                          Show All
                         </button>
                       </div>
                     )}
                   </div>
                 )}
 
-                {/* SECTION 5: TITLES TAB (600 Titles with Full Descriptions + Right Inspector Adjust) */}
+                {/* SECTION 5: TITLES TAB */}
                 {activeTab === 'Titles' && (
-                  <div className="space-y-2">
+                  <div className="space-y-2.5">
                     <div className="flex items-center justify-between text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
                       <span>Titles &amp; Lower Thirds</span>
-                      <span className="text-teal-400">{filteredTitles.length} Presets</span>
                     </div>
-                    <div className="space-y-1.5">
+                    {/* Animated Title Motion & Color Theme Quick Selector */}
+                    <div className="p-2 rounded-xl bg-[#0c1017] border border-[#242e3d] space-y-1.5">
+                      <span className="text-[9.5px] font-bold text-amber-300 block">🎬 Title Animation &amp; Color Style</span>
+                      <div className="flex flex-wrap gap-1">
+                        {TRAILER_TITLE_ANIMATIONS.slice(0, 6).map((anim) => (
+                          <button
+                            key={anim.id}
+                            type="button"
+                            onClick={() => {
+                              setTitleAnimType(anim.id);
+                              if (!movieTitle) {
+                                setMovieTitle('CINEMA PREMIERE');
+                                setSubtitle('COMING SOON');
+                              }
+                              setShowTitleOverlay(true);
+                              setSelectedFeatureType('title');
+                            }}
+                            className={`px-1.5 py-0.5 rounded text-[8.5px] font-bold cursor-pointer ${
+                              titleAnimType === anim.id
+                                ? 'bg-amber-400 text-black'
+                                : 'bg-[#18202c] text-zinc-300 hover:bg-[#222d3d]'
+                            }`}
+                          >
+                            {anim.name}
+                          </button>
+                        ))}
+                      </div>
+                      <div className="flex flex-wrap gap-1 pt-1 border-t border-zinc-800/80">
+                        {TRAILER_TITLE_THEMES.map((th) => (
+                          <button
+                            key={th.id}
+                            type="button"
+                            onClick={() => {
+                              setTitleThemeType(th.id);
+                              setShowTitleOverlay(true);
+                            }}
+                            className={`px-1.5 py-0.5 rounded text-[8.5px] font-bold flex items-center gap-1 cursor-pointer border ${
+                              titleThemeType === th.id
+                                ? 'border-amber-400 bg-amber-950/40 text-amber-200'
+                                : 'border-zinc-800 bg-[#141a24] text-zinc-300'
+                            }`}
+                          >
+                            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: th.previewColor }} />
+                            <span>{th.name.split(' ')[0]}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
                       {filteredTitles.slice(0, itemRenderLimit).map((t) => (
                         <div
                           key={t.id}
@@ -4492,15 +5919,28 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                             setActiveInspectorTab('adjust');
                             setIsRightPanelOpen(true);
                             saveCurrentProjectToStorage();
+                            logEditorTelemetry('edit_timeline');
                           }}
-                          className="p-2.5 rounded-lg border border-zinc-800 bg-zinc-900/60 hover:border-amber-400 cursor-pointer group transition-all text-left space-y-0.5"
+                          className="p-2 rounded-xl border border-[#242e3d] bg-[#141a24] hover:border-amber-400 cursor-pointer group transition-all text-left space-y-1.5"
                         >
-                          <div className="flex items-center justify-between gap-2">
-                            <div className={`text-xs ${t.styleClass} truncate`}>{t.titleText}</div>
-                            <span className="text-[8px] font-mono text-amber-400 shrink-0">{t.category}</span>
+                          <div className="aspect-video w-full rounded-lg overflow-hidden bg-black relative">
+                            <img
+                              src={activePreviewThumbUrl}
+                              alt={t.titleText}
+                              className="w-full h-full object-cover opacity-70 group-hover:scale-105 transition-transform"
+                            />
+                            <div className="absolute inset-0 bg-black/45 flex flex-col items-center justify-center px-2 text-center">
+                              <span className={`text-[11px] font-black leading-tight ${t.styleClass} drop-shadow`}>{t.titleText}</span>
+                              <span className="text-[7.5px] text-amber-300/90 uppercase tracking-widest truncate max-w-full mt-0.5">{t.subtitleText}</span>
+                            </div>
                           </div>
-                          <div className="text-[9px] text-zinc-300 truncate">{t.subtitleText}</div>
-                          <div className="text-[8.5px] text-zinc-400 leading-snug">{t.description}</div>
+                          <div>
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="text-[10.5px] font-bold text-white truncate">{t.titleText}</div>
+                              <span className="text-[8px] font-mono text-amber-400 shrink-0">{t.category}</span>
+                            </div>
+                            <div className="text-[8.5px] text-zinc-400 leading-snug line-clamp-2">{t.description}</div>
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -4509,28 +5949,27 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                         <button
                           type="button"
                           onClick={() => setItemRenderLimit((n) => n + 150)}
-                          className="flex-1 py-1.5 rounded bg-zinc-800 hover:bg-zinc-700 text-teal-300 font-bold text-[10px] cursor-pointer"
+                          className="flex-1 min-h-[38px] py-1.5 rounded-xl bg-[#18202c] hover:bg-[#222d3d] border border-[#2b3648] text-teal-300 font-bold text-[11px] cursor-pointer whitespace-nowrap"
                         >
-                          + Load More ({filteredTitles.length - itemRenderLimit} remaining)
+                          + Load More
                         </button>
                         <button
                           type="button"
                           onClick={() => setItemRenderLimit(filteredTitles.length)}
-                          className="px-3 py-1.5 rounded bg-teal-500/20 border border-teal-500/40 text-teal-300 font-bold text-[10px] cursor-pointer"
+                          className="min-h-[38px] px-3.5 py-1.5 rounded-xl bg-teal-500/20 border border-teal-500/40 text-teal-300 font-bold text-[11px] cursor-pointer whitespace-nowrap"
                         >
-                          Show All {filteredTitles.length}
+                          Show All ({filteredTitles.length})
                         </button>
                       </div>
                     )}
                   </div>
                 )}
 
-                {/* SECTION 5B: CINEMA ACTION VFX TAB (1,200 Gun, Bullet Path, Blood Splatter, Explosion & Movie VFX) */}
+                {/* SECTION 5B: CINEMA ACTION VFX TAB */}
                 {activeTab === 'VFX' && (
                   <div className="space-y-2">
                     <div className="flex items-center justify-between text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
-                      <span>Cinema Action VFX Library</span>
-                      <span className="text-rose-400">{filteredVfxCatalog.length} VFX</span>
+                      <span>Cinema Action VFX Library ({filteredVfxCatalog.length})</span>
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
                       {filteredVfxCatalog.slice(0, itemRenderLimit).map((v) => {
@@ -4539,28 +5978,38 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                           <div
                             key={v.id}
                             onClick={() => handleAddVfxLayer(v)}
-                            className={`p-2 rounded-lg border cursor-pointer flex items-start gap-2 group transition-all text-left ${
+                            className={`p-2 rounded-xl border cursor-pointer flex flex-col group transition-all text-left ${
                               addedCount > 0
                                 ? 'border-rose-400 bg-rose-950/35 ring-1 ring-rose-400/50'
-                                : 'border-zinc-800 bg-zinc-900/70 hover:border-rose-400'
+                                : 'border-[#242e3d] bg-[#141a24] hover:border-rose-400'
                             }`}
                           >
-                            <div
-                              className="w-8 h-8 rounded-lg flex items-center justify-center text-base shrink-0 mt-0.5 shadow"
-                              style={{ backgroundColor: `${v.secondaryColor}28`, border: `1px solid ${v.primaryColor}66` }}
-                            >
-                              {v.emoji}
+                            <div className="aspect-video w-full rounded-lg overflow-hidden bg-black relative mb-1.5">
+                              <img
+                                src={activePreviewThumbUrl}
+                                alt={v.name}
+                                className="w-full h-full object-cover opacity-75 group-hover:scale-105 transition-transform"
+                              />
+                              <div
+                                className="absolute inset-0 opacity-60"
+                                style={{
+                                  background: `radial-gradient(circle at 60% 45%, ${v.primaryColor}, ${v.secondaryColor}44 45%, transparent 75%)`,
+                                }}
+                              />
+                              <div className="absolute inset-0 flex items-center justify-center">
+                                <span className="text-2xl drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)]">{v.emoji}</span>
+                              </div>
+                              {addedCount > 0 && (
+                                <span className="absolute top-1.5 right-1.5 text-[8px] px-1.5 py-0.5 rounded bg-rose-500 text-white font-bold">
+                                  Active
+                                </span>
+                              )}
                             </div>
                             <div className="min-w-0 flex-1">
                               <div className="flex items-center justify-between gap-1">
-                                <span className="text-[10px] font-bold text-zinc-100 truncate">{v.name}</span>
-                                {addedCount > 0 && (
-                                  <span className="text-[8px] px-1 rounded bg-rose-500 text-white font-bold shrink-0">
-                                    +{addedCount}
-                                  </span>
-                                )}
+                                <span className="text-[10.5px] font-bold text-zinc-100 truncate">{v.name}</span>
                               </div>
-                              <div className="flex items-center gap-1 text-[8px] font-mono text-rose-300">
+                              <div className="flex items-center gap-1 text-[8.5px] font-mono text-rose-300">
                                 <span>{v.category}</span>
                                 {v.hasMotionRoute && <span className="text-amber-300">• Gun→Body Route</span>}
                               </div>
@@ -4575,28 +6024,27 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                         <button
                           type="button"
                           onClick={() => setItemRenderLimit((n) => n + 200)}
-                          className="flex-1 py-1.5 rounded bg-zinc-800 hover:bg-zinc-700 text-rose-300 font-bold text-[10px] cursor-pointer"
+                          className="flex-1 min-h-[38px] py-1.5 rounded-xl bg-[#18202c] hover:bg-[#222d3d] border border-[#2b3648] text-rose-300 font-bold text-[11px] cursor-pointer whitespace-nowrap"
                         >
-                          + Load More ({filteredVfxCatalog.length - itemRenderLimit} remaining)
+                          + Load More
                         </button>
                         <button
                           type="button"
                           onClick={() => setItemRenderLimit(filteredVfxCatalog.length)}
-                          className="px-3 py-1.5 rounded bg-rose-500/20 border border-rose-500/40 text-rose-300 font-bold text-[10px] cursor-pointer"
+                          className="min-h-[38px] px-3.5 py-1.5 rounded-xl bg-rose-500/20 border border-rose-500/40 text-rose-300 font-bold text-[11px] cursor-pointer whitespace-nowrap"
                         >
-                          Show All {filteredVfxCatalog.length}
+                          Show All ({filteredVfxCatalog.length})
                         </button>
                       </div>
                     )}
                   </div>
                 )}
 
-                {/* SECTION 6: TEMPLATES TAB (600 Templates with Full Details) */}
+                {/* SECTION 6: TEMPLATES TAB */}
                 {activeTab === 'Templates' && (
                   <div className="space-y-2">
                     <div className="flex items-center justify-between text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
                       <span>Cinematic Templates</span>
-                      <span className="text-teal-400">{filteredTemplates.length} Items</span>
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 sm:gap-2">
                       {filteredTemplates.slice(0, itemRenderLimit).map((tpl) => (
@@ -4612,19 +6060,20 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                             setActiveInspectorTab('adjust');
                             setIsRightPanelOpen(true);
                             saveCurrentProjectToStorage();
+                            logEditorTelemetry('edit_timeline');
                           }}
-                          className={`rounded-lg border overflow-hidden cursor-pointer hover:border-teal-400 transition-all group ${
-                            selectedTemplate.id === tpl.id ? 'border-teal-400 bg-teal-950/30' : 'border-zinc-800 bg-zinc-900'
+                          className={`rounded-xl border overflow-hidden cursor-pointer hover:border-teal-400 transition-all group ${
+                            selectedTemplate.id === tpl.id ? 'border-teal-400 bg-teal-950/30' : 'border-[#242e3d] bg-[#141a24]'
                           }`}
                         >
                           <div className="aspect-video bg-black relative">
                             <img src={tpl.thumbnail} alt={tpl.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
-                            <div className="absolute bottom-1 left-1 px-1 py-0.5 rounded bg-black/75 text-[9px] font-mono text-zinc-300">
+                            <div className="absolute bottom-1 left-1 px-1.5 py-0.5 rounded bg-black/75 text-[9px] font-mono text-zinc-300">
                               {tpl.duration}
                             </div>
                           </div>
-                          <div className="bg-[#12161a] p-1.5 space-y-0.5">
-                            <div className="truncate text-[10px] font-bold text-zinc-200">{tpl.title}</div>
+                          <div className="bg-[#0e131b] p-2 space-y-0.5">
+                            <div className="truncate text-[10.5px] font-bold text-zinc-200">{tpl.title}</div>
                             <div className="text-[8.5px] text-zinc-400 line-clamp-2 leading-snug">{tpl.description}</div>
                           </div>
                         </div>
@@ -4635,16 +6084,16 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                         <button
                           type="button"
                           onClick={() => setItemRenderLimit((n) => n + 150)}
-                          className="flex-1 py-1.5 rounded bg-zinc-800 hover:bg-zinc-700 text-teal-300 font-bold text-[10px] cursor-pointer"
+                          className="flex-1 min-h-[36px] py-1.5 rounded-xl bg-[#18202c] hover:bg-[#222d3d] border border-[#2b3648] text-teal-300 font-bold text-[11px] cursor-pointer"
                         >
-                          + Load More ({filteredTemplates.length - itemRenderLimit} remaining)
+                          + Load More
                         </button>
                         <button
                           type="button"
                           onClick={() => setItemRenderLimit(filteredTemplates.length)}
-                          className="px-3 py-1.5 rounded bg-teal-500/20 border border-teal-500/40 text-teal-300 font-bold text-[10px] cursor-pointer"
+                          className="min-h-[36px] px-3.5 py-1.5 rounded-xl bg-teal-500/20 border border-teal-500/40 text-teal-300 font-bold text-[11px] cursor-pointer"
                         >
-                          Show All {filteredTemplates.length}
+                          Show All
                         </button>
                       </div>
                     )}
@@ -4656,20 +6105,20 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
                       <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
-                        My Gallery Pool ({filteredUserMedia.length})
+                        My Gallery Pool
                       </span>
                       <button
                         type="button"
                         onClick={() => multiFileInputRef.current?.click()}
-                        className="px-2.5 py-1 rounded bg-teal-400 hover:bg-teal-300 text-black font-bold text-[10px] flex items-center gap-1 cursor-pointer"
+                        className="min-h-[30px] px-3 py-1 rounded-lg bg-teal-400 hover:bg-teal-300 text-black font-bold text-[10px] flex items-center gap-1 cursor-pointer"
                       >
                         <Upload className="w-3 h-3" /> + Upload
                       </button>
                     </div>
 
                     {filteredUserMedia.length === 0 ? (
-                      <div className="p-6 rounded-xl border-2 border-dashed border-zinc-700 bg-zinc-900/60 text-center space-y-2">
-                        <div className="w-9 h-9 rounded-full bg-teal-500/10 text-teal-400 mx-auto flex items-center justify-center">
+                      <div className="p-6 rounded-xl border-2 border-dashed border-[#2b3648] bg-[#141a24] text-center space-y-2.5">
+                        <div className="w-10 h-10 rounded-full bg-teal-500/10 text-teal-400 mx-auto flex items-center justify-center">
                           <Upload className="w-4 h-4" />
                         </div>
                         <p className="text-[11px] text-zinc-300 font-bold">
@@ -4678,7 +6127,7 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                         <button
                           type="button"
                           onClick={() => multiFileInputRef.current?.click()}
-                          className="px-3 py-1 bg-teal-400 text-black font-extrabold rounded text-[10px] cursor-pointer"
+                          className="min-h-[36px] px-4 py-1.5 bg-teal-400 hover:bg-teal-300 text-black font-extrabold rounded-xl text-[11px] cursor-pointer"
                         >
                           + Upload from Device
                         </button>
@@ -4691,8 +6140,8 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                               key={cat}
                               type="button"
                               onClick={() => setMediaFilter(cat)}
-                              className={`px-3 py-0.5 rounded-full font-bold cursor-pointer transition-colors ${
-                                mediaFilter === cat ? 'bg-zinc-200 text-black' : 'bg-zinc-800 text-zinc-400 hover:text-white'
+                              className={`min-h-[28px] px-3 py-1 rounded-lg font-bold cursor-pointer transition-colors ${
+                                mediaFilter === cat ? 'bg-zinc-200 text-black' : 'bg-[#18202c] text-zinc-400 hover:text-white'
                               }`}
                             >
                               {cat}
@@ -4705,7 +6154,7 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                           {filteredUserMedia.map((m) => (
                             <div
                               key={m.id}
-                              className="rounded-lg border border-zinc-800 bg-zinc-900 overflow-hidden relative group transition-all"
+                              className="rounded-xl border border-[#242e3d] bg-[#141a24] overflow-hidden relative group transition-all"
                             >
                               <div className="aspect-video bg-black relative">
                                 {m.type === 'video' && !m.thumbnailUrl ? (
@@ -4713,26 +6162,26 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                                 ) : (
                                   <img src={m.thumbnailUrl || m.url} alt={m.title} className="w-full h-full object-cover" />
                                 )}
-                                <div className="absolute bottom-1 left-1 px-1.5 py-0.2 rounded bg-black/80 font-mono text-[9px] text-zinc-300">
+                                <div className="absolute bottom-1 left-1 px-1.5 py-0.5 rounded bg-black/80 font-mono text-[9px] text-zinc-300">
                                   {m.type === 'video' ? '🎬' : '📷'} {m.duration}
                                 </div>
                                 <button
                                   type="button"
                                   onClick={(e) => handleDeleteUploadedMedia(m.id, e)}
-                                  className="absolute top-1 left-1 w-4 h-4 rounded bg-black/70 hover:bg-rose-600 text-zinc-300 hover:text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                                  className="absolute top-1 left-1 w-6 h-6 rounded-lg bg-black/75 hover:bg-rose-600 text-zinc-300 hover:text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
                                   title="Delete from Gallery"
                                 >
-                                  <Trash2 className="w-2.5 h-2.5" />
+                                  <Trash2 className="w-3 h-3" />
                                 </button>
                               </div>
-                              <div className="p-1.5 bg-[#12161b] space-y-1">
-                                <span className="font-bold text-[10px] text-zinc-200 block truncate">{m.title}</span>
+                              <div className="p-2 bg-[#0e131b] space-y-1.5">
+                                <span className="font-bold text-[10.5px] text-zinc-200 block truncate">{m.title}</span>
                                 <button
                                   type="button"
                                   onClick={(e) => handleAddMediaToTimeline(m, e)}
-                                  className="w-full py-1 bg-teal-400 hover:bg-teal-300 text-black font-extrabold rounded text-[9px] flex items-center justify-center gap-1 cursor-pointer transition-colors shadow"
+                                  className="w-full min-h-[32px] py-1 bg-teal-400 hover:bg-teal-300 text-black font-extrabold rounded-lg text-[10px] flex items-center justify-center gap-1 cursor-pointer transition-colors shadow"
                                 >
-                                  <Plus className="w-2.5 h-2.5 stroke-[3]" />
+                                  <Plus className="w-3 h-3 stroke-[3]" />
                                   <span>+ Add to Timeline</span>
                                 </button>
                               </div>
@@ -4744,32 +6193,40 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                   </div>
                 )}
 
-                {/* SECTION 8: STICKERS TAB (600 Interactive Canvas Stickers) */}
+                {/* SECTION 8: STICKERS TAB */}
                 {activeTab === 'Stickers' && (
                   <div className="space-y-2">
                     <div className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider flex justify-between">
                       <span>Animated Badges &amp; Stickers</span>
-                      <span className="text-teal-400">{filteredStickers.length} Items</span>
                     </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5 sm:gap-2">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1.5 sm:gap-2">
                       {filteredStickers.slice(0, itemRenderLimit).map((stk) => {
                         const addedCount = activeStickers.filter((s) => s.sticker.id === stk.id).length;
                         return (
                           <div
                             key={stk.id}
                             onClick={() => handleAddStickerLayer(stk)}
-                            className={`p-2 rounded border cursor-pointer flex flex-col items-center justify-center text-center group transition-all ${
+                            className={`p-1.5 rounded-xl border cursor-pointer flex flex-col items-center justify-center text-center group transition-all ${
                               addedCount > 0
                                 ? 'border-teal-400 bg-teal-950/40 ring-1 ring-teal-400/50'
-                                : 'border-zinc-800 bg-zinc-900 hover:border-teal-400'
+                                : 'border-[#242e3d] bg-[#141a24] hover:border-teal-400'
                             }`}
                           >
-                            <span className="text-xl mb-1 group-hover:scale-125 transition-transform">{stk.emoji}</span>
-                            <span className={`px-1.5 py-0.5 rounded text-[8px] font-black ${stk.colorClass} truncate w-full`}>
-                              {stk.badgeText}
-                            </span>
-                            <span className="text-[8.5px] font-bold text-zinc-300 truncate w-full mt-0.5">{stk.name}</span>
-                            <span className="text-[8px] text-zinc-400 line-clamp-2 w-full mt-0.5">{stk.description}</span>
+                            <div className="aspect-video w-full rounded-lg overflow-hidden bg-black relative mb-1">
+                              <img
+                                src={activePreviewThumbUrl}
+                                alt={stk.name}
+                                className="w-full h-full object-cover opacity-65 group-hover:scale-105 transition-transform"
+                              />
+                              <div className="absolute inset-0 flex flex-col items-center justify-center gap-0.5">
+                                <span className="text-xl drop-shadow">{stk.emoji}</span>
+                                <span className={`px-1.5 py-0.2 rounded text-[7.5px] font-black ${stk.colorClass} truncate max-w-[90%]`}>
+                                  {stk.badgeText}
+                                </span>
+                              </div>
+                            </div>
+                            <span className="text-[8.5px] font-bold text-zinc-300 truncate w-full">{stk.name}</span>
+                            <span className="text-[7.5px] text-zinc-400 line-clamp-1 w-full">{stk.description}</span>
                           </div>
                         );
                       })}
@@ -4779,17 +6236,888 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                         <button
                           type="button"
                           onClick={() => setItemRenderLimit((n) => n + 150)}
-                          className="flex-1 py-1.5 rounded bg-zinc-800 hover:bg-zinc-700 text-teal-300 font-bold text-[10px] cursor-pointer"
+                          className="flex-1 min-h-[38px] py-1.5 rounded-xl bg-[#18202c] hover:bg-[#222d3d] border border-[#2b3648] text-teal-300 font-bold text-[11px] cursor-pointer whitespace-nowrap"
                         >
-                          + Load More ({filteredStickers.length - itemRenderLimit} remaining)
+                          + Load More
                         </button>
                         <button
                           type="button"
                           onClick={() => setItemRenderLimit(filteredStickers.length)}
-                          className="px-3 py-1.5 rounded bg-teal-500/20 border border-teal-500/40 text-teal-300 font-bold text-[10px] cursor-pointer"
+                          className="min-h-[38px] px-3.5 py-1.5 rounded-xl bg-teal-500/20 border border-teal-500/40 text-teal-300 font-bold text-[11px] cursor-pointer whitespace-nowrap"
                         >
-                          Show All {filteredStickers.length}
+                          Show All ({filteredStickers.length})
                         </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* SECTION 9: PRO FX (1,200 FEATURES × 660 SETTINGS ENGINE) */}
+                {activeTab === 'ProFX' && (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
+                      <span>1,200 Pro Features ({filteredProFeatures.length} matching)</span>
+                      <span className="text-amber-300">660 Parts Each</span>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 sm:gap-2">
+                      {filteredProFeatures.slice(0, itemRenderLimit).map((feat) => {
+                        const isCur = activeProFeature?.id === feat.id;
+                        return (
+                          <div
+                            key={feat.id}
+                            onClick={() => {
+                              setActiveProFeature(feat);
+                              setSelectedFeatureType('profx');
+                              setActiveInspectorTab('profx');
+                              setProSettingsModuleFilter('all');
+                              setProSettingsSearch('');
+                              setProSettingsPage(0);
+                              setIsRightPanelOpen(true);
+                              logEditorTelemetry('edit_timeline');
+                            }}
+                            className={`p-2 rounded-xl border cursor-pointer flex flex-col group transition-all text-left ${
+                              isCur
+                                ? 'border-amber-400 bg-amber-950/35 ring-1 ring-amber-400/50 shadow-md'
+                                : 'border-[#242e3d] bg-[#141a24] hover:border-amber-400/60'
+                            }`}
+                          >
+                            <div className="aspect-video w-full rounded-lg overflow-hidden bg-black relative mb-1.5">
+                              <img
+                                src={activePreviewThumbUrl}
+                                alt={feat.name}
+                                className="w-full h-full object-cover opacity-75 group-hover:scale-105 transition-transform"
+                              />
+                              <div
+                                className="absolute inset-0 opacity-45"
+                                style={{ background: `linear-gradient(135deg, ${feat.accentHex}88, transparent 70%)` }}
+                              />
+                              <span
+                                className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded bg-black/80 font-mono text-[8.5px] font-black"
+                                style={{ color: feat.accentHex }}
+                              >
+                                #{String(feat.index).padStart(4, '0')}
+                              </span>
+                              {isCur && (
+                                <span className="absolute top-1.5 right-1.5 px-1.5 py-0.5 rounded bg-amber-400 text-black text-[8px] font-black">
+                                  ON ✓
+                                </span>
+                              )}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center justify-between gap-1">
+                                <span className="text-[10.5px] font-bold text-zinc-100 group-hover:text-amber-300 truncate">
+                                  {feat.name}
+                                </span>
+                              </div>
+                              <span className="text-[8px] font-mono text-teal-400 block truncate">{feat.category}</span>
+                              <p className="text-[8.5px] text-zinc-400 leading-snug pt-0.5 line-clamp-2">{feat.shortDesc}</p>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    {filteredProFeatures.length > itemRenderLimit && (
+                      <div className="flex gap-2 pt-1">
+                        <button
+                          type="button"
+                          onClick={() => setItemRenderLimit((n) => n + 150)}
+                          className="flex-1 min-h-[38px] py-1.5 rounded-xl bg-[#18202c] hover:bg-[#222d3d] border border-[#2b3648] text-amber-300 font-bold text-[11px] cursor-pointer whitespace-nowrap"
+                        >
+                          + Load More ({filteredProFeatures.length - itemRenderLimit} left)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setItemRenderLimit(filteredProFeatures.length)}
+                          className="min-h-[38px] px-3.5 py-1.5 rounded-xl bg-amber-500/20 border border-amber-500/40 text-amber-300 font-bold text-[11px] cursor-pointer whitespace-nowrap"
+                        >
+                          Show All 1,200
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* SECTION 10: CHROMA KEY / GREEN SCREEN STUDIO */}
+                {activeTab === 'Chroma' && (
+                  <div className="space-y-2.5 text-[10.5px]">
+                    <div className="p-2.5 rounded-xl border border-emerald-500/40 bg-emerald-950/25 flex items-center justify-between gap-2">
+                      <div>
+                        <span className="text-[11px] font-extrabold text-emerald-300 block">
+                          🟩 Green Screen Chroma Key
+                        </span>
+                        <span className="text-[9px] text-zinc-400">
+                          {chromaConfig.enabled ? 'Real-Time Background Cut Active ✓' : 'Tap Enable to remove green/blue background'}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const next = !chromaConfig.enabled;
+                          setChromaConfig((p) => ({ ...p, enabled: next }));
+                          if (next) {
+                            setSelectedFeatureType('chroma');
+                            setActiveInspectorTab('adjust');
+                            setIsRightPanelOpen(true);
+                          }
+                        }}
+                        className={`min-h-[34px] px-3 py-1 rounded-xl font-black text-[10px] cursor-pointer transition-all ${
+                          chromaConfig.enabled
+                            ? 'bg-emerald-400 text-black shadow-lg'
+                            : 'bg-[#18202c] text-emerald-300 border border-emerald-500/40 hover:bg-emerald-500/20'
+                        }`}
+                      >
+                        {chromaConfig.enabled ? 'ON ✓' : 'Enable'}
+                      </button>
+                    </div>
+
+                    {/* Key Color Selector */}
+                    {(activeSubCategory === 'All' || activeSubCategory === 'Green Screen' || activeSubCategory === 'Blue Screen') && (
+                      <div className="p-2.5 rounded-xl bg-[#141a24] border border-[#242e3d] space-y-2">
+                        <span className="text-[10px] font-bold text-zinc-200 block">1. Key Color (കട്ട് ചെയ്യേണ്ട നിറം)</span>
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                          {(
+                            [
+                              { id: 'green', label: 'Studio Green', hex: '#00b140' },
+                              { id: 'neon_green', label: 'Neon Green', hex: '#00ff00' },
+                              { id: 'blue', label: 'Blue Screen', hex: '#0047bb' },
+                              { id: 'cyan', label: 'Cyan Key', hex: '#00d2ff' },
+                            ] as Array<{ id: ChromaKeyColorPreset; label: string; hex: string }>
+                          ).map((sw) => {
+                            const isSel = chromaConfig.colorPreset === sw.id;
+                            return (
+                              <button
+                                key={sw.id}
+                                type="button"
+                                onClick={() => setChromaConfig((p) => ({ ...p, enabled: true, colorPreset: sw.id }))}
+                                className={`p-1.5 rounded-lg border text-left cursor-pointer flex items-center gap-1.5 ${
+                                  isSel ? 'border-emerald-400 bg-emerald-950/40 text-white' : 'border-[#242e3d] bg-[#0c1017] text-zinc-300'
+                                }`}
+                              >
+                                <span className="w-3.5 h-3.5 rounded-full border border-white/40 shrink-0" style={{ backgroundColor: sw.hex }} />
+                                <span className="text-[9px] font-bold truncate">{sw.label}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                        <div className="flex items-center justify-between pt-1 border-t border-zinc-800/80">
+                          <span className="text-[9.5px] text-zinc-400">Custom Key Color:</span>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="color"
+                              value={chromaConfig.customHex}
+                              onChange={(e) =>
+                                setChromaConfig((p) => ({ ...p, enabled: true, colorPreset: 'custom', customHex: e.target.value }))
+                              }
+                              className="w-7 h-6 rounded bg-transparent cursor-pointer"
+                            />
+                            <span className="font-mono text-[9.5px] text-emerald-300">{chromaConfig.customHex}</span>
+                          </div>
+                        </div>
+
+                        {/* Matte Fine Tuning Sliders */}
+                        <div className="space-y-1.5 pt-1.5 border-t border-zinc-800/80">
+                          <div>
+                            <div className="flex justify-between text-[9.5px]">
+                              <span className="text-zinc-300">Similarity / Cut Strength</span>
+                              <span className="font-mono text-emerald-300">{chromaConfig.similarity}%</span>
+                            </div>
+                            <input
+                              type="range"
+                              min="10"
+                              max="90"
+                              value={chromaConfig.similarity}
+                              onChange={(e) => setChromaConfig((p) => ({ ...p, enabled: true, similarity: Number(e.target.value) }))}
+                              className="w-full h-1 accent-emerald-400 cursor-pointer"
+                            />
+                          </div>
+                          <div>
+                            <div className="flex justify-between text-[9.5px]">
+                              <span className="text-zinc-300">Edge Smoothness / Feather</span>
+                              <span className="font-mono text-emerald-300">{chromaConfig.smoothness}%</span>
+                            </div>
+                            <input
+                              type="range"
+                              min="0"
+                              max="50"
+                              value={chromaConfig.smoothness}
+                              onChange={(e) => setChromaConfig((p) => ({ ...p, enabled: true, smoothness: Number(e.target.value) }))}
+                              className="w-full h-1 accent-emerald-400 cursor-pointer"
+                            />
+                          </div>
+                          <div>
+                            <div className="flex justify-between text-[9.5px]">
+                              <span className="text-zinc-300">Green Spill Reduction</span>
+                              <span className="font-mono text-teal-300">{chromaConfig.spillReduction}%</span>
+                            </div>
+                            <input
+                              type="range"
+                              min="0"
+                              max="100"
+                              value={chromaConfig.spillReduction}
+                              onChange={(e) => setChromaConfig((p) => ({ ...p, enabled: true, spillReduction: Number(e.target.value) }))}
+                              className="w-full h-1 accent-teal-400 cursor-pointer"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Replacement Background Selector */}
+                    {(activeSubCategory === 'All' || activeSubCategory === 'BG Studio') && (
+                      <div className="p-2.5 rounded-xl bg-[#141a24] border border-[#242e3d] space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-bold text-zinc-200">2. New Background (പുതിയ ബാഗ്രൗണ്ട്)</span>
+                          <button
+                            type="button"
+                            onClick={() => chromaBgInputRef.current?.click()}
+                            className="px-2 py-1 rounded-lg bg-emerald-400 hover:bg-emerald-300 text-black font-black text-[9.5px] flex items-center gap-1 cursor-pointer"
+                          >
+                            <Upload className="w-3 h-3" />
+                            <span>+ Upload BG</span>
+                          </button>
+                        </div>
+                        <div className="grid grid-cols-2 gap-1.5">
+                          {(
+                            [
+                              { id: 'studio_teal', label: 'Studio Teal Stage', grad: 'from-teal-700/80 via-cyan-900/80 to-black' },
+                              { id: 'cyber_grid', label: 'Cyber 3D Neon Grid', grad: 'from-fuchsia-700/80 via-indigo-900/80 to-black' },
+                              { id: 'sunset_gold', label: 'Sunset Gold Studio', grad: 'from-amber-500/80 via-orange-900/80 to-black' },
+                              { id: 'action_crimson', label: 'Action Crimson', grad: 'from-rose-700/80 via-red-950/80 to-black' },
+                              { id: 'blur_bg', label: 'DSLR Blurred Back', grad: 'from-zinc-500/70 via-zinc-800/80 to-black' },
+                              { id: 'black', label: 'Pure Cinema Black', grad: 'from-zinc-900 via-black to-black' },
+                            ] as Array<{ id: ChromaBgMode; label: string; grad: string }>
+                          ).map((bg) => (
+                            <button
+                              key={bg.id}
+                              type="button"
+                              onClick={() => setChromaConfig((p) => ({ ...p, enabled: true, bgMode: bg.id }))}
+                              className={`p-1.5 rounded-lg border text-left text-[9.5px] font-bold cursor-pointer flex flex-col gap-1 ${
+                                chromaConfig.bgMode === bg.id
+                                  ? 'border-emerald-400 bg-emerald-950/40 text-emerald-200'
+                                  : 'border-[#242e3d] bg-[#0c1017] text-zinc-300 hover:border-zinc-500'
+                              }`}
+                            >
+                              <div className="w-full h-9 rounded overflow-hidden relative bg-black">
+                                <img src={activePreviewThumbUrl} alt={bg.label} className="w-full h-full object-cover opacity-55" />
+                                <div className={`absolute inset-0 bg-gradient-to-br ${bg.grad} mix-blend-screen`} />
+                              </div>
+                              <span className="truncate">{bg.label}</span>
+                            </button>
+                          ))}
+                        </div>
+                        {chromaConfig.bgMode === 'custom_media' && chromaConfig.bgLabel && (
+                          <div className="p-1.5 rounded-lg bg-emerald-950/30 border border-emerald-500/30 text-[9px] text-emerald-200 flex items-center justify-between">
+                            <span className="truncate">BG: {chromaConfig.bgLabel}</span>
+                            <button
+                              type="button"
+                              onClick={() => setChromaConfig((p) => ({ ...p, bgMode: 'studio_teal', bgMediaUrl: undefined }))}
+                              className="text-rose-400 hover:text-rose-300 ml-2 cursor-pointer"
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        )}
+                        {mediaGallery.length > 0 && (
+                          <div className="pt-1 border-t border-zinc-800/80 space-y-1">
+                            <span className="text-[9px] text-zinc-400 block">Or Pick From Your Gallery Pool:</span>
+                            <div className="flex gap-1.5 overflow-x-auto no-scrollbar pb-1">
+                              {mediaGallery.slice(0, 8).map((m) => (
+                                <button
+                                  key={m.id}
+                                  type="button"
+                                  onClick={() =>
+                                    setChromaConfig((p) => ({
+                                      ...p,
+                                      enabled: true,
+                                      bgMode: 'custom_media',
+                                      bgMediaUrl: m.url,
+                                      bgMediaType: m.type,
+                                      bgLabel: m.title,
+                                    }))
+                                  }
+                                  className="w-16 shrink-0 rounded-lg border border-[#242e3d] hover:border-emerald-400 overflow-hidden bg-black cursor-pointer"
+                                >
+                                  <div className="aspect-video bg-black">
+                                    {m.type === 'video' && !m.thumbnailUrl ? (
+                                      <video src={m.url} className="w-full h-full object-cover" muted playsInline />
+                                    ) : (
+                                      <img src={m.thumbnailUrl || m.url} alt={m.title} className="w-full h-full object-cover" />
+                                    )}
+                                  </div>
+                                  <span className="block truncate text-[8px] px-1 py-0.5 text-zinc-300">{m.title}</span>
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* SECTION 11: DUAL SPLIT-SCREEN / 2-CLIP SIDE-BY-SIDE JOINER */}
+                {activeTab === 'Split' && (
+                  <div className="space-y-2.5 text-[10.5px]">
+                    <div className="p-2.5 rounded-xl border border-cyan-500/40 bg-cyan-950/25 flex items-center justify-between gap-2">
+                      <div>
+                        <span className="text-[11px] font-extrabold text-cyan-300 block">
+                          🌗 Dual Side-by-Side Joiner
+                        </span>
+                        <span className="text-[9px] text-zinc-400">
+                          {splitScreenConfig.enabled ? '2 Pictures / Videos Combined ✓' : 'Combine 2 videos or photos on 1 screen'}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const next = !splitScreenConfig.enabled;
+                          setSplitScreenConfig((p) => ({ ...p, enabled: next }));
+                          if (next) {
+                            setSelectedFeatureType('split');
+                            setActiveInspectorTab('adjust');
+                            setIsRightPanelOpen(true);
+                            if (timelineClips.length === 0 && mediaGallery.length > 0) {
+                              const first = mediaGallery[0];
+                              setTimelineClips([
+                                {
+                                  id: `split_seed_${Date.now()}`,
+                                  mediaId: first.id,
+                                  title: first.title,
+                                  durationSec: first.durationSec || 6,
+                                  url: first.url,
+                                  thumbnailUrl: first.thumbnailUrl,
+                                  type: first.type,
+                                },
+                              ]);
+                            }
+                          }
+                        }}
+                        className={`min-h-[34px] px-3 py-1 rounded-xl font-black text-[10px] cursor-pointer transition-all ${
+                          splitScreenConfig.enabled
+                            ? 'bg-cyan-400 text-black shadow-lg'
+                            : 'bg-[#18202c] text-cyan-300 border border-cyan-500/40 hover:bg-cyan-500/20'
+                        }`}
+                      >
+                        {splitScreenConfig.enabled ? 'ON ✓' : 'Enable'}
+                      </button>
+                    </div>
+
+                    {/* Quick 1-Tap Actions */}
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const c1 = timelineClips[0] || mediaGallery[0];
+                          const c2 = timelineClips[1] || mediaGallery[1] || c1;
+                          setSplitScreenConfig((p) => ({
+                            ...p,
+                            enabled: true,
+                            leftMediaUrl: c1?.url || p.leftMediaUrl,
+                            leftMediaType: c1?.type || p.leftMediaType,
+                            leftLabel: c1?.title || p.leftLabel,
+                            rightMediaUrl: c2?.url || p.rightMediaUrl,
+                            rightMediaType: c2?.type || p.rightMediaType,
+                            rightLabel: c2?.title || p.rightLabel,
+                          }));
+                          setSelectedFeatureType('split');
+                          setActiveInspectorTab('adjust');
+                          setIsRightPanelOpen(true);
+                        }}
+                        className="min-h-[34px] px-2 py-1.5 rounded-xl bg-cyan-400 hover:bg-cyan-300 text-black font-extrabold text-[9.5px] cursor-pointer"
+                      >
+                        ⚡ Auto-Join 2 Clips
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSplitScreenConfig((p) => ({ ...p, swapSides: !p.swapSides }))}
+                        className="min-h-[34px] px-2 py-1.5 rounded-xl bg-[#18202c] hover:bg-[#222d3d] border border-[#2b3648] text-cyan-300 font-bold text-[9.5px] flex items-center justify-center gap-1 cursor-pointer"
+                      >
+                        <RefreshCw className="w-3 h-3" />
+                        <span>Swap Left ⇄ Right</span>
+                      </button>
+                    </div>
+
+                    {/* Clip 1 & Clip 2 Dual Slot Cards */}
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="p-2 rounded-xl bg-[#141a24] border border-[#242e3d] space-y-1.5">
+                        <span className="text-[9.5px] font-bold text-teal-300 block truncate">
+                          Side 1: {splitScreenConfig.leftLabel}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => splitLeftInputRef.current?.click()}
+                          className="w-full py-1.5 rounded-lg bg-[#18202c] hover:bg-teal-400 hover:text-black border border-teal-500/40 text-teal-300 font-bold text-[9.5px] flex items-center justify-center gap-1 cursor-pointer"
+                        >
+                          <Upload className="w-3 h-3" />
+                          <span>Upload Side 1</span>
+                        </button>
+                        {mediaGallery.length > 0 && (
+                          <select
+                            value={splitScreenConfig.leftMediaUrl}
+                            onChange={(e) => {
+                              const m = mediaGallery.find((x) => x.url === e.target.value);
+                              if (m) {
+                                setSplitScreenConfig((p) => ({
+                                  ...p,
+                                  enabled: true,
+                                  leftMediaUrl: m.url,
+                                  leftMediaType: m.type,
+                                  leftLabel: m.title,
+                                }));
+                              }
+                            }}
+                            className="w-full bg-[#0c1017] border border-zinc-700 rounded px-1.5 py-1 text-[9px] text-zinc-200"
+                          >
+                            <option value="">-- Pool Clip 1 --</option>
+                            {mediaGallery.map((m) => (
+                              <option key={m.id} value={m.url}>
+                                {m.title}
+                              </option>
+                            ))}
+                          </select>
+                        )}
+                      </div>
+
+                      <div className="p-2 rounded-xl bg-[#141a24] border border-[#242e3d] space-y-1.5">
+                        <span className="text-[9.5px] font-bold text-amber-300 block truncate">
+                          Side 2: {splitScreenConfig.rightLabel}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => splitRightInputRef.current?.click()}
+                          className="w-full py-1.5 rounded-lg bg-[#18202c] hover:bg-amber-400 hover:text-black border border-amber-500/40 text-amber-300 font-bold text-[9.5px] flex items-center justify-center gap-1 cursor-pointer"
+                        >
+                          <Upload className="w-3 h-3" />
+                          <span>Upload Side 2</span>
+                        </button>
+                        {mediaGallery.length > 0 && (
+                          <select
+                            value={splitScreenConfig.rightMediaUrl}
+                            onChange={(e) => {
+                              const m = mediaGallery.find((x) => x.url === e.target.value);
+                              if (m) {
+                                setSplitScreenConfig((p) => ({
+                                  ...p,
+                                  enabled: true,
+                                  rightMediaUrl: m.url,
+                                  rightMediaType: m.type,
+                                  rightLabel: m.title,
+                                }));
+                              }
+                            }}
+                            className="w-full bg-[#0c1017] border border-zinc-700 rounded px-1.5 py-1 text-[9px] text-zinc-200"
+                          >
+                            <option value="">-- Pool Clip 2 --</option>
+                            {mediaGallery.map((m) => (
+                              <option key={m.id} value={m.url}>
+                                {m.title}
+                              </option>
+                            ))}
+                          </select>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* 2-Option Center Line / Border Selector */}
+                    <div className="p-2.5 rounded-xl bg-[#141a24] border border-[#242e3d] space-y-2">
+                      <span className="text-[10px] font-bold text-cyan-300 block">
+                        Center Line / Frame Mode (വര വേണോ വേണ്ടയോ?)
+                      </span>
+                      <div className="grid grid-cols-2 gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setSplitScreenConfig((p) => ({
+                              ...p,
+                              enabled: true,
+                              showBorder: false,
+                              gapPx: 0,
+                              cornerRadius: 0,
+                            }))
+                          }
+                          className={`min-h-[38px] p-2 rounded-lg border text-left text-[9.5px] font-bold cursor-pointer transition-all ${
+                            !splitScreenConfig.showBorder
+                              ? 'border-cyan-400 bg-cyan-950/45 text-cyan-200 ring-1 ring-cyan-400/40'
+                              : 'border-[#242e3d] bg-[#0c1017] text-zinc-300 hover:border-zinc-500'
+                          }`}
+                        >
+                          <div className="font-black">Seamless Frame</div>
+                          <div className="text-[8px] font-normal text-zinc-400">No Center Line (ഒരേ ഫ്രയിം)</div>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setSplitScreenConfig((p) => ({
+                              ...p,
+                              enabled: true,
+                              showBorder: true,
+                              gapPx: Math.max(4, p.gapPx),
+                            }))
+                          }
+                          className={`min-h-[38px] p-2 rounded-lg border text-left text-[9.5px] font-bold cursor-pointer transition-all ${
+                            splitScreenConfig.showBorder
+                              ? 'border-cyan-400 bg-cyan-950/45 text-cyan-200 ring-1 ring-cyan-400/40'
+                              : 'border-[#242e3d] bg-[#0c1017] text-zinc-300 hover:border-zinc-500'
+                          }`}
+                        >
+                          <div className="font-black">Center Border Line</div>
+                          <div className="text-[8px] font-normal text-zinc-400">Show Divider Line (വര വെക്കുക)</div>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* 8 Visual Split Screen Layout Presets with Visual Diagrams */}
+                    <div className="p-2.5 rounded-xl bg-[#141a24] border border-[#242e3d] space-y-2">
+                      <span className="text-[10px] font-bold text-zinc-200 block">Choose Dual Layout (ലേഔട്ട്)</span>
+                      <div className="grid grid-cols-2 gap-1.5">
+                        {(
+                          [
+                            { id: 'left_right', label: 'Left | Right (2-Side)' },
+                            { id: 'top_bottom', label: 'Top / Bottom Split' },
+                            { id: 'dual_cards', label: 'Dual Floating Cards' },
+                            { id: 'diagonal', label: 'Diagonal Action Slash' },
+                            { id: 'pip_bottom_right', label: 'PiP Bottom-Right' },
+                            { id: 'pip_top_right', label: 'PiP Top-Right' },
+                            { id: 'mirror_twin', label: 'Mirror Twin Sym' },
+                            { id: 'triple_trio', label: 'Triple 3-Panel Trio' },
+                          ] as Array<{ id: SplitLayoutType; label: string }>
+                        ).map((lay) => (
+                          <button
+                            key={lay.id}
+                            type="button"
+                            onClick={() => setSplitScreenConfig((p) => ({ ...p, enabled: true, layout: lay.id }))}
+                            className={`p-1.5 rounded-lg border text-left text-[9px] font-bold cursor-pointer flex items-center gap-2 ${
+                              splitScreenConfig.layout === lay.id
+                                ? 'border-cyan-400 bg-cyan-950/40 text-cyan-200'
+                                : 'border-[#242e3d] bg-[#0c1017] text-zinc-300 hover:border-zinc-500'
+                            }`}
+                          >
+                            <svg viewBox="0 0 36 22" className="w-8 h-5 shrink-0 rounded border border-zinc-700 bg-zinc-950">
+                              {lay.id === 'left_right' && (
+                                <>
+                                  <rect x="1" y="1" width="16.5" height="20" fill="#14b8a6" opacity="0.7" />
+                                  <rect x="18.5" y="1" width="16.5" height="20" fill="#f59e0b" opacity="0.7" />
+                                </>
+                              )}
+                              {lay.id === 'top_bottom' && (
+                                <>
+                                  <rect x="1" y="1" width="34" height="9.5" fill="#14b8a6" opacity="0.7" />
+                                  <rect x="1" y="11.5" width="34" height="9.5" fill="#f59e0b" opacity="0.7" />
+                                </>
+                              )}
+                              {lay.id === 'dual_cards' && (
+                                <>
+                                  <rect x="2" y="3" width="15" height="16" rx="2" fill="#14b8a6" opacity="0.75" />
+                                  <rect x="19" y="3" width="15" height="16" rx="2" fill="#f59e0b" opacity="0.75" />
+                                </>
+                              )}
+                              {lay.id === 'diagonal' && (
+                                <>
+                                  <polygon points="1,1 24,1 12,21 1,21" fill="#14b8a6" opacity="0.75" />
+                                  <polygon points="24,1 35,1 35,21 12,21" fill="#f59e0b" opacity="0.75" />
+                                </>
+                              )}
+                              {lay.id === 'pip_bottom_right' && (
+                                <>
+                                  <rect x="1" y="1" width="34" height="20" fill="#14b8a6" opacity="0.55" />
+                                  <rect x="21" y="11" width="12" height="8" rx="1.5" fill="#f59e0b" opacity="0.95" />
+                                </>
+                              )}
+                              {lay.id === 'pip_top_right' && (
+                                <>
+                                  <rect x="1" y="1" width="34" height="20" fill="#14b8a6" opacity="0.55" />
+                                  <rect x="21" y="3" width="12" height="8" rx="1.5" fill="#f59e0b" opacity="0.95" />
+                                </>
+                              )}
+                              {lay.id === 'mirror_twin' && (
+                                <>
+                                  <rect x="1" y="1" width="16.5" height="20" fill="#22d3ee" opacity="0.75" />
+                                  <rect x="18.5" y="1" width="16.5" height="20" fill="#22d3ee" opacity="0.45" />
+                                </>
+                              )}
+                              {lay.id === 'triple_trio' && (
+                                <>
+                                  <rect x="1" y="1" width="10.5" height="20" fill="#14b8a6" opacity="0.75" />
+                                  <rect x="12.5" y="1" width="11" height="20" fill="#f59e0b" opacity="0.75" />
+                                  <rect x="24.5" y="1" width="10.5" height="20" fill="#38bdf8" opacity="0.75" />
+                                </>
+                              )}
+                            </svg>
+                            <span className="truncate">{lay.label}</span>
+                          </button>
+                        ))}
+                      </div>
+
+                      <div className="space-y-1.5 pt-1 border-t border-zinc-800/80">
+                        <div className="flex justify-between text-[9.5px]">
+                          <span className="text-zinc-300">Split Ratio</span>
+                          <span className="font-mono text-cyan-300">{splitScreenConfig.splitRatio}% / {100 - splitScreenConfig.splitRatio}%</span>
+                        </div>
+                        <input
+                          type="range"
+                          min="25"
+                          max="75"
+                          value={splitScreenConfig.splitRatio}
+                          onChange={(e) => setSplitScreenConfig((p) => ({ ...p, enabled: true, splitRatio: Number(e.target.value) }))}
+                          className="w-full h-1 accent-cyan-400 cursor-pointer"
+                        />
+                        {splitScreenConfig.showBorder && (
+                          <div className="grid grid-cols-2 gap-2 pt-1">
+                            <div>
+                              <span className="text-[9px] text-zinc-400">Divider Gap: {splitScreenConfig.gapPx}px</span>
+                              <input
+                                type="range"
+                                min="0"
+                                max="24"
+                                value={splitScreenConfig.gapPx}
+                                onChange={(e) => setSplitScreenConfig((p) => ({ ...p, gapPx: Number(e.target.value) }))}
+                                className="w-full h-1 accent-cyan-400 cursor-pointer"
+                              />
+                            </div>
+                            <div>
+                              <span className="text-[9px] text-zinc-400">Radius: {splitScreenConfig.cornerRadius}px</span>
+                              <input
+                                type="range"
+                                min="0"
+                                max="28"
+                                value={splitScreenConfig.cornerRadius}
+                                onChange={(e) => setSplitScreenConfig((p) => ({ ...p, cornerRadius: Number(e.target.value) }))}
+                                className="w-full h-1 accent-cyan-400 cursor-pointer"
+                              />
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* SECTION 12: MOVIE TRAILER STUDIO & IMAGE-TO-TRAILER ANIMATED CARD BUILDER */}
+                {activeTab === 'Trailer' && (
+                  <div className="space-y-2.5 text-[10.5px]">
+                    {/* One-Tap Blockbuster Trailer Preset Packs */}
+                    {(activeSubCategory === 'All' || activeSubCategory === 'Presets') && (
+                      <div className="space-y-1.5">
+                        <span className="text-[10px] font-bold text-amber-300 uppercase tracking-wider block">
+                          🎬 1-Tap Trailer Preset Packs
+                        </span>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                          {TRAILER_PRESET_PACKS.map((pack) => (
+                            <button
+                              key={pack.id}
+                              type="button"
+                              onClick={() => {
+                                setMovieTitle(pack.title);
+                                setSubtitle(pack.subtitle);
+                                setDirectorText(pack.director);
+                                setShowTitleOverlay(true);
+                                setTitleStartSec(0);
+                                setTitleDurationSec(Math.max(4, totalDuration || 6));
+                                setTitleAnimType(pack.titleAnim);
+                                setTitleThemeType(pack.titleTheme);
+                                setTrailerFxMode(pack.fxMode);
+                                setDraftCardTitle(pack.title);
+                                setDraftCardSubtitle(pack.subtitle);
+                                setDraftCardBadge(pack.category.toUpperCase() + ' TRAILER');
+                                setDraftCardTheme(pack.cardTheme);
+                                setDraftCardAnim(pack.cardAnim);
+                                setSelectedFeatureType('title');
+                                setActiveInspectorTab('adjust');
+                                setIsRightPanelOpen(true);
+                                logEditorTelemetry('edit_timeline');
+                              }}
+                              className="p-2 rounded-xl border border-[#242e3d] bg-[#141a24] hover:border-amber-400 text-left cursor-pointer transition-all flex flex-col gap-1.5 group"
+                            >
+                              <div className="aspect-video w-full rounded-lg overflow-hidden bg-black relative">
+                                <img
+                                  src={activePreviewThumbUrl}
+                                  alt={pack.name}
+                                  className="w-full h-full object-cover opacity-70 group-hover:scale-105 transition-transform"
+                                />
+                                <div
+                                  className="absolute inset-0 opacity-45"
+                                  style={{ background: `linear-gradient(135deg, ${pack.accent}, transparent 70%)` }}
+                                />
+                                <span
+                                  className="absolute bottom-1 right-1 px-1.5 py-0.5 rounded text-[8px] font-bold text-black"
+                                  style={{ backgroundColor: pack.accent }}
+                                >
+                                  {pack.category}
+                                </span>
+                              </div>
+                              <div className="flex items-center justify-between gap-1">
+                                <span className="font-black text-[10px] text-white truncate">{pack.name}</span>
+                              </div>
+                              <p className="text-[8.5px] text-zinc-400 line-clamp-2">{pack.description}</p>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Image-to-Trailer Animated Card Builder */}
+                    {(activeSubCategory === 'All' || activeSubCategory === 'Card Builder') && (
+                      <div className="p-2.5 rounded-xl bg-gradient-to-br from-amber-950/35 to-[#141a24] border border-amber-500/40 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10.5px] font-black text-amber-300">
+                            🃏 Image-to-Trailer Card Maker
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => trailerCardInputRef.current?.click()}
+                            className="px-2 py-1 rounded-lg bg-amber-400 hover:bg-amber-300 text-black font-black text-[9px] flex items-center gap-1 cursor-pointer"
+                          >
+                            <Upload className="w-3 h-3" />
+                            <span>Upload Image</span>
+                          </button>
+                        </div>
+                        <input
+                          type="text"
+                          value={draftCardTitle}
+                          onChange={(e) => setDraftCardTitle(e.target.value)}
+                          placeholder="Poster Card Title..."
+                          className="w-full bg-[#0c1017] border border-zinc-700 rounded-lg px-2 py-1 text-[10px] font-bold text-white"
+                        />
+                        <div className="grid grid-cols-2 gap-1.5">
+                          <input
+                            type="text"
+                            value={draftCardSubtitle}
+                            onChange={(e) => setDraftCardSubtitle(e.target.value)}
+                            placeholder="Tagline..."
+                            className="bg-[#0c1017] border border-zinc-700 rounded-lg px-2 py-1 text-[9.5px] text-zinc-200"
+                          />
+                          <input
+                            type="text"
+                            value={draftCardBadge}
+                            onChange={(e) => setDraftCardBadge(e.target.value)}
+                            placeholder="Badge (COMING SOON)"
+                            className="bg-[#0c1017] border border-zinc-700 rounded-lg px-2 py-1 text-[9.5px] text-amber-300 font-bold"
+                          />
+                        </div>
+                        <div className="grid grid-cols-2 gap-1.5">
+                          <select
+                            value={draftCardTheme}
+                            onChange={(e) => setDraftCardTheme(e.target.value as TrailerCardTheme)}
+                            className="bg-[#0c1017] border border-zinc-700 rounded-lg px-1.5 py-1 text-[9.5px] text-zinc-200"
+                          >
+                            {TRAILER_CARD_THEMES.map((t) => (
+                              <option key={t.id} value={t.id}>
+                                {t.name}
+                              </option>
+                            ))}
+                          </select>
+                          <select
+                            value={draftCardAnim}
+                            onChange={(e) => setDraftCardAnim(e.target.value as TrailerCardAnimation)}
+                            className="bg-[#0c1017] border border-zinc-700 rounded-lg px-1.5 py-1 text-[9.5px] text-zinc-200"
+                          >
+                            {TRAILER_CARD_ANIMATIONS.map((a) => (
+                              <option key={a.id} value={a.id}>
+                                {a.name}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleAddTrailerCard()}
+                          className="w-full min-h-[34px] py-1.5 rounded-xl bg-gradient-to-r from-amber-400 to-orange-400 hover:brightness-105 text-black font-black text-[10px] flex items-center justify-center gap-1 cursor-pointer shadow"
+                        >
+                          <Plus className="w-3.5 h-3.5 stroke-[3]" />
+                          <span>+ Create Animated Trailer Card</span>
+                        </button>
+
+                        {trailerCardLayers.length > 0 && (
+                          <div className="space-y-1 pt-1 border-t border-amber-500/20">
+                            {trailerCardLayers.map((c) => (
+                              <div
+                                key={c.id}
+                                onClick={() => {
+                                  setSelectedTrailerCardId(c.id);
+                                  setSelectedFeatureType('trailer_card');
+                                  setActiveInspectorTab('adjust');
+                                  setIsRightPanelOpen(true);
+                                }}
+                                className={`p-1.5 rounded-lg border flex items-center justify-between cursor-pointer ${
+                                  selectedTrailerCardId === c.id
+                                    ? 'border-amber-400 bg-amber-950/40 text-amber-200'
+                                    : 'border-zinc-800 bg-[#0c1017] text-zinc-300'
+                                }`}
+                              >
+                                <span className="truncate font-bold text-[9.5px]">🃏 {c.title} ({c.startTimeSec}s)</span>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setTrailerCardLayers((prev) => prev.filter((x) => x.id !== c.id));
+                                    if (selectedTrailerCardId === c.id) setSelectedTrailerCardId(null);
+                                  }}
+                                  className="text-rose-400 hover:text-rose-300 ml-1 cursor-pointer"
+                                >
+                                  <Trash2 className="w-3 h-3" />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Animated Title & Trailer Visual FX Controls */}
+                    {(activeSubCategory === 'All' || activeSubCategory === 'Title Motion') && (
+                      <div className="p-2.5 rounded-xl bg-[#141a24] border border-[#242e3d] space-y-2">
+                        <span className="text-[10px] font-bold text-zinc-200 block">Title Animation Motion</span>
+                        <div className="grid grid-cols-2 gap-1.5">
+                          {TRAILER_TITLE_ANIMATIONS.map((anim) => (
+                            <button
+                              key={anim.id}
+                              type="button"
+                              onClick={() => {
+                                setTitleAnimType(anim.id);
+                                if (!movieTitle) {
+                                  setMovieTitle('COMING SOON');
+                                  setSubtitle('A CINEMA PREMIERE');
+                                }
+                                setShowTitleOverlay(true);
+                                setSelectedFeatureType('title');
+                              }}
+                              className={`p-1.5 rounded-lg border text-left cursor-pointer ${
+                                titleAnimType === anim.id
+                                  ? 'border-amber-400 bg-amber-950/40 text-amber-200'
+                                  : 'border-[#242e3d] bg-[#0c1017] text-zinc-300'
+                              }`}
+                            >
+                              <span className="font-bold text-[9.5px] block truncate">{anim.name}</span>
+                              <span className="text-[8px] text-zinc-400">{anim.tag}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {(activeSubCategory === 'All' || activeSubCategory === 'Trailer FX') && (
+                      <div className="p-2.5 rounded-xl bg-[#141a24] border border-[#242e3d] space-y-2">
+                        <span className="text-[10px] font-bold text-zinc-200 block">Trailer Screen Visual FX</span>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                          {TRAILER_FX_OPTIONS.map((fx) => (
+                            <button
+                              key={fx.id}
+                              type="button"
+                              onClick={() => setTrailerFxMode(fx.id as TrailerFxMode)}
+                              className={`p-1.5 rounded-lg border text-left cursor-pointer ${
+                                trailerFxMode === fx.id
+                                  ? 'border-rose-400 bg-rose-950/40 text-rose-200'
+                                  : 'border-[#242e3d] bg-[#0c1017] text-zinc-300'
+                              }`}
+                            >
+                              <div className="flex items-center justify-between gap-1">
+                                <span className="font-bold text-[9.5px] truncate">{fx.name}</span>
+                                <span className="text-[8px] text-amber-300 font-mono">{fx.badge}</span>
+                              </div>
+                              <p className="text-[8px] text-zinc-400 line-clamp-1">{fx.description}</p>
+                            </button>
+                          ))}
+                        </div>
                       </div>
                     )}
                   </div>
@@ -4799,12 +7127,12 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
           </div>
         )}
 
-        {/* Floating Reopen Button for Left Panel */}
+        {/* Floating Reopen Button for Left Panel (Desktop) */}
         {!isLeftPanelOpen && (
           <button
             type="button"
             onClick={() => setIsLeftPanelOpen(true)}
-            className="absolute left-1 top-1/2 -translate-y-1/2 z-30 p-1.5 rounded-r-xl bg-zinc-800/90 hover:bg-teal-500 hover:text-black border border-l-0 border-zinc-700 text-teal-300 shadow-xl backdrop-blur cursor-pointer transition-all"
+            className="hidden md:flex absolute left-1 top-1/2 -translate-y-1/2 z-30 min-h-[42px] p-2 rounded-r-xl bg-[#18202c]/95 hover:bg-teal-400 hover:text-black border border-l-0 border-[#2b3648] text-teal-300 shadow-xl backdrop-blur cursor-pointer transition-all"
             title="Open Tools Panel (ടൂളുകൾ തുറക്കുക)"
           >
             <ChevronRight className="w-4 h-4" />
@@ -4812,9 +7140,9 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
         )}
 
         {/* -----------------------------------------------------------------
-            COLUMN 2: EXACT CENTER VIDEO PLAYER (WITH ON-SCREEN ROUND HANDLES & VFX ROUTE)
+            COLUMN 2: EXACT CENTER VIDEO PLAYER (TOP FULL WIDTH ON MOBILE | CENTER ON DESKTOP)
             ----------------------------------------------------------------- */}
-        <div className="order-2 flex-1 min-w-[26%] h-full bg-[#0b0e12] flex flex-col justify-between overflow-hidden relative transition-all duration-300">
+        <div className="order-1 md:order-2 w-full md:w-auto h-[34vh] min-h-[205px] md:h-full md:flex-1 md:min-w-[26%] bg-[#0b0e12] flex flex-col justify-between overflow-hidden relative shrink-0 md:shrink transition-all duration-300">
           {/* Top Status Bar */}
           <div className="h-6 sm:h-7 px-2 sm:px-3 bg-[#101417] border-b border-[#21262d] flex items-center justify-between text-[9px] sm:text-[11px] text-zinc-400 shrink-0">
             <div className="flex items-center gap-1 sm:gap-2 truncate">
@@ -4875,6 +7203,13 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                   const ratio = dist / Math.max(12, drag.initDist || 40);
                   const nextScale = Number(Math.max(0.3, Math.min(3.5, (drag.initScale || 1) * ratio)).toFixed(2));
                   setVfxLayers((prev) => prev.map((v) => (v.id === drag.id ? { ...v, scale: nextScale } : v)));
+                } else if (drag.mode === 'move_card' && drag.id) {
+                  setTrailerCardLayers((prev) => prev.map((c) => (c.id === drag.id ? { ...c, xPct: px, yPct: py } : c)));
+                } else if (drag.mode === 'resize_card' && drag.id && drag.originX !== undefined && drag.originY !== undefined) {
+                  const dist = Math.hypot(e.clientX - drag.originX, e.clientY - drag.originY);
+                  const ratio = dist / Math.max(12, drag.initDist || 40);
+                  const nextScale = Number(Math.max(0.35, Math.min(2.2, (drag.initScale || 1) * ratio)).toFixed(2));
+                  setTrailerCardLayers((prev) => prev.map((c) => (c.id === drag.id ? { ...c, scale: nextScale } : c)));
                 }
               }}
               onPointerUp={(e) => {
@@ -5134,21 +7469,90 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                 );
               })()}
 
-              {/* Play / Pause overlay */}
-              <div
-                className={`absolute inset-0 flex items-center justify-center transition-opacity pointer-events-none ${
-                  isPlaying ? 'opacity-0 group-hover:opacity-70' : 'opacity-100'
-                }`}
-              >
-                <div className="w-9 h-9 sm:w-12 sm:h-12 rounded-full bg-black/60 border border-white/40 flex items-center justify-center text-white shadow-2xl backdrop-blur-sm group-hover:scale-110 transition-transform">
-                  {isPlaying ? <Pause className="w-4 h-4 sm:w-6 sm:h-6 fill-white" /> : <Play className="w-4 h-4 sm:w-6 sm:h-6 fill-white ml-0.5" />}
-                </div>
-              </div>
+              {/* ON-SCREEN ROUND HANDLE GIZMOS: 4) Image-to-Trailer Card Drag & Resize Ring */}
+              {trailerCardLayers.map((cardLayer) => {
+                const isSelected = selectedFeatureType === 'trailer_card' && selectedTrailerCardId === cardLayer.id;
+                const isInTimeWindow =
+                  totalDuration <= 0 ||
+                  (currentTimeSec >= cardLayer.startTimeSec - 0.1 &&
+                    currentTimeSec <= cardLayer.startTimeSec + cardLayer.durationSec + 0.1);
+                if (!isSelected && !isInTimeWindow) return null;
+                return (
+                  <div
+                    key={cardLayer.id}
+                    onPointerDown={(e) => {
+                      e.stopPropagation();
+                      setIsPlaying(false);
+                      setSelectedTrailerCardId(cardLayer.id);
+                      setSelectedStickerLayerId(null);
+                      setSelectedVfxLayerId(null);
+                      setSelectedFeatureType('trailer_card');
+                      setActiveInspectorTab('adjust');
+                      setIsRightPanelOpen(true);
+                      canvasDragStateRef.current = { mode: 'move_card', id: cardLayer.id };
+                      try {
+                        canvasOverlayRef.current?.setPointerCapture(e.pointerId);
+                      } catch {}
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                    style={{
+                      left: `${cardLayer.xPct}%`,
+                      top: `${cardLayer.yPct}%`,
+                      width: `${Math.max(90, 140 * cardLayer.scale)}px`,
+                      height: `${Math.max(105, 160 * cardLayer.scale)}px`,
+                    }}
+                    className={`absolute -translate-x-1/2 -translate-y-1/2 z-20 cursor-move transition-shadow ${
+                      isSelected
+                        ? 'rounded-2xl border-2 border-dashed border-amber-400 bg-amber-400/5 shadow-[0_0_16px_rgba(251,191,36,0.45)]'
+                        : 'rounded-2xl border border-transparent hover:border-amber-400/40'
+                    }`}
+                    title="Drag Trailer Card or pull corner circle to resize"
+                  >
+                    {isSelected && (
+                      <>
+                        <div
+                          onPointerDown={(e) => {
+                            e.stopPropagation();
+                            const box = (e.currentTarget.parentElement as HTMLElement).getBoundingClientRect();
+                            const cx = box.left + box.width / 2;
+                            const cy = box.top + box.height / 2;
+                            canvasDragStateRef.current = {
+                              mode: 'resize_card',
+                              id: cardLayer.id,
+                              initScale: cardLayer.scale,
+                              originX: cx,
+                              originY: cy,
+                              initDist: Math.hypot(e.clientX - cx, e.clientY - cy),
+                            };
+                            try {
+                              canvasOverlayRef.current?.setPointerCapture(e.pointerId);
+                            } catch {}
+                          }}
+                          className="absolute -bottom-2 -right-2 w-4 h-4 rounded-full bg-white border-2 border-amber-400 shadow-lg cursor-nwse-resize"
+                        />
+                        <button
+                          type="button"
+                          onPointerDown={(e) => e.stopPropagation()}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setTrailerCardLayers((prev) => prev.filter((c) => c.id !== cardLayer.id));
+                            setSelectedTrailerCardId(null);
+                          }}
+                          className="absolute -top-2.5 -right-2.5 w-4 h-4 rounded-full bg-rose-600 text-white flex items-center justify-center shadow border border-white cursor-pointer"
+                          title="Delete Trailer Card"
+                        >
+                          <X className="w-2.5 h-2.5" />
+                        </button>
+                      </>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
 
           {/* Bottom Player Controls */}
-          <div className="bg-[#101417] border-t border-[#21262d] px-1.5 sm:px-3 py-1 flex flex-col gap-0.5 shrink-0">
+          <div className="bg-[#0c1017] border-t border-[#1f2937] px-2 sm:px-3.5 py-1.5 flex flex-col gap-1 shrink-0">
             {/* Scrubber Progress Bar */}
             <div className="relative w-full flex items-center cursor-pointer group">
               <input
@@ -5160,40 +7564,40 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                 value={Math.min(currentTimeSec, Math.max(0.1, totalDuration))}
                 disabled={totalDuration <= 0}
                 onChange={(e) => seekToTime(Number(e.target.value))}
-                className="w-full h-1 bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-teal-400 group-hover:h-1.5 transition-all disabled:opacity-40"
+                className="w-full h-1.5 bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-teal-400 group-hover:h-2 transition-all disabled:opacity-40"
               />
             </div>
 
             {/* Transport Bar */}
-            <div className="flex items-center justify-between text-[10px] sm:text-xs text-zinc-300 gap-1">
-              <div className="flex items-center gap-1 sm:gap-2.5 min-w-0">
+            <div className="flex items-center justify-between text-[11px] sm:text-xs text-zinc-300 gap-1.5">
+              <div className="flex items-center gap-1.5 sm:gap-2.5 min-w-0">
                 <button
                   type="button"
                   onClick={() => seekToTime(0)}
-                  className="hover:text-teal-400 cursor-pointer shrink-0"
+                  className="min-h-[38px] min-w-[38px] sm:min-h-[34px] sm:min-w-[34px] rounded-xl hover:bg-[#18202c] hover:text-teal-400 flex items-center justify-center cursor-pointer shrink-0 transition-colors"
                   title="Jump to Start"
                 >
-                  <SkipBack className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+                  <SkipBack className="w-4 h-4" />
                 </button>
                 <button
                   type="button"
                   onClick={handleTogglePlay}
-                  className="p-0.5 sm:p-1 rounded-full bg-teal-400 text-black hover:bg-teal-300 cursor-pointer shadow shrink-0"
+                  className="w-10 h-10 sm:w-9 sm:h-9 rounded-full bg-teal-400 text-black hover:bg-teal-300 flex items-center justify-center cursor-pointer shadow-lg shrink-0 transition-transform active:scale-95"
                 >
-                  {isPlaying ? <Pause className="w-3 h-3 sm:w-3.5 sm:h-3.5" /> : <Play className="w-3 h-3 sm:w-3.5 sm:h-3.5 fill-black ml-0.5" />}
+                  {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 fill-black ml-0.5" />}
                 </button>
                 <button
                   type="button"
                   onClick={() => seekToTime(totalDuration)}
-                  className="hover:text-teal-400 cursor-pointer shrink-0"
+                  className="min-h-[38px] min-w-[38px] sm:min-h-[34px] sm:min-w-[34px] rounded-xl hover:bg-[#18202c] hover:text-teal-400 flex items-center justify-center cursor-pointer shrink-0 transition-colors"
                   title="Jump to End"
                 >
-                  <SkipForward className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+                  <SkipForward className="w-4 h-4" />
                 </button>
 
-                <div className="font-mono text-[8px] sm:text-[10px] text-zinc-300 truncate">
-                  <span ref={playerTimecodeRef} className="text-teal-400">{formatTimecode(currentTimeSec)}</span>
-                  <span className="text-zinc-600 hidden sm:inline"> / {formatTimecode(totalDuration)}</span>
+                <div className="font-mono text-[10.5px] sm:text-[11px] text-zinc-300 truncate">
+                  <span ref={playerTimecodeRef} className="text-teal-400 font-bold">{formatTimecode(currentTimeSec)}</span>
+                  <span className="text-zinc-500 hidden sm:inline"> / {formatTimecode(totalDuration)}</span>
                 </div>
               </div>
 
@@ -5205,11 +7609,11 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                     setIsPlaying(false);
                     handleSplitClipAtPlayhead();
                   }}
-                  className="px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-300 border border-rose-500/40 hover:bg-rose-500 hover:text-white text-[8px] sm:text-[10px] font-bold flex items-center gap-0.5 cursor-pointer transition-colors"
+                  className="min-h-[38px] sm:min-h-[34px] px-3 py-1.5 rounded-xl bg-rose-500/20 text-rose-300 border border-rose-500/40 hover:bg-rose-500 hover:text-white text-[11px] font-bold flex items-center gap-1.5 cursor-pointer transition-colors whitespace-nowrap"
                   title="Split Video at Playhead (കത്രിക ചിഹ്നം - വീഡിയോ രണ്ടാക്കുക)"
                 >
-                  <Scissors className="w-2.5 h-2.5 sm:w-3 sm:h-3 stroke-[2.5]" />
-                  <span className="hidden sm:inline">Split</span>
+                  <Scissors className="w-3.5 h-3.5 stroke-[2.5]" />
+                  <span>Split</span>
                 </button>
 
                 <button
@@ -5222,15 +7626,19 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                     link.href = canvas.toDataURL('image/png');
                     link.click();
                   }}
-                  className="hover:text-teal-400 cursor-pointer hidden sm:inline-flex"
+                  className="min-h-[34px] min-w-[34px] rounded-xl hover:bg-[#18202c] hover:text-teal-400 items-center justify-center cursor-pointer hidden sm:inline-flex"
                   title="Snapshot Camera"
                 >
-                  <Camera className="w-3.5 h-3.5" />
+                  <Camera className="w-4 h-4" />
                 </button>
 
-                <div className="flex items-center gap-1">
-                  <button type="button" onClick={() => setIsMuted(!isMuted)} className="hover:text-white cursor-pointer">
-                    {isMuted || volume === 0 ? <VolumeX className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-rose-400" /> : <Volume2 className="w-3 h-3 sm:w-3.5 sm:h-3.5" />}
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setIsMuted(!isMuted)}
+                    className="min-h-[38px] min-w-[38px] sm:min-h-[34px] sm:min-w-[34px] rounded-xl hover:bg-[#18202c] flex items-center justify-center hover:text-white cursor-pointer"
+                  >
+                    {isMuted || volume === 0 ? <VolumeX className="w-4 h-4 text-rose-400" /> : <Volume2 className="w-4 h-4" />}
                   </button>
                   <input
                     type="range"
@@ -5238,7 +7646,7 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                     max="100"
                     value={isMuted ? 0 : volume}
                     onChange={(e) => setVolume(Number(e.target.value))}
-                    className="w-8 sm:w-12 h-1 accent-teal-400 cursor-pointer hidden sm:block"
+                    className="w-10 sm:w-14 h-1 accent-teal-400 cursor-pointer hidden sm:block"
                   />
                 </div>
 
@@ -5251,22 +7659,51 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                       document.exitFullscreen();
                     }
                   }}
-                  className="hover:text-white cursor-pointer"
+                  className="min-h-[38px] min-w-[38px] sm:min-h-[34px] sm:min-w-[34px] rounded-xl hover:bg-[#18202c] flex items-center justify-center hover:text-white cursor-pointer"
                   title="Fullscreen"
                 >
-                  <Maximize className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+                  <Maximize className="w-4 h-4" />
                 </button>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Floating Reopen Button for Right Panel */}
+        {/* MOBILE PANEL SWITCHER BAR (< md screens: Tools | Timeline | Inspector) */}
+        <div className="order-2 md:hidden grid grid-cols-3 gap-1.5 px-2 py-1.5 bg-[#0c1017] border-y border-[#1f2937] shrink-0">
+          {(
+            [
+              { id: 'tools', label: 'Tools', icon: LayoutGrid },
+              { id: 'timeline', label: 'Timeline', icon: Layers },
+              { id: 'inspector', label: 'Inspector', icon: Sliders },
+            ] as const
+          ).map((mTab) => {
+            const IconM = mTab.icon;
+            const activeM = mobilePanel === mTab.id;
+            return (
+              <button
+                key={mTab.id}
+                type="button"
+                onClick={() => setMobilePanel(mTab.id)}
+                className={`min-h-[42px] px-2.5 py-1.5 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer transition-all whitespace-nowrap ${
+                  activeM
+                    ? 'bg-teal-400 text-black shadow-md'
+                    : 'bg-[#141a24] text-zinc-300 border border-[#242e3d] hover:text-white'
+                }`}
+              >
+                <IconM className="w-4 h-4 shrink-0" />
+                <span>{mTab.label}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Floating Reopen Button for Right Panel (Desktop) */}
         {!isRightPanelOpen && (
           <button
             type="button"
             onClick={() => setIsRightPanelOpen(true)}
-            className="absolute right-1 top-1/2 -translate-y-1/2 z-30 p-1.5 rounded-l-xl bg-zinc-800/90 hover:bg-teal-500 hover:text-black border border-r-0 border-zinc-700 text-teal-300 shadow-xl backdrop-blur cursor-pointer transition-all"
+            className="hidden md:flex absolute right-1 top-1/2 -translate-y-1/2 z-30 min-h-[42px] p-2 rounded-l-xl bg-[#18202c]/95 hover:bg-teal-400 hover:text-black border border-r-0 border-[#2b3648] text-teal-300 shadow-xl backdrop-blur cursor-pointer transition-all"
             title="Open Inspector / Color Panel (ഇൻസ്പെക്ടർ തുറക്കുക)"
           >
             <ChevronLeft className="w-4 h-4" />
@@ -5274,23 +7711,29 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
         )}
 
         {/* -----------------------------------------------------------------
-            COLUMN 3: RIGHT PROPERTIES & CONTEXTUAL LIVE INSPECTOR (ALWAYS RIGHT OF VIDEO)
+            COLUMN 3: RIGHT PROPERTIES & CONTEXTUAL LIVE INSPECTOR (ALWAYS RIGHT OF VIDEO ON DESKTOP)
             ----------------------------------------------------------------- */}
-        {isRightPanelOpen && (
-          <div className="order-3 w-[27%] sm:w-[28%] min-w-0 md:max-w-[360px] h-full bg-[#14181d] border-l border-[#21262d] flex flex-col shrink-0 transition-all duration-300">
+        {(isRightPanelOpen || mobilePanel === 'inspector') && (
+          <div
+            className={`${
+              mobilePanel === 'inspector' ? 'flex order-3 flex-1 min-h-0 w-full' : 'hidden'
+            } ${
+              isRightPanelOpen ? 'md:flex' : 'md:hidden'
+            } md:order-3 md:w-[27%] lg:w-[320px] xl:w-[350px] md:h-full bg-[#10151d] md:border-l border-[#1f2937] flex-col shrink-0 transition-all duration-300`}
+          >
             {/* Header Tabs with Collapse Button */}
-            <div className="flex items-center justify-between border-b border-[#21262d] bg-[#101417] shrink-0">
-              <div className="flex-1 grid grid-cols-5 text-[8px] sm:text-[10.5px] font-semibold text-center text-zinc-400">
-                {(['adjust', 'video', 'color', 'speed', 'audio'] as const).map((tab) => (
+            <div className="flex items-center justify-between border-b border-[#1f2937] bg-[#0c1017] shrink-0">
+              <div className="flex-1 grid grid-cols-6 text-[8px] sm:text-[10px] font-semibold text-center text-zinc-400">
+                {(['adjust', 'profx', 'video', 'color', 'speed', 'audio'] as const).map((tab) => (
                   <button
                     key={tab}
                     type="button"
                     onClick={() => setActiveInspectorTab(tab)}
-                    className={`py-1.5 sm:py-2 capitalize cursor-pointer transition-colors relative truncate ${
-                      activeInspectorTab === tab ? 'text-teal-400 font-bold' : 'hover:text-zinc-200'
+                    className={`min-h-[34px] py-1.5 sm:py-2 capitalize cursor-pointer transition-colors relative truncate px-0.5 ${
+                      activeInspectorTab === tab ? 'text-teal-300 font-bold bg-teal-500/10' : 'hover:text-zinc-200'
                     }`}
                   >
-                    {tab}
+                    {tab === 'profx' ? 'Pro 660' : tab}
                     {activeInspectorTab === tab && <div className="absolute bottom-0 inset-x-0 h-0.5 bg-teal-400" />}
                   </button>
                 ))}
@@ -5300,7 +7743,7 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
               <button
                 type="button"
                 onClick={() => setIsRightPanelOpen(false)}
-                className="p-1.5 rounded hover:bg-zinc-800 text-zinc-400 hover:text-white cursor-pointer mr-1 shrink-0"
+                className="min-h-[32px] min-w-[32px] p-1.5 rounded-lg hover:bg-[#18202c] text-zinc-400 hover:text-white cursor-pointer mr-1 shrink-0 flex items-center justify-center"
                 title="Collapse Inspector (ഹൈഡ് ചെയ്യുക)"
               >
                 <ChevronRight className="w-4 h-4" />
@@ -5309,12 +7752,209 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
 
             {/* TAB CONTENT */}
             <div className="flex-1 overflow-y-auto no-scrollbar p-2 sm:p-3 space-y-3">
+              {/* TAB PRO 660: 300 PRO FEATURES × 660 SETTINGS/PARTS INSPECTOR */}
+              {activeInspectorTab === 'profx' && (() => {
+                const pageSize = 50;
+                const totalFiltered = filteredProSettings.length;
+                const totalPages = Math.max(1, Math.ceil(totalFiltered / pageSize));
+                const safePage = Math.min(proSettingsPage, totalPages - 1);
+                const pageItems = filteredProSettings.slice(safePage * pageSize, (safePage + 1) * pageSize);
+
+                return (
+                  <div className="space-y-2.5 text-[10.5px]">
+                    {!activeProFeature ? (
+                      <div className="p-4 rounded-xl bg-[#0c1017] border border-[#242e3d] text-center space-y-2.5">
+                        <Wand2 className="w-6 h-6 text-amber-400 mx-auto" />
+                        <p className="font-bold text-zinc-200 text-xs">No Pro Feature Selected Yet</p>
+                        <p className="text-[10px] text-zinc-400 leading-relaxed">
+                          Pick any of the 1,200 Pro Features from the left panel to adjust all 660 fine-tuned engine parts live!
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setActiveTab('ProFX');
+                            setIsLeftPanelOpen(true);
+                            setMobilePanel('tools');
+                          }}
+                          className="w-full min-h-[38px] py-1.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-black font-extrabold text-[11px] cursor-pointer whitespace-nowrap"
+                        >
+                          Browse 1,200 Pro Features
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        {/* Active Feature Header */}
+                        <div className="p-2.5 rounded-xl bg-amber-950/30 border border-amber-500/40 space-y-1.5">
+                          <div className="flex items-center justify-between gap-1">
+                            <span className="text-[9px] font-mono font-bold text-amber-300">
+                              #{String(activeProFeature.index).padStart(3, '0')} · 660 SETTINGS
+                            </span>
+                            <div className="flex items-center gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => setProSettingOverrides({})}
+                                className="text-[9px] text-teal-300 hover:text-teal-200 font-bold cursor-pointer"
+                              >
+                                Reset All
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setActiveProFeature(null);
+                                  setProSettingOverrides({});
+                                }}
+                                className="text-[9px] text-rose-400 hover:text-rose-300 font-bold cursor-pointer"
+                              >
+                                Clear
+                              </button>
+                            </div>
+                          </div>
+                          <div className="font-bold text-white text-xs truncate">{activeProFeature.name}</div>
+                          <div className="text-[9px] text-zinc-400 truncate">{activeProFeature.category}</div>
+                        </div>
+
+                        {/* Search 660 Settings */}
+                        <div className="relative">
+                          <Search className="w-3 h-3 absolute left-2.5 top-2.5 text-zinc-500" />
+                          <input
+                            type="text"
+                            value={proSettingsSearch}
+                            onChange={(e) => {
+                              setProSettingsSearch(e.target.value);
+                              setProSettingsPage(0);
+                            }}
+                            placeholder="Search 660 settings / P001-P660..."
+                            className="w-full min-h-[32px] bg-[#0c1017] border border-[#242e3d] rounded-xl pl-7 pr-2 py-1 text-[10px] text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-amber-400"
+                          />
+                        </div>
+
+                        {/* Module Filter (12 Modules × 55 Parts = 660) */}
+                        <select
+                          value={proSettingsModuleFilter}
+                          onChange={(e) => {
+                            setProSettingsModuleFilter(e.target.value);
+                            setProSettingsPage(0);
+                          }}
+                          className="w-full min-h-[32px] bg-[#0c1017] border border-[#242e3d] rounded-xl px-2 py-1 text-[10px] text-zinc-200 focus:outline-none focus:border-amber-400"
+                        >
+                          <option value="all">All 12 Modules (660 Settings / Parts)</option>
+                          {PRO_SETTING_MODULES.map((mod) => (
+                            <option key={mod.id} value={mod.id}>
+                              {mod.title} (55 Parts)
+                            </option>
+                          ))}
+                        </select>
+
+                        {/* Pagination Bar */}
+                        <div className="flex items-center justify-between text-[9.5px] text-zinc-400 bg-[#0c1017] border border-[#1f2937] rounded-lg px-2 py-1">
+                          <span>
+                            {totalFiltered} parts · Pg {safePage + 1}/{totalPages}
+                          </span>
+                          <div className="flex items-center gap-1">
+                            <button
+                              type="button"
+                              disabled={safePage <= 0}
+                              onClick={() => setProSettingsPage((p) => Math.max(0, p - 1))}
+                              className="px-2 py-0.5 rounded bg-[#18202c] hover:bg-[#222d3d] disabled:opacity-40 text-zinc-200 font-bold cursor-pointer"
+                            >
+                              Prev
+                            </button>
+                            <button
+                              type="button"
+                              disabled={safePage >= totalPages - 1}
+                              onClick={() => setProSettingsPage((p) => Math.min(totalPages - 1, p + 1))}
+                              className="px-2 py-0.5 rounded bg-[#18202c] hover:bg-[#222d3d] disabled:opacity-40 text-zinc-200 font-bold cursor-pointer"
+                            >
+                              Next
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Windowed Sliders (50 per page for instant zero-lag responsiveness) */}
+                        <div className="space-y-2">
+                          {pageItems.map((setting) => {
+                            const curVal =
+                              proSettingOverrides[setting.id] !== undefined
+                                ? proSettingOverrides[setting.id]
+                                : setting.defaultValue;
+                            const isModified = curVal !== setting.defaultValue;
+                            return (
+                              <div
+                                key={setting.id}
+                                className={`p-2 rounded-lg border space-y-1 ${
+                                  isModified ? 'bg-amber-950/20 border-amber-500/40' : 'bg-[#0c1017] border-[#1f2937]'
+                                }`}
+                              >
+                                <div className="flex items-center justify-between gap-1">
+                                  <div className="min-w-0 flex-1 flex items-center gap-1.5">
+                                    <span className="px-1 py-0.2 rounded bg-[#18202c] text-amber-300 font-mono text-[8.5px] font-bold shrink-0">
+                                      {setting.partLabel}
+                                    </span>
+                                    <span className="text-[9.5px] text-zinc-200 font-semibold truncate" title={setting.name}>
+                                      {setting.name}
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-1 shrink-0">
+                                    <span className="font-mono text-[9.5px] text-teal-300 font-bold">
+                                      {curVal}
+                                      {setting.unit}
+                                    </span>
+                                    {isModified && (
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setProSettingOverrides((prev) => {
+                                            const copy = { ...prev };
+                                            delete copy[setting.id];
+                                            return copy;
+                                          });
+                                        }}
+                                        className="p-0.5 rounded hover:bg-zinc-800 text-zinc-400 hover:text-white cursor-pointer"
+                                        title="Reset part"
+                                      >
+                                        <RotateCcw className="w-2.5 h-2.5" />
+                                      </button>
+                                    )}
+                                  </div>
+                                </div>
+                                <input
+                                  type="range"
+                                  min={setting.min}
+                                  max={setting.max}
+                                  step={setting.step}
+                                  value={curVal}
+                                  onChange={(e) => {
+                                    const num = Number(e.target.value);
+                                    setProSettingOverrides((prev) => ({
+                                      ...prev,
+                                      [setting.id]: num,
+                                    }));
+                                  }}
+                                  className="w-full h-1 bg-zinc-700 accent-amber-400 cursor-pointer"
+                                />
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                );
+              })()}
+
               {/* TAB 0: CONTEXTUAL FEATURE ADJUST & TIMELINE INSPECTOR (Opens automatically for ANY selected feature!) */}
               {activeInspectorTab === 'adjust' && (() => {
                 const selVfx = vfxLayers.find((v) => v.id === selectedVfxLayerId);
                 const selStk = activeStickers.find((s) => s.id === selectedStickerLayerId);
+                const selCard = trailerCardLayers.find((c) => c.id === selectedTrailerCardId);
                 const effectiveType =
-                  selVfx && selectedFeatureType === 'vfx'
+                  selCard && selectedFeatureType === 'trailer_card'
+                    ? 'trailer_card'
+                    : chromaConfig.enabled && selectedFeatureType === 'chroma'
+                    ? 'chroma'
+                    : splitScreenConfig.enabled && selectedFeatureType === 'split'
+                    ? 'split'
+                    : selVfx && selectedFeatureType === 'vfx'
                     ? 'vfx'
                     : selStk && selectedFeatureType === 'sticker'
                     ? 'sticker'
@@ -5324,6 +7964,39 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                   <div className="space-y-3 text-[10.5px]">
                     {/* Feature Selector Pills so user can switch live between active layers */}
                     <div className="flex flex-wrap gap-1 border-b border-zinc-800 pb-2">
+                      {selCard && (
+                        <button
+                          type="button"
+                          onClick={() => setSelectedFeatureType('trailer_card')}
+                          className={`px-1.5 py-0.5 rounded text-[9px] font-bold cursor-pointer ${
+                            effectiveType === 'trailer_card' ? 'bg-amber-400 text-black' : 'bg-zinc-800 text-zinc-300'
+                          }`}
+                        >
+                          🃏 Card
+                        </button>
+                      )}
+                      {chromaConfig.enabled && (
+                        <button
+                          type="button"
+                          onClick={() => setSelectedFeatureType('chroma')}
+                          className={`px-1.5 py-0.5 rounded text-[9px] font-bold cursor-pointer ${
+                            effectiveType === 'chroma' ? 'bg-emerald-400 text-black' : 'bg-zinc-800 text-zinc-300'
+                          }`}
+                        >
+                          🟩 Chroma
+                        </button>
+                      )}
+                      {splitScreenConfig.enabled && (
+                        <button
+                          type="button"
+                          onClick={() => setSelectedFeatureType('split')}
+                          className={`px-1.5 py-0.5 rounded text-[9px] font-bold cursor-pointer ${
+                            effectiveType === 'split' ? 'bg-cyan-400 text-black' : 'bg-zinc-800 text-zinc-300'
+                          }`}
+                        >
+                          🌗 Split
+                        </button>
+                      )}
                       {selVfx && (
                         <button
                           type="button"
@@ -5369,6 +8042,436 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                         </button>
                       )}
                     </div>
+
+                    {/* 0A. CHROMA KEY / GREEN SCREEN INSPECTOR */}
+                    {effectiveType === 'chroma' && chromaConfig.enabled && (
+                      <div className="space-y-2.5">
+                        <div className="p-2 rounded-lg bg-emerald-950/35 border border-emerald-500/40 flex items-center justify-between gap-1">
+                          <div className="min-w-0">
+                            <span className="text-[9px] text-emerald-300 font-bold block">CHROMA KEY / GREEN SCREEN</span>
+                            <span className="font-bold text-white text-xs block truncate">
+                              Preset: {chromaConfig.colorPreset.replace('_', ' ').toUpperCase()}
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setChromaConfig(DEFAULT_CHROMA_KEY_CONFIG);
+                              setSelectedFeatureType('clip');
+                            }}
+                            className="px-2 py-1 rounded bg-rose-600/30 hover:bg-rose-600 text-rose-200 hover:text-white text-[9px] font-bold cursor-pointer shrink-0"
+                            title="Turn Off Chroma Key"
+                          >
+                            Turn Off
+                          </button>
+                        </div>
+
+                        <div className="space-y-1">
+                          <div className="flex justify-between text-zinc-400">
+                            <span>Similarity / Cut Strength</span>
+                            <span className="font-mono text-emerald-300">{chromaConfig.similarity}%</span>
+                          </div>
+                          <input
+                            type="range"
+                            min="10"
+                            max="90"
+                            value={chromaConfig.similarity}
+                            onChange={(e) =>
+                              setChromaConfig((prev) => ({ ...prev, similarity: Number(e.target.value) }))
+                            }
+                            className="w-full h-1 bg-zinc-700 accent-emerald-400 cursor-pointer"
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <div className="flex justify-between text-zinc-400">
+                            <span>Edge Smoothness</span>
+                            <span className="font-mono text-emerald-300">{chromaConfig.smoothness}</span>
+                          </div>
+                          <input
+                            type="range"
+                            min="0"
+                            max="50"
+                            value={chromaConfig.smoothness}
+                            onChange={(e) =>
+                              setChromaConfig((prev) => ({ ...prev, smoothness: Number(e.target.value) }))
+                            }
+                            className="w-full h-1 bg-zinc-700 accent-emerald-400 cursor-pointer"
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <div className="flex justify-between text-zinc-400">
+                            <span>Green Spill Reduction</span>
+                            <span className="font-mono text-emerald-300">{chromaConfig.spillReduction}%</span>
+                          </div>
+                          <input
+                            type="range"
+                            min="0"
+                            max="100"
+                            value={chromaConfig.spillReduction}
+                            onChange={(e) =>
+                              setChromaConfig((prev) => ({ ...prev, spillReduction: Number(e.target.value) }))
+                            }
+                            className="w-full h-1 bg-zinc-700 accent-emerald-400 cursor-pointer"
+                          />
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => chromaBgInputRef.current?.click()}
+                          className="w-full py-1.5 rounded-xl bg-emerald-400 hover:bg-emerald-300 text-black font-black text-[10px] flex items-center justify-center gap-1.5 cursor-pointer"
+                        >
+                          <Upload className="w-3.5 h-3.5" />
+                          <span>Swap Background Photo / Video</span>
+                        </button>
+                      </div>
+                    )}
+
+                    {/* 0B. DUAL SPLIT-SCREEN INSPECTOR */}
+                    {effectiveType === 'split' && splitScreenConfig.enabled && (
+                      <div className="space-y-2.5">
+                        <div className="p-2 rounded-lg bg-cyan-950/35 border border-cyan-500/40 flex items-center justify-between gap-1">
+                          <div className="min-w-0">
+                            <span className="text-[9px] text-cyan-300 font-bold block">DUAL SPLIT-SCREEN JOIN</span>
+                            <span className="font-bold text-white text-xs block truncate">
+                              Layout: {splitScreenConfig.layout.replace(/_/g, ' ').toUpperCase()}
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSplitScreenConfig(DEFAULT_SPLIT_SCREEN_CONFIG);
+                              setSelectedFeatureType('clip');
+                            }}
+                            className="px-2 py-1 rounded bg-rose-600/30 hover:bg-rose-600 text-rose-200 hover:text-white text-[9px] font-bold cursor-pointer shrink-0"
+                            title="Turn Off Split Screen"
+                          >
+                            Turn Off
+                          </button>
+                        </div>
+
+                        <div className="flex gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setSplitScreenConfig((prev) => ({ ...prev, swapSides: !prev.swapSides }))
+                            }
+                            className="flex-1 py-1.5 rounded-lg bg-cyan-400/20 border border-cyan-400/50 hover:bg-cyan-400 hover:text-black text-cyan-200 font-bold text-[10px] flex items-center justify-center gap-1 cursor-pointer transition-colors"
+                          >
+                            <RefreshCw className="w-3 h-3" />
+                            <span>Swap Sides</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => splitLeftInputRef.current?.click()}
+                            className="px-2 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-bold text-[9.5px] cursor-pointer"
+                          >
+                            Clip 1
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => splitRightInputRef.current?.click()}
+                            className="px-2 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-bold text-[9.5px] cursor-pointer"
+                          >
+                            Clip 2
+                          </button>
+                        </div>
+
+                        <div className="space-y-1">
+                          <div className="flex justify-between text-zinc-400">
+                            <span>Split Ratio</span>
+                            <span className="font-mono text-cyan-300">{splitScreenConfig.splitRatio}%</span>
+                          </div>
+                          <input
+                            type="range"
+                            min="25"
+                            max="75"
+                            value={splitScreenConfig.splitRatio}
+                            onChange={(e) =>
+                              setSplitScreenConfig((prev) => ({ ...prev, splitRatio: Number(e.target.value) }))
+                            }
+                            className="w-full h-1 bg-zinc-700 accent-cyan-400 cursor-pointer"
+                          />
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setSplitScreenConfig((prev) => ({
+                                ...prev,
+                                showBorder: false,
+                                gapPx: 0,
+                                cornerRadius: 0,
+                              }))
+                            }
+                            className={`min-h-[36px] px-2 py-1.5 rounded-lg border text-[9.5px] font-bold cursor-pointer ${
+                              !splitScreenConfig.showBorder
+                                ? 'border-cyan-400 bg-cyan-950/45 text-cyan-200'
+                                : 'border-[#242e3d] bg-[#0c1017] text-zinc-300'
+                            }`}
+                          >
+                            Seamless (No Line)
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setSplitScreenConfig((prev) => ({
+                                ...prev,
+                                showBorder: true,
+                                gapPx: Math.max(4, prev.gapPx),
+                              }))
+                            }
+                            className={`min-h-[36px] px-2 py-1.5 rounded-lg border text-[9.5px] font-bold cursor-pointer ${
+                              splitScreenConfig.showBorder
+                                ? 'border-cyan-400 bg-cyan-950/45 text-cyan-200'
+                                : 'border-[#242e3d] bg-[#0c1017] text-zinc-300'
+                            }`}
+                          >
+                            Center Border Line
+                          </button>
+                        </div>
+
+                        {splitScreenConfig.showBorder && (
+                          <>
+                            <div className="grid grid-cols-2 gap-2">
+                              <div>
+                                <span className="text-[9px] text-zinc-400">Gap: {splitScreenConfig.gapPx}px</span>
+                                <input
+                                  type="range"
+                                  min="0"
+                                  max="24"
+                                  value={splitScreenConfig.gapPx}
+                                  onChange={(e) =>
+                                    setSplitScreenConfig((prev) => ({ ...prev, gapPx: Number(e.target.value) }))
+                                  }
+                                  className="w-full h-1 accent-cyan-400 cursor-pointer"
+                                />
+                              </div>
+                              <div>
+                                <span className="text-[9px] text-zinc-400">Radius: {splitScreenConfig.cornerRadius}px</span>
+                                <input
+                                  type="range"
+                                  min="0"
+                                  max="28"
+                                  value={splitScreenConfig.cornerRadius}
+                                  onChange={(e) =>
+                                    setSplitScreenConfig((prev) => ({ ...prev, cornerRadius: Number(e.target.value) }))
+                                  }
+                                  className="w-full h-1 accent-cyan-400 cursor-pointer"
+                                />
+                              </div>
+                            </div>
+
+                            <div className="flex items-center justify-between gap-2 pt-1">
+                              <span className="text-[9.5px] text-zinc-400">Divider / Border Hex</span>
+                              <div className="flex items-center gap-1.5">
+                                <input
+                                  type="color"
+                                  value={splitScreenConfig.borderColor}
+                                  onChange={(e) =>
+                                    setSplitScreenConfig((prev) => ({ ...prev, borderColor: e.target.value }))
+                                  }
+                                  className="w-6 h-6 rounded bg-transparent border-0 cursor-pointer"
+                                />
+                                <input
+                                  type="text"
+                                  value={splitScreenConfig.borderColor}
+                                  onChange={(e) =>
+                                    setSplitScreenConfig((prev) => ({ ...prev, borderColor: e.target.value }))
+                                  }
+                                  className="w-20 bg-[#0c1017] border border-zinc-700 rounded px-1.5 py-0.5 text-[10px] font-mono text-zinc-200"
+                                />
+                              </div>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    )}
+
+                    {/* 0C. IMAGE-TO-TRAILER ANIMATED CARD INSPECTOR */}
+                    {effectiveType === 'trailer_card' && selCard && (
+                      <div className="space-y-2.5">
+                        <div className="p-2 rounded-lg bg-amber-950/35 border border-amber-500/40 flex items-center justify-between gap-1">
+                          <div className="min-w-0">
+                            <span className="text-[9px] text-amber-300 font-bold block">ANIMATED TRAILER CARD</span>
+                            <span className="font-bold text-white text-xs block truncate">🃏 {selCard.title}</span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setTrailerCardLayers((prev) => prev.filter((c) => c.id !== selCard.id));
+                              setSelectedTrailerCardId(null);
+                              setSelectedFeatureType('clip');
+                            }}
+                            className="p-1 rounded bg-rose-600/30 hover:bg-rose-600 text-rose-200 hover:text-white cursor-pointer shrink-0"
+                            title="Delete Trailer Card"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            seekToTime(selCard.startTimeSec);
+                            setIsPlaying(true);
+                          }}
+                          className="w-full py-1.5 rounded bg-amber-400 hover:bg-amber-300 text-black font-black text-[10px] flex items-center justify-center gap-1 cursor-pointer"
+                        >
+                          <Play className="w-3 h-3 fill-black" />
+                          <span>Live Preview Trailer Card</span>
+                        </button>
+
+                        <input
+                          type="text"
+                          value={selCard.title}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setTrailerCardLayers((prev) => prev.map((c) => (c.id === selCard.id ? { ...c, title: val } : c)));
+                          }}
+                          placeholder="Card Title..."
+                          className="w-full bg-[#101417] border border-zinc-700 rounded px-2 py-1 text-white font-bold text-xs"
+                        />
+                        <div className="grid grid-cols-2 gap-1.5">
+                          <input
+                            type="text"
+                            value={selCard.subtitle}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setTrailerCardLayers((prev) => prev.map((c) => (c.id === selCard.id ? { ...c, subtitle: val } : c)));
+                            }}
+                            placeholder="Tagline..."
+                            className="bg-[#101417] border border-zinc-700 rounded px-2 py-1 text-[9.5px] text-zinc-200"
+                          />
+                          <input
+                            type="text"
+                            value={selCard.badgeText}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setTrailerCardLayers((prev) => prev.map((c) => (c.id === selCard.id ? { ...c, badgeText: val } : c)));
+                            }}
+                            placeholder="Badge..."
+                            className="bg-[#101417] border border-zinc-700 rounded px-2 py-1 text-[9.5px] text-amber-300 font-bold"
+                          />
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-1.5">
+                          <select
+                            value={selCard.theme}
+                            onChange={(e) => {
+                              const val = e.target.value as TrailerCardTheme;
+                              setTrailerCardLayers((prev) => prev.map((c) => (c.id === selCard.id ? { ...c, theme: val } : c)));
+                            }}
+                            className="bg-[#101417] border border-zinc-700 rounded px-1.5 py-1 text-[9.5px] text-zinc-200"
+                          >
+                            {TRAILER_CARD_THEMES.map((t) => (
+                              <option key={t.id} value={t.id}>
+                                {t.name}
+                              </option>
+                            ))}
+                          </select>
+                          <select
+                            value={selCard.animation}
+                            onChange={(e) => {
+                              const val = e.target.value as TrailerCardAnimation;
+                              setTrailerCardLayers((prev) => prev.map((c) => (c.id === selCard.id ? { ...c, animation: val } : c)));
+                            }}
+                            className="bg-[#101417] border border-zinc-700 rounded px-1.5 py-1 text-[9.5px] text-zinc-200"
+                          >
+                            {TRAILER_CARD_ANIMATIONS.map((a) => (
+                              <option key={a.id} value={a.id}>
+                                {a.name}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div className="space-y-1">
+                          <div className="flex justify-between text-zinc-400">
+                            <span>Card Size / Scale</span>
+                            <span className="font-mono text-amber-300">{(selCard.scale * 100).toFixed(0)}%</span>
+                          </div>
+                          <input
+                            type="range"
+                            min="0.35"
+                            max="2.2"
+                            step="0.05"
+                            value={selCard.scale}
+                            onChange={(e) => {
+                              const val = Number(e.target.value);
+                              setTrailerCardLayers((prev) => prev.map((c) => (c.id === selCard.id ? { ...c, scale: val } : c)));
+                            }}
+                            className="w-full h-1 bg-zinc-700 accent-amber-400 cursor-pointer"
+                          />
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <span className="text-[9px] text-zinc-400">Pos X: {selCard.xPct.toFixed(0)}%</span>
+                            <input
+                              type="range"
+                              min="5"
+                              max="95"
+                              value={selCard.xPct}
+                              onChange={(e) => {
+                                const val = Number(e.target.value);
+                                setTrailerCardLayers((prev) => prev.map((c) => (c.id === selCard.id ? { ...c, xPct: val } : c)));
+                              }}
+                              className="w-full h-1 accent-amber-400 cursor-pointer"
+                            />
+                          </div>
+                          <div>
+                            <span className="text-[9px] text-zinc-400">Pos Y: {selCard.yPct.toFixed(0)}%</span>
+                            <input
+                              type="range"
+                              min="5"
+                              max="95"
+                              value={selCard.yPct}
+                              onChange={(e) => {
+                                const val = Number(e.target.value);
+                                setTrailerCardLayers((prev) => prev.map((c) => (c.id === selCard.id ? { ...c, yPct: val } : c)));
+                              }}
+                              className="w-full h-1 accent-amber-400 cursor-pointer"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <span className="text-[9px] text-zinc-400">Start: {selCard.startTimeSec.toFixed(1)}s</span>
+                            <input
+                              type="range"
+                              min="0"
+                              max={Math.max(10, totalDuration)}
+                              step="0.1"
+                              value={selCard.startTimeSec}
+                              onChange={(e) => {
+                                const val = Number(e.target.value);
+                                setTrailerCardLayers((prev) => prev.map((c) => (c.id === selCard.id ? { ...c, startTimeSec: val } : c)));
+                              }}
+                              className="w-full h-1 accent-amber-400 cursor-pointer"
+                            />
+                          </div>
+                          <div>
+                            <span className="text-[9px] text-zinc-400">Dur: {selCard.durationSec.toFixed(1)}s</span>
+                            <input
+                              type="range"
+                              min="0.5"
+                              max="20"
+                              step="0.2"
+                              value={selCard.durationSec}
+                              onChange={(e) => {
+                                const val = Number(e.target.value);
+                                setTrailerCardLayers((prev) => prev.map((c) => (c.id === selCard.id ? { ...c, durationSec: val } : c)));
+                              }}
+                              className="w-full h-1 accent-amber-400 cursor-pointer"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    )}
 
                     {/* A. CINEMA VFX INSPECTOR (Gun -> Body Trajectory, Size, Timing, Preview & Delete) */}
                     {effectiveType === 'vfx' && selVfx && (
@@ -5714,6 +8817,32 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                           placeholder="Enter Title Text..."
                           className="w-full bg-[#101417] border border-zinc-700 rounded px-2 py-1 text-white font-bold text-xs"
                         />
+                        <div className="grid grid-cols-2 gap-1.5">
+                          <select
+                            value={titleAnimType}
+                            onChange={(e) => setTitleAnimType(e.target.value as TitleAnimationType)}
+                            className="bg-[#101417] border border-zinc-700 rounded px-1.5 py-1 text-[9.5px] text-amber-300 font-bold"
+                            title="Title Animation Motion"
+                          >
+                            {TRAILER_TITLE_ANIMATIONS.map((anim) => (
+                              <option key={anim.id} value={anim.id}>
+                                {anim.name}
+                              </option>
+                            ))}
+                          </select>
+                          <select
+                            value={titleThemeType}
+                            onChange={(e) => setTitleThemeType(e.target.value as TitleThemeType)}
+                            className="bg-[#101417] border border-zinc-700 rounded px-1.5 py-1 text-[9.5px] text-zinc-200"
+                            title="Title Cinema Theme"
+                          >
+                            {TRAILER_TITLE_THEMES.map((thm) => (
+                              <option key={thm.id} value={thm.id}>
+                                {thm.name}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
                         <div className="space-y-1">
                           <div className="flex justify-between text-zinc-400">
                             <span>Size (വലിപ്പം)</span>
@@ -5753,7 +8882,18 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                     )}
 
                     {/* D. FALLBACK / EFFECT / TRANSITION / CLIP QUICK TIMELINE ADJUST */}
-                    {(effectiveType === 'effect' || effectiveType === 'transition' || effectiveType === 'clip' || (!selVfx && effectiveType === 'vfx') || (!selStk && effectiveType === 'sticker')) && (
+                    {(effectiveType === 'effect' ||
+                      effectiveType === 'transition' ||
+                      effectiveType === 'clip' ||
+                      effectiveType === 'filter' ||
+                      effectiveType === 'audio' ||
+                      effectiveType === 'speed' ||
+                      effectiveType === 'profx' ||
+                      (!selVfx && effectiveType === 'vfx') ||
+                      (!selStk && effectiveType === 'sticker') ||
+                      (!selCard && effectiveType === 'trailer_card') ||
+                      (!chromaConfig.enabled && effectiveType === 'chroma') ||
+                      (!splitScreenConfig.enabled && effectiveType === 'split')) && (
                       <div className="space-y-2.5">
                         {activeEffect && (
                           <div className="p-2 rounded-lg bg-purple-950/30 border border-purple-500/40 flex items-center justify-between">
@@ -5807,9 +8947,9 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                               setActiveTab('VFX');
                               setIsLeftPanelOpen(true);
                             }}
-                            className="py-1.5 rounded bg-rose-500/20 border border-rose-500/40 text-rose-300 font-bold text-[9.5px] cursor-pointer"
+                            className="min-h-[34px] py-1.5 rounded-xl bg-rose-500/20 border border-rose-500/40 hover:bg-rose-500 hover:text-white text-rose-300 font-bold text-[10px] cursor-pointer transition-colors"
                           >
-                            + Add 1200 VFX
+                            + Add VFX
                           </button>
                           <button
                             type="button"
@@ -5817,7 +8957,7 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                               setActiveTab('Stickers');
                               setIsLeftPanelOpen(true);
                             }}
-                            className="py-1.5 rounded bg-teal-500/20 border border-teal-500/40 text-teal-300 font-bold text-[9.5px] cursor-pointer"
+                            className="min-h-[34px] py-1.5 rounded-xl bg-teal-500/20 border border-teal-500/40 hover:bg-teal-400 hover:text-black text-teal-300 font-bold text-[10px] cursor-pointer transition-colors"
                           >
                             + Add Sticker
                           </button>
@@ -5847,7 +8987,7 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                         setColorTint(0);
                         setColorHighlights(0);
                         setColorShadows(0);
-                        setColorVignette(25);
+                        setColorVignette(0);
                       }}
                       className="text-[9px] text-teal-400 hover:text-teal-300 font-bold cursor-pointer"
                     >
@@ -6017,16 +9157,16 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                     />
                   </div>
 
-                  {/* 600 COLOR GRADING LUT PRESETS LIST */}
+                  {/* COLOR GRADING LUT PRESETS LIST */}
                   <div className="space-y-2 border-t border-zinc-800 pt-2.5">
                     <div className="flex items-center justify-between">
                       <span className="font-bold text-teal-300 text-[10px] uppercase tracking-wider">
-                        Color Grading Presets ({filteredColorGrades.length})
+                        Color Grading Presets
                       </span>
                       <span className="text-[9px] text-zinc-400">Tap to apply LUT</span>
                     </div>
                     <div className="relative">
-                      <Search className="w-3 h-3 absolute left-2 top-1.5 text-zinc-500" />
+                      <Search className="w-3 h-3 absolute left-2.5 top-2 text-zinc-500" />
                       <input
                         type="text"
                         value={colorGradeSearch}
@@ -6034,8 +9174,8 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                           setColorGradeSearch(e.target.value);
                           setColorGradeLimit(60);
                         }}
-                        placeholder="Search 600 color grades..."
-                        className="w-full bg-[#101417] border border-zinc-800 rounded pl-7 pr-2 py-1 text-[10px] text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-teal-400"
+                        placeholder="Search color grades..."
+                        className="w-full min-h-[32px] bg-[#0c1017] border border-[#242e3d] rounded-xl pl-7 pr-2 py-1 text-[10px] text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-teal-400"
                       />
                     </div>
                     <div className="space-y-1.5 max-h-56 overflow-y-auto no-scrollbar pr-0.5">
@@ -6055,14 +9195,15 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                               setColorHighlights(cg.highlights);
                               setColorShadows(cg.shadows);
                               setColorVignette(cg.vignette);
+                              logEditorTelemetry('edit_timeline');
                             }}
-                            className={`p-1.5 rounded-lg border cursor-pointer flex items-center gap-2 transition-all ${
+                            className={`p-2 rounded-xl border cursor-pointer flex items-center gap-2 transition-all ${
                               isCur
                                 ? 'border-teal-400 bg-teal-950/40'
-                                : 'border-zinc-800 bg-[#101417] hover:border-teal-500/60'
+                                : 'border-[#242e3d] bg-[#141a24] hover:border-teal-500/60'
                             }`}
                           >
-                            <div className={`w-6 h-6 rounded bg-gradient-to-br ${cg.swatchGradient} shrink-0 border border-white/20`} />
+                            <div className={`w-6 h-6 rounded-lg bg-gradient-to-br ${cg.swatchGradient} shrink-0 border border-white/20`} />
                             <div className="min-w-0 flex-1">
                               <div className="flex items-center justify-between gap-1">
                                 <span className="text-[10px] font-bold text-zinc-200 truncate">{cg.name}</span>
@@ -6077,9 +9218,9 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                         <button
                           type="button"
                           onClick={() => setColorGradeLimit((n) => n + 150)}
-                          className="w-full py-1.5 rounded bg-zinc-800 hover:bg-zinc-700 text-teal-300 font-bold text-[10px] cursor-pointer"
+                          className="w-full min-h-[34px] py-1.5 rounded-xl bg-[#18202c] hover:bg-[#222d3d] border border-[#2b3648] text-teal-300 font-bold text-[10px] cursor-pointer"
                         >
-                          + Load More Color Grades ({filteredColorGrades.length - colorGradeLimit} left)
+                          + Load More Presets
                         </button>
                       )}
                     </div>
@@ -6369,9 +9510,9 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
       {/* =========================================================================
           3. LOWER TIMELINE & MULTI-TRACK CONTROLS
           ========================================================================= */}
-      <div className="flex-1 bg-[#101417] flex flex-col overflow-hidden">
+      <div className="flex-[46] min-h-0 bg-[#0c1017] flex flex-col overflow-hidden">
         {/* Timeline Action Toolbar */}
-        <div className="h-9 border-b border-[#21262d] px-2 sm:px-3 flex items-center justify-between bg-[#14181d] text-zinc-400 shrink-0 overflow-x-auto no-scrollbar gap-2">
+        <div className="h-11 border-b border-[#1f2937] px-2.5 sm:px-3.5 flex items-center justify-between bg-[#10151d] text-zinc-400 shrink-0 overflow-x-auto no-scrollbar gap-2">
           <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
             {/* Split Scissors Button */}
             <button
@@ -6380,7 +9521,7 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                 setIsPlaying(false);
                 handleSplitClipAtPlayhead();
               }}
-              className="px-2 py-1 rounded bg-rose-500/15 hover:bg-rose-500 hover:text-white text-rose-400 border border-rose-500/40 flex items-center gap-1 cursor-pointer font-bold text-[10px] transition-colors"
+              className="min-h-[32px] px-2.5 py-1 rounded-lg bg-rose-500/15 hover:bg-rose-500 hover:text-white text-rose-300 border border-rose-500/40 flex items-center gap-1.5 cursor-pointer font-bold text-[11px] transition-colors"
               title="Split Clip at Playhead (കത്രിക ചിഹ്നം - വീഡിയോ രണ്ടാക്കുക)"
             >
               <Scissors className="w-3.5 h-3.5 stroke-[2.5]" />
@@ -6396,21 +9537,21 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                   setCutRangeStartSec(currentTimeRef.current);
                 }}
                 disabled={timelineClips.length === 0}
-                className="px-2 py-1 rounded bg-amber-500/15 hover:bg-amber-400 hover:text-black disabled:opacity-40 text-amber-300 border border-amber-500/40 flex items-center gap-1 cursor-pointer font-bold text-[10px] transition-colors"
+                className="min-h-[32px] px-2.5 py-1 rounded-lg bg-amber-500/15 hover:bg-amber-400 hover:text-black disabled:opacity-40 text-amber-300 border border-amber-500/40 flex items-center gap-1.5 cursor-pointer font-bold text-[11px] transition-colors"
                 title="Mark Cut Start, drag red line right while watching video, then cut (കട്ട് തുടക്കം അടയാളപ്പെടുത്തുക)"
               >
-                <Crop className="w-3 h-3" />
+                <Crop className="w-3.5 h-3.5" />
                 <span>Mark Cut</span>
               </button>
             ) : (
-              <div className="flex items-center gap-1 bg-rose-950/70 border border-rose-500/60 rounded px-1.5 py-0.5">
-                <span className="text-[9px] font-mono text-amber-300 font-bold">
+              <div className="flex items-center gap-1 bg-rose-950/70 border border-rose-500/60 rounded-lg px-2 py-1">
+                <span className="text-[10px] font-mono text-amber-300 font-bold">
                   {Math.min(cutRangeStartSec, currentTimeSec).toFixed(1)}s–{Math.max(cutRangeStartSec, currentTimeSec).toFixed(1)}s
                 </span>
                 <button
                   type="button"
                   onClick={() => handleRangeCutAction('remove_middle')}
-                  className="px-1.5 py-0.5 rounded bg-rose-500 hover:bg-rose-400 text-white font-bold text-[9px] cursor-pointer"
+                  className="min-h-[26px] px-2 py-0.5 rounded bg-rose-500 hover:bg-rose-400 text-white font-bold text-[10px] cursor-pointer"
                   title="Remove selected section (തിരഞ്ഞെടുത്ത ഭാഗം കട്ട് ചെയ്ത് കളയുക)"
                 >
                   ✂ Cut Out
@@ -6418,7 +9559,7 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                 <button
                   type="button"
                   onClick={() => handleRangeCutAction('split_both')}
-                  className="px-1.5 py-0.5 rounded bg-teal-400 hover:bg-teal-300 text-black font-bold text-[9px] cursor-pointer"
+                  className="min-h-[26px] px-2 py-0.5 rounded bg-teal-400 hover:bg-teal-300 text-black font-bold text-[10px] cursor-pointer"
                   title="Split both ends (രണ്ടറ്റവും കട്ട് ചെയ്യുക)"
                 >
                   Split A-B
@@ -6426,7 +9567,7 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                 <button
                   type="button"
                   onClick={() => handleRangeCutAction('keep_only')}
-                  className="px-1.5 py-0.5 rounded bg-emerald-400 hover:bg-emerald-300 text-black font-bold text-[9px] cursor-pointer"
+                  className="min-h-[26px] px-2 py-0.5 rounded bg-emerald-400 hover:bg-emerald-300 text-black font-bold text-[10px] cursor-pointer"
                   title="Keep only selected section (ഈ ഭാഗം മാത്രം വെക്കുക)"
                 >
                   Keep
@@ -6434,10 +9575,10 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                 <button
                   type="button"
                   onClick={() => setCutRangeStartSec(null)}
-                  className="p-0.5 text-zinc-400 hover:text-white cursor-pointer"
+                  className="p-1 text-zinc-400 hover:text-white cursor-pointer"
                   title="Cancel Mark Cut"
                 >
-                  <X className="w-3 h-3" />
+                  <X className="w-3.5 h-3.5" />
                 </button>
               </div>
             )}
@@ -6446,6 +9587,22 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
             <button
               type="button"
               onClick={() => {
+                if (selectedFeatureType === 'trailer_card' && selectedTrailerCardId) {
+                  setTrailerCardLayers((prev) => prev.filter((c) => c.id !== selectedTrailerCardId));
+                  setSelectedTrailerCardId(null);
+                  setSelectedFeatureType('clip');
+                  return;
+                }
+                if (selectedFeatureType === 'chroma' && chromaConfig.enabled) {
+                  setChromaConfig(DEFAULT_CHROMA_KEY_CONFIG);
+                  setSelectedFeatureType('clip');
+                  return;
+                }
+                if (selectedFeatureType === 'split' && splitScreenConfig.enabled) {
+                  setSplitScreenConfig(DEFAULT_SPLIT_SCREEN_CONFIG);
+                  setSelectedFeatureType('clip');
+                  return;
+                }
                 if (selectedFeatureType === 'vfx' && selectedVfxLayerId) {
                   setVfxLayers((prev) => prev.filter((v) => v.id !== selectedVfxLayerId));
                   setSelectedVfxLayerId(null);
@@ -6480,7 +9637,7 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                 setActiveClipIndex(0);
                 saveCurrentProjectToStorage(updated);
               }}
-              className="p-1 rounded hover:bg-zinc-800 hover:text-rose-400 cursor-pointer"
+              className="min-h-[32px] min-w-[32px] p-1.5 rounded-lg hover:bg-[#18202c] hover:text-rose-400 flex items-center justify-center cursor-pointer transition-colors"
               title="Delete Selected Item (തിരഞ്ഞെടുത്തത് ഡിലീറ്റ് ചെയ്യുക)"
             >
               <Trash2 className="w-3.5 h-3.5" />
@@ -6496,7 +9653,7 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                 setTimelineClips(copy);
                 saveCurrentProjectToStorage(copy);
               }}
-              className="p-1 rounded hover:bg-zinc-800 hover:text-white cursor-pointer"
+              className="min-h-[32px] min-w-[32px] p-1.5 rounded-lg hover:bg-[#18202c] hover:text-white flex items-center justify-center cursor-pointer transition-colors"
               title="Duplicate Clip"
             >
               <Copy className="w-3.5 h-3.5" />
@@ -6506,13 +9663,13 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
             <button
               type="button"
               onClick={() => setRotationDeg((r) => (r + 90) % 360)}
-              className="p-1 rounded hover:bg-zinc-800 hover:text-white cursor-pointer"
+              className="min-h-[32px] min-w-[32px] p-1.5 rounded-lg hover:bg-[#18202c] hover:text-white flex items-center justify-center cursor-pointer transition-colors"
               title="Rotate 90°"
             >
               <RotateCw className="w-3.5 h-3.5" />
             </button>
 
-            <div className="h-4 w-px bg-zinc-800 mx-0.5" />
+            <div className="h-4 w-px bg-[#1f2937] mx-0.5" />
 
             <button
               type="button"
@@ -6520,15 +9677,15 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                 setActiveTab('Media');
                 setIsLeftPanelOpen(true);
               }}
-              className="px-2 py-0.5 rounded bg-zinc-800 hover:bg-teal-500 hover:text-black text-teal-400 font-bold text-[10px] flex items-center gap-1 cursor-pointer"
+              className="min-h-[32px] px-2.5 py-1 rounded-lg bg-[#18202c] hover:bg-teal-400 hover:text-black border border-[#2b3648] text-teal-300 font-bold text-[10.5px] flex items-center gap-1.5 cursor-pointer transition-colors"
             >
-              <Upload className="w-3 h-3" />
+              <Upload className="w-3.5 h-3.5" />
               <span>+ Add Media from Pool</span>
             </button>
           </div>
 
-          <div className="flex items-center gap-3">
-            <span className="text-[10px] text-zinc-500 font-mono">Zoom</span>
+          <div className="flex items-center gap-3 shrink-0">
+            <span className="text-[10.5px] text-zinc-400 font-mono">Zoom</span>
             <input
               type="range"
               min="0.6"
@@ -6536,7 +9693,7 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
               step="0.1"
               value={timelineZoom}
               onChange={(e) => setTimelineZoom(Number(e.target.value))}
-              className="w-16 h-1 accent-teal-400 cursor-pointer"
+              className="w-20 h-1.5 accent-teal-400 cursor-pointer"
             />
           </div>
         </div>
@@ -6544,14 +9701,14 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
         {/* Multi-Track Canvas & Clips View */}
         <div className="flex-1 flex overflow-hidden">
           {/* Track Headers (Left) — Stacked Separate Tracks below Video 1 */}
-          <div className="w-[74px] sm:w-28 bg-[#0d1014] border-r border-[#21262d] flex flex-col shrink-0 text-[9px] sm:text-[10px] font-mono text-zinc-400 overflow-y-auto no-scrollbar">
-            <div className="h-6 border-b border-[#21262d] px-2 flex items-center justify-between bg-[#12161b] shrink-0">
+          <div className="w-[78px] sm:w-28 bg-[#0a0e14] border-r border-[#1f2937] flex flex-col shrink-0 text-[9px] sm:text-[10px] font-mono text-zinc-400 overflow-y-auto no-scrollbar">
+            <div className="h-6 border-b border-[#1f2937] px-2 flex items-center justify-between bg-[#10151d] shrink-0">
               <span>Tracks</span>
               <Layers className="w-3 h-3 text-zinc-500" />
             </div>
 
             {/* Track 1: Title Header */}
-            <div className="h-9 border-b border-[#21262d] px-2 flex items-center justify-between bg-[#101418] shrink-0">
+            <div className="h-9 border-b border-[#1f2937] px-2 flex items-center justify-between bg-[#0e131b] shrink-0">
               <div className="flex items-center gap-1 truncate">
                 <Type className="w-3 h-3 text-amber-400 shrink-0" />
                 <span>Title</span>
@@ -6567,7 +9724,7 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
             </div>
 
             {/* Track 2: Video Header */}
-            <div className="h-14 border-b border-[#21262d] px-2 flex items-center justify-between bg-[#101418] shrink-0">
+            <div className="h-14 border-b border-[#1f2937] px-2 flex items-center justify-between bg-[#0e131b] shrink-0">
               <div className="flex items-center gap-1 truncate">
                 <Video className="w-3 h-3 text-teal-400 shrink-0" />
                 <span>Video 1</span>
@@ -6583,21 +9740,27 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
             </div>
 
             {/* Track 3: Stickers / Emoji Header (Below Video 1) */}
-            <div className="h-9 border-b border-[#21262d] px-2 flex items-center justify-between bg-[#101418] shrink-0">
+            <div className="h-9 border-b border-[#1f2937] px-2 flex items-center justify-between bg-[#0e131b] shrink-0">
               <div className="flex items-center gap-1 truncate">
                 <Smile className="w-3 h-3 text-cyan-400 shrink-0" />
                 <span className="truncate">Emoji</span>
               </div>
-              <span className="text-[8px] text-cyan-400">{activeStickers.length}</span>
             </div>
 
             {/* Track 4: VFX Action Header (Below Video 1) */}
-            <div className="h-9 border-b border-[#21262d] px-2 flex items-center justify-between bg-[#101418] shrink-0">
+            <div className="h-9 border-b border-[#1f2937] px-2 flex items-center justify-between bg-[#0e131b] shrink-0">
               <div className="flex items-center gap-1 truncate">
                 <Crosshair className="w-3 h-3 text-rose-400 shrink-0" />
                 <span className="truncate">VFX</span>
               </div>
-              <span className="text-[8px] text-rose-400">{vfxLayers.length}</span>
+            </div>
+
+            {/* Track 4B: Trailer Poster Card Header */}
+            <div className="h-9 border-b border-[#1f2937] px-2 flex items-center justify-between bg-[#0e131b] shrink-0">
+              <div className="flex items-center gap-1 truncate">
+                <Clapperboard className="w-3 h-3 text-amber-400 shrink-0" />
+                <span className="truncate">Card</span>
+              </div>
             </div>
 
             {/* Track 5: Audio Header with Mute */}
@@ -7022,7 +10185,7 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                     className="h-6 px-2.5 rounded border border-dashed border-rose-500/40 text-[9px] text-rose-300/80 hover:text-rose-300 hover:border-rose-400 cursor-pointer flex items-center gap-1"
                   >
                     <Crosshair className="w-2.5 h-2.5" />
-                    <span>+ Add VFX Layer (1,200 Gun, Bullet, Blood, Fire)</span>
+                    <span>+ Add VFX Layer (Gun, Bullet, Blood, Fire)</span>
                   </button>
                 ) : (
                   vfxLayers.map((vLayer) => {
@@ -7062,6 +10225,67 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                           }}
                           className="p-0.5 rounded hover:bg-rose-600 text-rose-200 hover:text-white ml-1 shrink-0 cursor-pointer"
                           title="Delete VFX"
+                        >
+                          <Trash2 className="w-2.5 h-2.5" />
+                        </button>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+
+              {/* Track 4B: Trailer Animated Cards Track + Quick Chroma/Split Status Chips */}
+              <div className="h-9 border-b border-[#181c22] relative px-2 flex items-center gap-1.5">
+                {trailerCardLayers.length === 0 ? (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setActiveTab('Trailer');
+                      setIsLeftPanelOpen(true);
+                    }}
+                    className="h-6 px-2.5 rounded border border-dashed border-amber-500/40 text-[9px] text-amber-300/80 hover:text-amber-200 hover:border-amber-400 cursor-pointer flex items-center gap-1"
+                  >
+                    <Clapperboard className="w-2.5 h-2.5" />
+                    <span>+ Add Trailer Poster Card</span>
+                  </button>
+                ) : (
+                  trailerCardLayers.map((cLayer) => {
+                    const isSel = selectedFeatureType === 'trailer_card' && selectedTrailerCardId === cLayer.id;
+                    return (
+                      <div
+                        key={cLayer.id}
+                        data-clip-card="true"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedTrailerCardId(cLayer.id);
+                          setSelectedVfxLayerId(null);
+                          setSelectedStickerLayerId(null);
+                          setSelectedFeatureType('trailer_card');
+                          setActiveInspectorTab('adjust');
+                          setIsRightPanelOpen(true);
+                          seekToTime(cLayer.startTimeSec + cLayer.durationSec * 0.35);
+                        }}
+                        style={{
+                          left: `${8 + cLayer.startTimeSec * pxPerSec}px`,
+                          width: `${Math.max(66, cLayer.durationSec * pxPerSec)}px`,
+                        }}
+                        className={`h-7 rounded px-1.5 flex items-center justify-between text-[9.5px] font-bold cursor-pointer absolute truncate ${
+                          isSel
+                            ? 'bg-amber-500/35 border-2 border-amber-400 text-amber-100 ring-1 ring-amber-400/50 z-10'
+                            : 'bg-amber-950/70 border border-amber-500/60 text-amber-200 hover:border-amber-300'
+                        }`}
+                      >
+                        <span className="truncate">🃏 {cLayer.title}</span>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setTrailerCardLayers((prev) => prev.filter((c) => c.id !== cLayer.id));
+                            if (selectedTrailerCardId === cLayer.id) setSelectedTrailerCardId(null);
+                          }}
+                          className="p-0.5 rounded hover:bg-rose-600 text-rose-200 hover:text-white ml-1 shrink-0 cursor-pointer"
+                          title="Delete Trailer Card"
                         >
                           <Trash2 className="w-2.5 h-2.5" />
                         </button>
@@ -7135,14 +10359,18 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
           </div>
         </div>
       </div>
+      </div>
+
+      {/* PERSISTENT BOTTOM VIDEO AD BAR (Always Visible Inside Video Editor System) */}
+      <EditorBottomVideoAdBar slotId="editor-workspace" />
 
       {/* =========================================================================
-          4. EXPORT MODAL DIALOGUE
+          4. EXPORT MODAL DIALOGUE (Plays Live Video Ad During Full Export Duration)
           ========================================================================= */}
       {showExportModal && (
-        <div className="fixed inset-0 z-50 bg-black/85 flex items-center justify-center p-4 overflow-y-auto">
-          <div className="w-full max-w-md bg-[#12161b] rounded-2xl border border-zinc-700 shadow-2xl p-5 space-y-4">
-            <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+          <div className="w-full max-w-md bg-[#10151d] rounded-2xl border border-[#242e3d] shadow-2xl p-5 space-y-4">
+            <div className="flex items-center justify-between border-b border-[#1f2937] pb-3">
               <h3 className="font-bold text-white text-sm">Export CineStudio Project</h3>
               <button
                 type="button"
@@ -7155,13 +10383,13 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                     setShowExportModal(false);
                   }
                 }}
-                className="text-zinc-400 hover:text-white cursor-pointer"
+                className="min-h-[32px] min-w-[32px] rounded-lg hover:bg-[#18202c] text-zinc-400 hover:text-white flex items-center justify-center cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
             <div className="space-y-3 text-xs">
-              {!exportedVideoUrl && (
+              {!exportedVideoUrl && !isExporting && (
                 <>
                   <div>
                     <span className="text-zinc-400 text-[10px]">Project Name:</span>
@@ -7169,24 +10397,22 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                       type="text"
                       value={projectName}
                       onChange={(e) => setProjectName(e.target.value)}
-                      disabled={isExporting}
-                      className="w-full mt-1 bg-zinc-900 border border-zinc-700 rounded px-2.5 py-1 text-white text-xs font-bold disabled:opacity-60"
+                      className="w-full min-h-[38px] mt-1 bg-[#0c1017] border border-[#242e3d] rounded-xl px-3 py-1.5 text-white text-xs font-bold focus:outline-none focus:border-teal-400"
                     />
                   </div>
 
                   <div>
                     <span className="text-zinc-400 text-[10px]">Aspect Ratio &amp; Resolution:</span>
-                    <div className="grid grid-cols-3 gap-2 pt-1">
+                    <div className="grid grid-cols-3 gap-2 pt-1.5">
                       {(['1080p', '4K', '720p'] as const).map((r) => (
                         <button
                           key={r}
                           type="button"
-                          disabled={isExporting}
                           onClick={() => setProjectResolution(r)}
-                          className={`py-1.5 rounded-lg font-bold text-xs ${
+                          className={`min-h-[38px] py-2 rounded-xl font-bold text-xs cursor-pointer transition-colors ${
                             projectResolution === r
-                              ? 'bg-teal-500/20 border border-teal-400 text-teal-300'
-                              : 'bg-zinc-900 border border-zinc-700 text-zinc-400'
+                              ? 'bg-teal-500/20 border-2 border-teal-400 text-teal-300'
+                              : 'bg-[#141a24] border border-[#242e3d] text-zinc-400 hover:text-white'
                           }`}
                         >
                           {r} {selectedAspectRatio}
@@ -7195,39 +10421,44 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                     </div>
                   </div>
 
-                  <div className="text-[10px] text-zinc-400 bg-zinc-900/70 border border-zinc-800 rounded-lg px-2.5 py-2 flex items-center justify-between">
-                    <span>{timelineClips.length} Clips · {totalDuration.toFixed(1)}s Full Video</span>
+                  <div className="text-[11px] text-zinc-300 bg-[#0c1017] border border-[#1f2937] rounded-xl px-3 py-2.5 flex items-center justify-between">
+                    <span>{totalDuration.toFixed(1)}s Full Video</span>
                     <span className="text-teal-400 font-bold">Real Video Export</span>
                   </div>
                 </>
               )}
 
               {exportError && (
-                <div className="p-2 rounded-lg bg-rose-950/60 border border-rose-500/50 text-rose-300 text-[11px] font-semibold">
+                <div className="p-2.5 rounded-xl bg-rose-950/60 border border-rose-500/50 text-rose-300 text-[11px] font-semibold">
                   {exportError}
                 </div>
               )}
 
               {isExporting && (
-                <div className="space-y-1.5 pt-1">
-                  <div className="flex justify-between text-teal-400 font-mono text-[11px]">
-                    <span className="truncate pr-2">{exportStatusText || `Rendering (${projectResolution} · ${selectedAspectRatio})...`}</span>
-                    <span className="shrink-0 font-bold">{exportProgress}%</span>
-                  </div>
-                  <div className="w-full h-2 bg-zinc-800 rounded-full overflow-hidden">
-                    <div className="h-full bg-teal-400 transition-all duration-200" style={{ width: `${exportProgress}%` }} />
-                  </div>
-                </div>
+                <ExportModalVideoAdPlayer
+                  active={isExporting}
+                  progress={exportProgress}
+                  elapsedSec={exportElapsedSec}
+                  totalSec={exportEstimatedTotalSec}
+                  statusText={exportStatusText || `Rendering (${projectResolution} · ${selectedAspectRatio})...`}
+                />
               )}
 
               {exportedVideoUrl && !isExporting && (
                 <div className="space-y-2.5">
-                  <div className="flex items-center justify-between text-emerald-400 text-[11px] font-bold bg-emerald-950/40 border border-emerald-500/40 rounded-lg px-2.5 py-2">
+                  <div className="flex items-center justify-between text-emerald-400 text-[11px] font-bold bg-emerald-950/40 border border-emerald-500/40 rounded-xl px-3 py-2">
                     <span className="flex items-center gap-1.5">
                       <CheckCircle2 className="w-4 h-4 shrink-0" />
                       {isMl ? 'വീഡിയോ റെഡിയായി! ഇവിടെ പ്ലേ ചെയ്ത് സേവ് ചെയ്യാം' : 'Video Export Ready!'}
                     </span>
-                    {exportedVideoSizeMb && <span className="text-zinc-300 font-mono">{exportedVideoSizeMb} MB</span>}
+                    <div className="flex items-center gap-1.5 font-mono text-[10px] text-zinc-200">
+                      {exportedVideoMetaLabel && (
+                        <span className="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-bold">
+                          {exportedVideoMetaLabel}
+                        </span>
+                      )}
+                      {exportedVideoSizeMb && <span>{exportedVideoSizeMb} MB</span>}
+                    </div>
                   </div>
                   <video
                     src={exportedVideoUrl}
@@ -7235,13 +10466,13 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                     playsInline
                     autoPlay
                     loop
-                    className="w-full max-h-60 rounded-xl bg-black border border-zinc-800 object-contain"
+                    className="w-full max-h-60 rounded-xl bg-black border border-[#242e3d] object-contain"
                   />
                   <div className="text-[10px] text-zinc-400 truncate px-1">{exportedVideoFilename}</div>
                 </div>
               )}
             </div>
-            <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-zinc-800">
+            <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-[#1f2937]">
               {exportedVideoUrl && !isExporting ? (
                 <>
                   <button
@@ -7251,7 +10482,7 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                       setExportError(null);
                       setShowExportModal(false);
                     }}
-                    className="px-3.5 py-1.5 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-zinc-300 font-bold cursor-pointer text-xs"
+                    className="min-h-[38px] px-4 py-2 bg-[#18202c] hover:bg-[#222d3d] border border-[#2b3648] rounded-xl text-zinc-300 font-bold cursor-pointer text-xs"
                   >
                     Close
                   </button>
@@ -7262,16 +10493,16 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                       setExportProgress(0);
                       setExportStatusText('');
                     }}
-                    className="px-3.5 py-1.5 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-teal-300 font-bold cursor-pointer text-xs"
+                    className="min-h-[38px] px-4 py-2 bg-[#18202c] hover:bg-[#222d3d] border border-[#2b3648] rounded-xl text-teal-300 font-bold cursor-pointer text-xs"
                   >
                     Re-Export
                   </button>
                   <a
                     href={exportedVideoUrl}
                     download={exportedVideoFilename}
-                    className="px-4 py-1.5 bg-teal-400 hover:bg-teal-300 text-black font-extrabold rounded-lg cursor-pointer text-xs flex items-center gap-1.5"
+                    className="min-h-[38px] px-5 py-2 bg-gradient-to-r from-teal-400 to-emerald-400 hover:from-teal-300 hover:to-emerald-300 text-black font-extrabold rounded-xl cursor-pointer text-xs flex items-center gap-1.5 shadow-lg"
                   >
-                    <Download className="w-3.5 h-3.5" />
+                    <Download className="w-4 h-4" />
                     <span>{isMl ? 'ഗാലറിയിലേക്ക് സേവ്' : 'Save Video'}</span>
                   </a>
                 </>
@@ -7288,7 +10519,7 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                         setShowExportModal(false);
                       }
                     }}
-                    className="px-4 py-1.5 bg-zinc-800 rounded-lg text-zinc-300 font-bold cursor-pointer"
+                    className="min-h-[38px] px-4 py-2 bg-[#18202c] hover:bg-[#222d3d] border border-[#2b3648] rounded-xl text-zinc-300 font-bold cursor-pointer text-xs"
                   >
                     {isExporting ? 'Stop Export' : 'Cancel'}
                   </button>
@@ -7298,7 +10529,7 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                       void handleStartExport();
                     }}
                     disabled={isExporting}
-                    className="px-5 py-1.5 bg-teal-400 hover:bg-teal-300 disabled:opacity-50 text-black font-extrabold rounded-lg cursor-pointer"
+                    className="min-h-[38px] px-5 py-2 bg-gradient-to-r from-teal-400 to-emerald-400 hover:from-teal-300 hover:to-emerald-300 disabled:opacity-50 text-black font-extrabold rounded-xl cursor-pointer text-xs shadow-lg"
                   >
                     {isExporting ? 'Exporting Video...' : 'Export Video'}
                   </button>
