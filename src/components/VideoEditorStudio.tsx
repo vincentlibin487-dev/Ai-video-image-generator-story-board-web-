@@ -919,7 +919,7 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
   const [isLeftPanelOpen, setIsLeftPanelOpen] = useState<boolean>(false);
   const [isRightPanelOpen, setIsRightPanelOpen] = useState<boolean>(false);
   const [mobilePanel, setMobilePanel] = useState<'tools' | 'timeline' | 'inspector'>('timeline');
-  const [isDualScreenPreview, setIsDualScreenPreview] = useState<boolean>(true);
+  const [isDualScreenPreview, setIsDualScreenPreview] = useState<boolean>(false);
   const [isTimelineExpanded, setIsTimelineExpanded] = useState<boolean>(false);
   const [selectedWheelCategoryId, setSelectedWheelCategoryId] = useState<string>('video');
   const [autoLandscapeRotate, setAutoLandscapeRotate] = useState<boolean>(true);
@@ -1766,7 +1766,7 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
     setCurrentEditingProjectId(proj.id);
     setProjectName(proj.name);
     setSelectedAspectRatio(proj.aspectRatio || '16:9');
-    setIsDualScreenPreview(true);
+    setIsDualScreenPreview(false);
     setProjectResolution(proj.resolution as any);
     setMovieTitle(proj.movieTitle || '');
     setSubtitle(proj.subtitle || '');
@@ -2232,7 +2232,6 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
     setSelectedStickerLayerId(null);
     setSelectedFeatureType('vfx');
     setActiveInspectorTab('adjust');
-    setIsRightPanelOpen(true);
     // Position playhead inside the new VFX window so it appears live on screen immediately
     const previewT = startSec + newLayer.durationSec * 0.58;
     currentTimeRef.current = previewT;
@@ -2240,7 +2239,7 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
     logEditorTelemetry('edit_timeline');
   };
 
-  // Add Sticker / Emoji directly onto Stickers Timeline Track with Round Resize Handles + Right Inspector
+  // Add Sticker / Emoji directly onto Stickers Timeline Track with Round Resize Handles
   const handleAddStickerLayer = (stk: StickerItem) => {
     const startSec = Number(Math.max(0, currentTimeRef.current).toFixed(2));
     const dur = Math.max(2.5, Math.min(6, (totalDuration || 6) - startSec) || 4);
@@ -2261,7 +2260,6 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
     setSelectedVfxLayerId(null);
     setSelectedFeatureType('sticker');
     setActiveInspectorTab('adjust');
-    setIsRightPanelOpen(true);
     logEditorTelemetry('edit_timeline');
   };
 
@@ -2270,7 +2268,6 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
     setSelectedTransitionId(tr.id);
     setSelectedFeatureType('transition');
     setActiveInspectorTab('adjust');
-    setIsRightPanelOpen(true);
     const targetSeam =
       activeTransitionBetween !== null
         ? activeTransitionBetween
@@ -3455,8 +3452,8 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
       setActiveAudio(addedItems[0]);
       setSelectedFeatureType('audio');
       setActiveInspectorTab('audio');
+      setSelectedWheelCategoryId('audio');
       setActiveTab('Audio');
-      setIsLeftPanelOpen(true);
     }
     e.target.value = '';
   };
@@ -3552,8 +3549,8 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
       if (isSetup) {
         setSetupSelectedMediaIds((prev) => [...prev, ...newMediaItems.map((m) => m.id)]);
       } else {
+        setSelectedWheelCategoryId('video');
         setActiveTab('Media');
-        setIsLeftPanelOpen(true);
       }
     }
     e.target.value = '';
@@ -3642,6 +3639,7 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
     setCurrentTimeSec(0);
 
     // Auto-save project so it immediately shows on the Home screen
+    setIsDualScreenPreview(false);
     saveCurrentProjectToStorage(finalClips, projectName, selectedAspectRatio, newProjId);
     logEditorTelemetry('edit_timeline', finalClips);
     setStudioView('editor');
@@ -3733,7 +3731,6 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
     setSelectedVfxLayerId(null);
     setSelectedFeatureType('trailer_card');
     setActiveInspectorTab('adjust');
-    setIsRightPanelOpen(true);
     logEditorTelemetry('edit_timeline');
   };
 
@@ -5979,174 +5976,21 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
         onChange={handleUserAudioUpload}
       />
 
-      {/* COMPACT TOP STUDIO HEADER BAR */}
-      <div className="h-9 bg-[#0d1118] border-b border-[#1c2330] flex items-center justify-between px-2 sm:px-3 shrink-0 text-zinc-300 overflow-x-auto no-scrollbar gap-1.5">
-        <div className="flex items-center gap-1.5 shrink-0">
-          <button
-            type="button"
-            onClick={() => {
-              saveCurrentProjectToStorage();
-              setStudioView('welcome');
-            }}
-            className="min-h-[28px] px-2 py-0.5 rounded-lg bg-[#161c26] hover:bg-[#202836] border border-[#263040] text-[10px] font-bold text-zinc-200 flex items-center gap-1 cursor-pointer transition-colors whitespace-nowrap"
-            title="Saved Projects & Home"
-          >
-            <Home className="w-3.5 h-3.5 text-teal-400" />
-            <span className="hidden sm:inline">Projects</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              saveCurrentProjectToStorage();
-              openNewProjectSetup('16:9', 'Project');
-            }}
-            className="min-h-[28px] px-2 py-0.5 rounded-lg bg-gradient-to-r from-[#bef264] to-[#38bdf8] text-black font-extrabold text-[10px] flex items-center gap-1 shadow cursor-pointer whitespace-nowrap"
-            title="New Project"
-          >
-            <Plus className="w-3 h-3 stroke-[3]" />
-            <span>New</span>
-          </button>
-
-          {/* Format Badge (16:9 Default) */}
-          <button
-            type="button"
-            onClick={() => {
-              saveCurrentProjectToStorage();
-              setStudioView('new_project_setup');
-            }}
-            className="min-h-[28px] flex items-center gap-1 px-2 py-0.5 rounded-lg bg-[#161c26] hover:bg-[#202836] border border-[#263040] text-teal-300 font-bold text-[10px] cursor-pointer whitespace-nowrap"
-            title="Aspect Ratio & Resolution"
-          >
-            <Tv className="w-3.5 h-3.5 text-teal-400" />
-            <span>{selectedAspectRatio}</span>
-            <span className="text-zinc-400 font-normal hidden sm:inline">({projectResolution})</span>
-          </button>
-
-          {/* Quick Dual-Screen 16:9 Toggle */}
-          <button
-            type="button"
-            onClick={() => setIsDualScreenPreview(!isDualScreenPreview)}
-            className={`min-h-[28px] px-2 py-0.5 rounded-lg text-[10px] font-bold flex items-center gap-1 cursor-pointer transition-all whitespace-nowrap ${
-              isDualScreenPreview
-                ? 'bg-teal-400 text-black font-black shadow'
-                : 'bg-[#161c26] border border-[#263040] text-teal-300 hover:text-white'
-            }`}
-            title="Toggle Dual-Screen 16:9 Preview"
-          >
-            <Monitor className="w-3.5 h-3.5" />
-            <span>{isDualScreenPreview ? 'Dual 16:9' : 'Single 16:9'}</span>
-          </button>
-
-          {isPortraitViewport && (
-            <button
-              type="button"
-              onClick={() => setAutoLandscapeRotate((v) => !v)}
-              className={`min-h-[28px] px-2 py-0.5 rounded-lg text-[10px] font-bold flex items-center gap-1 cursor-pointer transition-colors whitespace-nowrap ${
-                autoLandscapeRotate
-                  ? 'bg-cyan-500/20 border border-cyan-400/50 text-cyan-200'
-                  : 'bg-[#161c26] border border-[#263040] text-zinc-300'
-              }`}
-              title="Toggle Automatic 16:9 Landscape Rotation"
-            >
-              <RotateCw className="w-3 h-3" />
-              <span>{autoLandscapeRotate ? '16:9 Land' : 'Portrait'}</span>
-            </button>
-          )}
-        </div>
-
-        {/* Center Editable Project Title */}
-        <div className="hidden md:flex items-center gap-1 text-zinc-400 text-xs truncate max-w-[160px]">
-          <input
-            type="text"
-            value={projectName}
-            onChange={(e) => {
-              const val = e.target.value;
-              setProjectName(val);
-              saveCurrentProjectToStorage(undefined, val);
-            }}
-            className="bg-transparent hover:bg-[#161c26] focus:bg-[#0c1017] border border-transparent focus:border-[#263040] rounded-lg px-2 py-0.5 text-zinc-100 font-bold truncate text-xs outline-none w-full"
-          />
-          <Check className="w-3 h-3 text-teal-400 shrink-0" />
-        </div>
-
-        {/* Right Controls */}
-        <div className="flex items-center gap-1.5 shrink-0">
-          <button
-            type="button"
-            onClick={() => setIsLeftPanelOpen((v) => !v)}
-            className={`min-h-[28px] px-2 py-0.5 rounded-lg text-[10px] font-bold flex items-center gap-1 cursor-pointer transition-colors whitespace-nowrap ${
-              isLeftPanelOpen ? 'bg-teal-500/25 text-teal-300 border border-teal-500/50' : 'bg-[#161c26] border border-[#263040] text-zinc-300'
-            }`}
-          >
-            <LayoutGrid className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Tools</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setIsRightPanelOpen((v) => !v)}
-            className={`min-h-[28px] px-2 py-0.5 rounded-lg text-[10px] font-bold flex items-center gap-1 cursor-pointer transition-colors whitespace-nowrap ${
-              isRightPanelOpen ? 'bg-teal-500/25 text-teal-300 border border-teal-500/50' : 'bg-[#161c26] border border-[#263040] text-zinc-300'
-            }`}
-          >
-            <Sliders className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Inspector</span>
-          </button>
-          {onOpenTerms && (
-            <button
-              type="button"
-              onClick={onOpenTerms}
-              className="min-h-[28px] px-2 py-0.5 rounded-lg bg-[#161c26] hover:bg-[#202836] border border-[#263040] text-zinc-300 hover:text-teal-300 text-[10px] font-bold flex items-center gap-1 cursor-pointer transition-colors whitespace-nowrap"
-              title={isMl ? 'നിബന്ധനകൾ' : 'Terms & Privacy'}
-            >
-              <ShieldCheck className="w-3.5 h-3.5 text-teal-400" />
-              <span className="hidden md:inline">Terms</span>
-            </button>
-          )}
-          <button
-            type="button"
-            onClick={() => {
-              saveCurrentProjectToStorage();
-              clearExportedPreview();
-              setExportError(null);
-              setExportProgress(0);
-              setExportStatusText('');
-              setShowExportModal(true);
-            }}
-            className="min-h-[28px] px-2.5 py-0.5 bg-gradient-to-r from-teal-400 to-emerald-400 hover:from-teal-300 hover:to-emerald-300 text-zinc-950 font-black rounded-lg text-[10.5px] flex items-center gap-1 cursor-pointer shadow whitespace-nowrap"
-          >
-            <Download className="w-3.5 h-3.5 stroke-[2.5]" />
-            <span>Export</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              saveCurrentProjectToStorage();
-              onBackToStoryboard();
-            }}
-            className="min-h-[28px] min-w-[28px] p-1 rounded-lg bg-[#161c26] hover:bg-rose-500/20 border border-[#263040] text-zinc-400 hover:text-rose-400 flex items-center justify-center cursor-pointer"
-            title="Close Editor"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-      </div>
-
-      {/* MAIN STUDIO WORKSPACE */}
+      {/* MAIN STUDIO WORKSPACE (NO TOP TOOLBAR — CLEAN 16:9 MOBILE-FIRST LAYOUT) */}
       <div className="flex-1 min-h-0 flex flex-col overflow-hidden relative">
         {/* =========================================================================
-            1. UPPER STAGE (16:9 LANDSCAPE): [LEFT UTILITY RAIL | LARGE DUAL-SCREEN 16:9 PREVIEW | RIGHT 7+7 CIRCULAR TOOL WHEEL]
+            1. UPPER STAGE (16:9): [LEFT UTILITY RAIL | SINGLE 16:9 PREVIEW | RIGHT 7+7 CIRCULAR TOOL WHEEL]
             ========================================================================= */}
         <div
           className={`grid grid-cols-[40px_minmax(0,1fr)_auto] items-stretch border-b border-[#1c2330] bg-[#080b10] min-h-0 transition-all duration-200 ${
             isTimelineExpanded
-              ? 'flex-[0.8] max-h-[38%] overflow-hidden'
+              ? 'flex-[0.75] max-h-[36%] overflow-hidden'
               : isCompactLandscape
-              ? 'flex-[1.38] min-h-[188px]'
-              : 'flex-[1.45] min-h-[245px]'
+              ? 'shrink-0 h-[196px]'
+              : 'flex-[1.3] min-h-[230px]'
           }`}
         >
-          {/* A. LEFT SLIM UTILITY CONTROL RAIL */}
+          {/* A. LEFT SLIM UTILITY CONTROL RAIL (Projects, Back, Undo/Redo, Snapshot, Settings, Seek) */}
           <div className="bg-[#0b0f16] border-r border-[#1c2330] flex flex-col items-center justify-between py-1 px-0.5 gap-0.5 shrink-0 overflow-y-auto no-scrollbar">
             <div className="flex flex-col items-center gap-0.5">
               <button
@@ -6155,16 +5999,38 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                   saveCurrentProjectToStorage();
                   onBackToStoryboard();
                 }}
-                className="w-8 h-8 rounded-lg hover:bg-[#1a2230] text-zinc-200 flex items-center justify-center cursor-pointer transition-colors"
+                className="w-7 h-7 rounded-lg hover:bg-[#1a2230] text-zinc-200 flex items-center justify-center cursor-pointer transition-colors"
                 title="Back"
               >
                 <ChevronLeft className="w-4 h-4" />
               </button>
               <button
                 type="button"
+                onClick={() => {
+                  saveCurrentProjectToStorage();
+                  setStudioView('welcome');
+                }}
+                className="w-7 h-7 rounded-lg hover:bg-[#1a2230] text-teal-300 flex items-center justify-center cursor-pointer transition-colors"
+                title="Projects Home"
+              >
+                <Home className="w-3.5 h-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  saveCurrentProjectToStorage();
+                  openNewProjectSetup('16:9', 'Project');
+                }}
+                className="w-7 h-7 rounded-lg hover:bg-[#1a2230] text-lime-300 flex items-center justify-center cursor-pointer transition-colors"
+                title="New 16:9 Project"
+              >
+                <Plus className="w-3.5 h-3.5" />
+              </button>
+              <button
+                type="button"
                 onClick={handleUndoAction}
                 disabled={undoStack.length === 0}
-                className="w-8 h-8 rounded-lg hover:bg-[#1a2230] disabled:opacity-30 text-zinc-200 flex items-center justify-center cursor-pointer transition-colors"
+                className="w-7 h-7 rounded-lg hover:bg-[#1a2230] disabled:opacity-30 text-zinc-200 flex items-center justify-center cursor-pointer transition-colors"
                 title="Undo"
               >
                 <Undo2 className="w-3.5 h-3.5" />
@@ -6173,7 +6039,7 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                 type="button"
                 onClick={handleRedoAction}
                 disabled={redoStack.length === 0}
-                className="w-8 h-8 rounded-lg hover:bg-[#1a2230] disabled:opacity-30 text-zinc-200 flex items-center justify-center cursor-pointer transition-colors"
+                className="w-7 h-7 rounded-lg hover:bg-[#1a2230] disabled:opacity-30 text-zinc-200 flex items-center justify-center cursor-pointer transition-colors"
                 title="Redo"
               >
                 <Redo2 className="w-3.5 h-3.5" />
@@ -6188,7 +6054,7 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                   link.href = canvas.toDataURL('image/png');
                   link.click();
                 }}
-                className="w-8 h-8 rounded-lg hover:bg-[#1a2230] text-zinc-200 flex items-center justify-center cursor-pointer transition-colors"
+                className="w-7 h-7 rounded-lg hover:bg-[#1a2230] text-zinc-200 flex items-center justify-center cursor-pointer transition-colors"
                 title="Capture Frame Snapshot"
               >
                 <Camera className="w-3.5 h-3.5" />
@@ -6199,18 +6065,40 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                   saveCurrentProjectToStorage();
                   setStudioView('new_project_setup');
                 }}
-                className="w-8 h-8 rounded-lg hover:bg-[#1a2230] text-zinc-200 flex items-center justify-center cursor-pointer transition-colors"
+                className="w-7 h-7 rounded-lg hover:bg-[#1a2230] text-zinc-200 flex items-center justify-center cursor-pointer transition-colors"
                 title="Format & Project Settings (16:9)"
               >
                 <Settings className="w-3.5 h-3.5" />
               </button>
+              {isPortraitViewport && (
+                <button
+                  type="button"
+                  onClick={() => setAutoLandscapeRotate((v) => !v)}
+                  className={`w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer transition-colors ${
+                    autoLandscapeRotate ? 'text-cyan-300 bg-cyan-500/15' : 'text-zinc-400 hover:bg-[#1a2230]'
+                  }`}
+                  title="Toggle 16:9 Landscape Rotation"
+                >
+                  <RotateCw className="w-3.5 h-3.5" />
+                </button>
+              )}
             </div>
 
             <div className="flex flex-col items-center gap-0.5 pt-0.5 border-t border-[#1c2330] w-full">
+              {onOpenTerms && (
+                <button
+                  type="button"
+                  onClick={onOpenTerms}
+                  className="w-7 h-7 rounded-lg hover:bg-[#1a2230] text-zinc-400 hover:text-teal-300 flex items-center justify-center cursor-pointer transition-colors"
+                  title={isMl ? 'നിബന്ധനകൾ' : 'Terms & Privacy'}
+                >
+                  <ShieldCheck className="w-3.5 h-3.5" />
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => setIsTimelineExpanded((v) => !v)}
-                className={`w-8 h-8 rounded-lg flex items-center justify-center cursor-pointer transition-colors ${
+                className={`w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer transition-colors ${
                   isTimelineExpanded ? 'bg-teal-400/20 text-teal-300' : 'hover:bg-[#1a2230] text-zinc-200'
                 }`}
                 title={isTimelineExpanded ? 'Restore Preview Height' : 'Expand Timeline'}
@@ -6220,7 +6108,7 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
               <button
                 type="button"
                 onClick={() => seekToTime(0)}
-                className="w-8 h-8 rounded-lg hover:bg-[#1a2230] text-zinc-200 flex items-center justify-center cursor-pointer transition-colors"
+                className="w-7 h-7 rounded-lg hover:bg-[#1a2230] text-zinc-200 flex items-center justify-center cursor-pointer transition-colors"
                 title="Jump to Start"
               >
                 <SkipBack className="w-3.5 h-3.5" />
@@ -6228,7 +6116,7 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
               <button
                 type="button"
                 onClick={() => seekToTime(totalDuration)}
-                className="w-8 h-8 rounded-lg hover:bg-[#1a2230] text-zinc-200 flex items-center justify-center cursor-pointer transition-colors"
+                className="w-7 h-7 rounded-lg hover:bg-[#1a2230] text-zinc-200 flex items-center justify-center cursor-pointer transition-colors"
                 title="Jump to End"
               >
                 <SkipForward className="w-3.5 h-3.5" />
@@ -6236,153 +6124,48 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
             </div>
           </div>
 
-          {/* B. TOP LARGE DUAL-SCREEN 16:9 PREVIEW AREA */}
+          {/* B. SINGLE CLEAN 16:9 PREVIEW SCREEN OPPOSITE CIRCULAR WHEEL */}
           <div className="min-w-0 min-h-0 bg-black flex flex-col justify-between overflow-hidden">
-            {/* Preview Header Strip */}
-            <div className="h-6 px-2 bg-[#0e131b] border-b border-[#1c2330] flex items-center justify-between text-[9.5px] text-zinc-400 shrink-0 gap-2">
-              <div className="flex items-center gap-1.5 min-w-0 truncate">
-                <span className="font-bold text-teal-300 font-mono whitespace-nowrap">
-                  {selectedAspectRatio}
-                </span>
-                <span aria-hidden="true" className="text-zinc-600">·</span>
-                <span className="truncate text-zinc-300 font-semibold">
-                  {isDualScreenPreview ? 'Dual-Screen Preview (Filter + Combined)' : 'Combined 16:9 Player'}
-                </span>
-              </div>
-              <div className="flex items-center gap-1.5 shrink-0">
-                <button
-                  type="button"
-                  onClick={() => {
-                    seekToTime(0);
-                    setIsPlaying(true);
-                  }}
-                  className="px-2 py-0.5 rounded bg-cyan-500/15 hover:bg-cyan-400 hover:text-black border border-cyan-500/40 text-cyan-300 font-bold text-[9px] cursor-pointer whitespace-nowrap transition-colors"
-                  title="Replay Filter & Cumulative Preview from 0s"
-                >
-                  ↺ Replay
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setIsMuted(!isMuted)}
-                  className="p-0.5 rounded hover:bg-[#1a2230] text-zinc-300 cursor-pointer"
-                  title={isMuted ? 'Unmute Preview' : 'Mute Preview'}
-                >
-                  {isMuted || volume === 0 ? <VolumeX className="w-3.5 h-3.5 text-rose-400" /> : <Volume2 className="w-3.5 h-3.5" />}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    try {
-                      if (!document.fullscreenElement) {
-                        const reqFs = playerCanvasRef.current?.requestFullscreen;
-                        if (typeof reqFs === 'function') {
-                          void Promise.resolve(reqFs.call(playerCanvasRef.current)).catch(() => {
-                            setIsTimelineExpanded((v) => !v);
-                          });
-                        } else {
-                          setIsTimelineExpanded((v) => !v);
-                        }
-                      } else if (typeof document.exitFullscreen === 'function') {
-                        void Promise.resolve(document.exitFullscreen()).catch(() => {});
-                      }
-                    } catch {
-                      setIsTimelineExpanded((v) => !v);
-                    }
-                  }}
-                  className="p-0.5 rounded hover:bg-[#1a2230] text-zinc-300 cursor-pointer"
-                  title="Fullscreen"
-                >
-                  <Maximize className="w-3.5 h-3.5" />
-                </button>
+            {/* Single Centered 16:9 Viewport */}
+            <div className="flex-1 min-h-0 w-full p-1 sm:p-1.5 bg-black [container-type:size] flex items-center justify-center overflow-hidden">
+              <div
+                onClick={() => {
+                  if (!canvasDragStateRef.current) handleTogglePlay();
+                }}
+                style={{
+                  width: `min(100cqw, calc(100cqh * ${canvasDims.width} / ${canvasDims.height}))`,
+                  height: `min(100cqh, calc(100cqw * ${canvasDims.height} / ${canvasDims.width}))`,
+                }}
+                className="max-w-full max-h-full aspect-video bg-black relative rounded-lg border border-zinc-800/90 overflow-hidden cursor-pointer shadow-lg"
+              >
+                {renderPlayerCanvasWithGizmos()}
               </div>
             </div>
 
-            {/* 16:9 Dual-Screen OR Single-Screen Viewports (Auto-fitted inside remaining height without clipping) */}
-            {isDualScreenPreview ? (
-              <div className="flex-1 min-h-0 w-full grid grid-cols-2 gap-1.5 sm:gap-2 p-1 sm:p-1.5 bg-black items-stretch overflow-hidden">
-                {/* Screen 1: Active Filter / Effect Preview & Replay (Strict 16:9 Aspect) */}
-                <div className="flex flex-col min-h-0 rounded-lg border border-cyan-500/45 bg-[#0c1017] p-1 overflow-hidden">
-                  <div className="flex items-center justify-between pb-0.5 text-[9px] sm:text-[10px] gap-1 shrink-0">
-                    <span className="font-bold text-cyan-300 truncate">1. Filter Preview</span>
-                    <span className="text-cyan-300/90 font-mono text-[8.5px] truncate max-w-[96px]">
-                      {activeFilter.name}
-                    </span>
-                  </div>
-                  <div className="flex-1 min-h-0 w-full [container-type:size] flex items-center justify-center">
-                    <div
-                      onClick={() => {
-                        if (!canvasDragStateRef.current) handleTogglePlay();
-                      }}
-                      style={{
-                        width: `min(100cqw, calc(100cqh * ${canvasDims.width} / ${canvasDims.height}))`,
-                        height: `min(100cqh, calc(100cqw * ${canvasDims.height} / ${canvasDims.width}))`,
-                      }}
-                      className="max-w-full max-h-full aspect-video bg-black relative rounded overflow-hidden cursor-pointer flex items-center justify-center"
-                    >
-                      <canvas
-                        ref={filterPreviewCanvasRef}
-                        width={canvasDims.width}
-                        height={canvasDims.height}
-                        className="block w-full h-full object-contain pointer-events-none"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Screen 2: Combined Cumulative Edit + Filter Preview with Gizmos (Strict 16:9 Aspect) */}
-                <div className="flex flex-col min-h-0 rounded-lg border border-teal-500/45 bg-[#0c1017] p-1 overflow-hidden">
-                  <div className="flex items-center justify-between pb-0.5 text-[9px] sm:text-[10px] gap-1 shrink-0">
-                    <span className="font-bold text-teal-300 truncate">2. Combined Edit</span>
-                    <span className="text-teal-300/90 font-mono text-[8.5px] truncate">
-                      Merged Result
-                    </span>
-                  </div>
-                  <div className="flex-1 min-h-0 w-full [container-type:size] flex items-center justify-center">
-                    <div
-                      onClick={() => {
-                        if (!canvasDragStateRef.current) handleTogglePlay();
-                      }}
-                      style={{
-                        width: `min(100cqw, calc(100cqh * ${canvasDims.width} / ${canvasDims.height}))`,
-                        height: `min(100cqh, calc(100cqw * ${canvasDims.height} / ${canvasDims.width}))`,
-                      }}
-                      className="max-w-full max-h-full aspect-video bg-black relative rounded overflow-hidden cursor-pointer flex items-center justify-center"
-                    >
-                      {renderPlayerCanvasWithGizmos()}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="flex-1 min-h-0 w-full p-1 sm:p-1.5 bg-black [container-type:size] flex items-center justify-center overflow-hidden">
-                <div
-                  onClick={() => {
-                    if (!canvasDragStateRef.current) handleTogglePlay();
-                  }}
-                  style={{
-                    width: `min(100cqw, calc(100cqh * ${canvasDims.width} / ${canvasDims.height}))`,
-                    height: `min(100cqh, calc(100cqw * ${canvasDims.height} / ${canvasDims.width}))`,
-                  }}
-                  className="max-w-full max-h-full aspect-video bg-black relative rounded-lg border border-zinc-800 overflow-hidden cursor-pointer"
-                >
-                  {renderPlayerCanvasWithGizmos()}
-                </div>
-              </div>
-            )}
-
-            {/* Slim Scrubber + Split Bar directly under Preview */}
-            <div className="bg-[#0c1017] border-t border-[#1c2330] px-2 py-0.5 flex items-center gap-2 shrink-0 h-7">
+            {/* Slim Scrubber + Replay / Mute / Split Bar under Preview */}
+            <div className="bg-[#0c1017] border-t border-[#1c2330] px-1.5 sm:px-2 py-0.5 flex items-center gap-1.5 shrink-0 h-6">
               <button
                 type="button"
                 onClick={() => {
                   setIsPlaying(false);
                   handleSplitClipAtPlayhead();
                 }}
-                className="min-h-[22px] px-2 py-0.5 rounded bg-rose-500/20 text-rose-300 border border-rose-500/40 hover:bg-rose-500 hover:text-white text-[9.5px] font-bold flex items-center gap-1 cursor-pointer shrink-0 whitespace-nowrap"
+                className="h-5 px-1.5 rounded bg-rose-500/20 text-rose-300 border border-rose-500/40 hover:bg-rose-500 hover:text-white text-[9px] font-bold flex items-center gap-0.5 cursor-pointer shrink-0 whitespace-nowrap"
                 title="Split Video at Playhead"
               >
-                <Scissors className="w-3 h-3" />
+                <Scissors className="w-2.5 h-2.5" />
                 <span>Split</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  seekToTime(0);
+                  setIsPlaying(true);
+                }}
+                className="h-5 px-1.5 rounded bg-cyan-500/15 hover:bg-cyan-400 hover:text-black border border-cyan-500/40 text-cyan-300 font-bold text-[9px] cursor-pointer shrink-0 whitespace-nowrap transition-colors"
+                title="Replay from 0s"
+              >
+                ↺
               </button>
               <input
                 ref={playerRangeRef}
@@ -6393,15 +6176,48 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                 value={Math.min(currentTimeSec, Math.max(0.1, totalDuration))}
                 disabled={totalDuration <= 0}
                 onChange={(e) => seekToTime(Number(e.target.value))}
-                className="flex-1 h-1.5 bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-teal-400 disabled:opacity-40"
+                className="flex-1 min-w-0 h-1 bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-teal-400 disabled:opacity-40"
               />
-              <div className="font-mono text-[9.5px] text-zinc-300 shrink-0 whitespace-nowrap tabular-nums">
+              <div className="font-mono text-[9px] text-zinc-300 shrink-0 whitespace-nowrap tabular-nums">
                 <span ref={playerTimecodeRef} className="text-teal-400 font-bold">{formatTimecode(currentTimeSec)}</span>
               </div>
+              <button
+                type="button"
+                onClick={() => setIsMuted(!isMuted)}
+                className="p-0.5 rounded hover:bg-[#1a2230] text-zinc-300 cursor-pointer shrink-0"
+                title={isMuted ? 'Unmute Preview' : 'Mute Preview'}
+              >
+                {isMuted || volume === 0 ? <VolumeX className="w-3 h-3 text-rose-400" /> : <Volume2 className="w-3 h-3" />}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  try {
+                    if (!document.fullscreenElement) {
+                      const reqFs = playerCanvasRef.current?.requestFullscreen;
+                      if (typeof reqFs === 'function') {
+                        void Promise.resolve(reqFs.call(playerCanvasRef.current)).catch(() => {
+                          setIsTimelineExpanded((v) => !v);
+                        });
+                      } else {
+                        setIsTimelineExpanded((v) => !v);
+                      }
+                    } else if (typeof document.exitFullscreen === 'function') {
+                      void Promise.resolve(document.exitFullscreen()).catch(() => {});
+                    }
+                  } catch {
+                    setIsTimelineExpanded((v) => !v);
+                  }
+                }}
+                className="p-0.5 rounded hover:bg-[#1a2230] text-zinc-300 cursor-pointer shrink-0"
+                title="Fullscreen"
+              >
+                <Maximize className="w-3 h-3" />
+              </button>
             </div>
           </div>
 
-          {/* C. RIGHT-SIDE CIRCULAR TOOL WHEEL (7 + 7 Category Pages with Center Toggle Button) */}
+          {/* C. RIGHT-SIDE CIRCULAR TOOL WHEEL (7 + 7 Category Pages with Center Toggle Button & 16:9 Badge) */}
           <div className="border-l border-[#1c2330] bg-[#0b0e13] flex items-center justify-center shrink-0">
             <CircularToolWheel
               categories={WHEEL_CATEGORIES}
@@ -6427,2028 +6243,770 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                 setExportStatusText('');
                 setShowExportModal(true);
               }}
+              aspectRatio={selectedAspectRatio}
               compact={isCompactLandscape}
             />
           </div>
         </div>
 
         {/* =========================================================================
-            2. WHEEL-SYNCED COLLAPSIBLE TOOLS & INSPECTOR DRAWER
+            2. COMPACT HORIZONTAL SCROLLABLE OPTION CARDS STRIP (ONLY ACTIVE WHEEL CATEGORY — NO DUPLICATE TABS)
             ========================================================================= */}
-        {(isLeftPanelOpen || isRightPanelOpen) && (
-          <div
-            className={
-              isCompactLandscape
-                ? 'absolute inset-x-0 bottom-0 z-40 h-[62%] bg-[#10151d] border-t border-teal-400/40 shadow-2xl flex flex-col overflow-hidden'
-                : 'shrink-0 max-h-[290px] bg-[#10151d] border-b border-[#1f2937] flex flex-col overflow-hidden'
-            }
+        <div className="shrink-0 bg-[#0d121a] border-b border-[#1c2330] flex items-center gap-1.5 px-2 py-1 overflow-x-auto no-scrollbar h-[74px]">
+          {/* Active Category Quick Pill / Search Toggle */}
+          <button
+            type="button"
+            onClick={() => setIsLeftPanelOpen((v) => !v)}
+            className="h-[58px] px-2 rounded-xl bg-[#131924] hover:bg-[#1a2332] border border-[#242f42] flex flex-col items-center justify-center gap-0.5 shrink-0 cursor-pointer transition-colors"
+            title={`Filter / Search ${activeWheelCategory.label}`}
           >
-            {/* Shared Wheel-Synced Category Quick Strip + Drawer Controls */}
-            <div className="h-9 px-2 bg-[#0c1017] border-b border-[#1f2937] flex items-center justify-between gap-2 shrink-0">
-              <div className="flex items-center gap-1 overflow-x-auto no-scrollbar py-1 flex-1 min-w-0">
-                {WHEEL_CATEGORIES.map((cat) => {
-                  const IconC = cat.icon;
-                  const isSel = selectedWheelCategoryId === cat.id;
-                  return (
-                    <button
-                      key={cat.id}
-                      type="button"
-                      onClick={() => handleSelectWheelCategory(cat, true)}
-                      className={`min-h-[28px] px-2 py-1 rounded-lg flex items-center gap-1 text-[10px] font-bold cursor-pointer whitespace-nowrap transition-colors ${
-                        isSel
-                          ? 'bg-teal-400 text-black shadow'
-                          : 'bg-[#151b26] text-zinc-300 hover:text-white border border-[#242e3d]'
-                      }`}
-                    >
-                      <IconC className="w-3 h-3 shrink-0" style={!isSel ? { color: cat.accentHex } : undefined} />
-                      <span>{cat.shortLabel}</span>
-                    </button>
-                  );
-                })}
-              </div>
-              <div className="flex items-center gap-1 shrink-0">
+            <Search className="w-3.5 h-3.5" style={{ color: activeWheelCategory.accentHex }} />
+            <span className="text-[9px] font-black whitespace-nowrap" style={{ color: activeWheelCategory.accentHex }}>
+              {activeWheelCategory.shortLabel}
+            </span>
+          </button>
+
+          {/* 1. MEDIA / VIDEO 1 HORIZONTAL CARDS */}
+          {activeWheelCategory.id === 'video' && (
+            <>
+              <button
+                type="button"
+                onClick={() => multiFileInputRef.current?.click()}
+                className="h-[58px] w-20 rounded-xl bg-teal-500/15 hover:bg-teal-400 hover:text-black border border-dashed border-teal-400/60 text-teal-300 flex flex-col items-center justify-center gap-0.5 shrink-0 cursor-pointer transition-colors"
+              >
+                <Upload className="w-4 h-4" />
+                <span className="text-[9px] font-black whitespace-nowrap">+ Upload</span>
+              </button>
+              {filteredUserMedia.map((m) => (
+                <div
+                  key={m.id}
+                  onClick={(e) => handleAddMediaToTimeline(m, e)}
+                  className="h-[58px] w-24 rounded-xl border border-[#263142] hover:border-teal-400 bg-[#141a24] overflow-hidden relative shrink-0 cursor-pointer group"
+                >
+                  {m.type === 'video' && !m.thumbnailUrl ? (
+                    <video src={m.url} className="w-full h-full object-cover opacity-80" muted playsInline />
+                  ) : (
+                    <img src={m.thumbnailUrl || m.url} alt={m.title} className="w-full h-full object-cover opacity-85" />
+                  )}
+                  <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/60 to-transparent px-1.5 py-0.5 flex items-center justify-between gap-1">
+                    <span className="text-[8.5px] font-bold text-white truncate">+ {m.title}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={(e) => handleDeleteUploadedMedia(m.id, e)}
+                    className="absolute top-0.5 right-0.5 w-4 h-4 rounded bg-black/75 hover:bg-rose-600 text-zinc-300 hover:text-white flex items-center justify-center opacity-0 group-hover:opacity-100 cursor-pointer"
+                    title="Delete Media"
+                  >
+                    <X className="w-2.5 h-2.5" />
+                  </button>
+                </div>
+              ))}
+            </>
+          )}
+
+          {/* 2 & 4. AUDIO 1 / MUSIC HORIZONTAL CARDS */}
+          {(activeWheelCategory.id === 'audio' || activeWheelCategory.id === 'music') && (
+            <>
+              <button
+                type="button"
+                onClick={() => userAudioInputRef.current?.click()}
+                className="h-[58px] w-20 rounded-xl bg-emerald-500/15 hover:bg-emerald-400 hover:text-black border border-dashed border-emerald-400/60 text-emerald-300 flex flex-col items-center justify-center gap-0.5 shrink-0 cursor-pointer transition-colors"
+              >
+                <Upload className="w-4 h-4" />
+                <span className="text-[9px] font-black whitespace-nowrap">+ Audio</span>
+              </button>
+              {activeWheelCategory.id === 'audio' && (
                 <button
                   type="button"
-                  onClick={() => setIsLeftPanelOpen((v) => !v)}
-                  className={`px-2 py-1 rounded text-[10px] font-bold cursor-pointer ${
-                    isLeftPanelOpen ? 'bg-teal-500/20 text-teal-300' : 'text-zinc-400 hover:text-white'
+                  onClick={() => setIsAudioTrackMuted(!isAudioTrackMuted)}
+                  className={`h-[58px] px-2.5 rounded-xl border flex flex-col items-center justify-center gap-0.5 shrink-0 cursor-pointer transition-colors ${
+                    isAudioTrackMuted
+                      ? 'bg-rose-950/60 border-rose-400 text-rose-200'
+                      : 'bg-[#141a24] border-[#263142] text-emerald-300 hover:border-emerald-400'
                   }`}
                 >
-                  Tools
+                  {isAudioTrackMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+                  <span className="text-[8.5px] font-bold whitespace-nowrap">{isAudioTrackMuted ? 'Unmute' : 'Mute'}</span>
                 </button>
+              )}
+              {filteredAudio.slice(0, itemRenderLimit).map((a) => {
+                const isCur = activeAudio.id === a.id;
+                const isPrev = previewingAudioId === a.id;
+                return (
+                  <button
+                    key={a.id}
+                    type="button"
+                    onClick={() => {
+                      setActiveAudio(a);
+                      setSelectedFeatureType('audio');
+                      setActiveInspectorTab('audio');
+                      playAudioPreview(a);
+                      saveCurrentProjectToStorage();
+                      logEditorTelemetry('edit_timeline');
+                    }}
+                    className={`h-[58px] w-32 px-2 py-1 rounded-xl border text-left flex flex-col justify-between shrink-0 cursor-pointer transition-all ${
+                      isCur
+                        ? 'bg-emerald-950/50 border-emerald-400 text-emerald-200'
+                        : 'bg-[#141a24] border-[#263142] hover:border-emerald-400/60 text-zinc-200'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-1 w-full">
+                      <span className={`w-4 h-4 rounded-full flex items-center justify-center shrink-0 ${isPrev ? 'bg-amber-400 text-black' : 'bg-emerald-500/20 text-emerald-300'}`}>
+                        {isPrev ? <Volume2 className="w-2.5 h-2.5" /> : <Play className="w-2.5 h-2.5 fill-current" />}
+                      </span>
+                      <span className="text-[8px] font-mono text-zinc-400 shrink-0">{a.duration}</span>
+                    </div>
+                    <span className="text-[9.5px] font-bold truncate w-full">{a.title}</span>
+                    <span className="text-[8px] text-teal-400 truncate w-full">{a.category}</span>
+                  </button>
+                );
+              })}
+              {filteredAudio.length > itemRenderLimit && (
                 <button
                   type="button"
-                  onClick={() => setIsRightPanelOpen((v) => !v)}
-                  className={`px-2 py-1 rounded text-[10px] font-bold cursor-pointer ${
-                    isRightPanelOpen ? 'bg-teal-500/20 text-teal-300' : 'text-zinc-400 hover:text-white'
-                  }`}
+                  onClick={() => setItemRenderLimit((n) => n + 150)}
+                  className="h-[58px] px-3 rounded-xl bg-[#18202c] hover:bg-teal-400 hover:text-black border border-[#2b3648] text-teal-300 font-bold text-[9.5px] shrink-0 cursor-pointer whitespace-nowrap"
                 >
-                  Inspector
+                  + More
                 </button>
+              )}
+            </>
+          )}
+
+          {/* 3. FILTERS HORIZONTAL COMPACT CARDS */}
+          {activeWheelCategory.id === 'filters' && (
+            <>
+              {filteredFilters.slice(0, itemRenderLimit).map((f) => {
+                const isCur = activeFilter.id === f.id;
+                return (
+                  <button
+                    key={f.id}
+                    type="button"
+                    onClick={() => {
+                      setActiveFilter(f);
+                      setSelectedFeatureType('filter');
+                      setActiveInspectorTab('color');
+                      saveCurrentProjectToStorage();
+                      logEditorTelemetry('edit_timeline');
+                    }}
+                    className={`h-[58px] w-20 rounded-xl border overflow-hidden relative shrink-0 cursor-pointer transition-all group ${
+                      isCur
+                        ? 'border-cyan-400 ring-1 ring-cyan-400/60 bg-cyan-950/30'
+                        : 'border-[#263142] bg-[#141a24] hover:border-cyan-400/60'
+                    }`}
+                  >
+                    <img
+                      src={activePreviewThumbUrl || f.thumbnail}
+                      alt={f.name}
+                      style={{ filter: f.cssFilter }}
+                      className="w-full h-full object-cover"
+                    />
+                    <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/95 via-black/70 to-transparent px-1 py-0.5 text-left">
+                      <span className="text-[8.5px] font-bold text-white block truncate">{f.name}</span>
+                    </div>
+                    {isCur && (
+                      <span className="absolute top-1 right-1 w-3.5 h-3.5 rounded-full bg-cyan-400 text-black text-[8px] font-black flex items-center justify-center">
+                        ✓
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+              {filteredFilters.length > itemRenderLimit && (
+                <button
+                  type="button"
+                  onClick={() => setItemRenderLimit((n) => n + 150)}
+                  className="h-[58px] px-3 rounded-xl bg-[#18202c] hover:bg-cyan-400 hover:text-black border border-[#2b3648] text-cyan-300 font-bold text-[9.5px] shrink-0 cursor-pointer whitespace-nowrap"
+                >
+                  + More
+                </button>
+              )}
+            </>
+          )}
+
+          {/* 5. DIALOGUES / REC HORIZONTAL COMPACT BUILDER + PRESETS */}
+          {activeWheelCategory.id === 'dialogues' && (
+            <>
+              <div className="h-[58px] px-2 rounded-xl bg-amber-950/30 border border-amber-500/40 flex items-center gap-1.5 shrink-0">
+                <input
+                  type="text"
+                  value={dialogueSpeakerInput}
+                  onChange={(e) => setDialogueSpeakerInput(e.target.value)}
+                  placeholder="Speaker"
+                  className="w-16 h-7 bg-[#0c1017] border border-[#2a3444] rounded-lg px-1.5 text-[9.5px] text-white font-semibold"
+                />
+                <input
+                  type="text"
+                  value={dialogueTextInput}
+                  onChange={(e) => setDialogueTextInput(e.target.value)}
+                  placeholder="Dialogue line..."
+                  className="w-32 h-7 bg-[#0c1017] border border-[#2a3444] rounded-lg px-1.5 text-[9.5px] text-zinc-100"
+                />
                 <button
                   type="button"
                   onClick={() => {
-                    setIsLeftPanelOpen(false);
-                    setIsRightPanelOpen(false);
+                    setActiveDialogue({
+                      id: `dlg_${Date.now()}`,
+                      speaker: dialogueSpeakerInput || 'Speaker',
+                      text: dialogueTextInput || 'Dialogue Line',
+                      durationSec: dialogueDurInput || 6,
+                    });
                   }}
-                  className="p-1 rounded hover:bg-[#1a2230] text-zinc-400 hover:text-white cursor-pointer"
-                  title="Close Panel"
+                  className="h-7 px-2 rounded-lg bg-amber-400 hover:bg-amber-300 text-black font-black text-[9px] cursor-pointer whitespace-nowrap"
                 >
-                  <X className="w-3.5 h-3.5" />
+                  + Add
                 </button>
               </div>
-            </div>
+              {[
+                { speaker: 'Hero', text: 'The battle begins now.', dur: 5 },
+                { speaker: 'Narrator', text: 'In a world beyond time...', dur: 6 },
+                { speaker: 'Villain', text: 'You cannot stop what comes.', dur: 5 },
+              ].map((preset, idx) => (
+                <button
+                  key={idx}
+                  type="button"
+                  onClick={() =>
+                    setActiveDialogue({
+                      id: `dlg_p_${Date.now()}_${idx}`,
+                      speaker: preset.speaker,
+                      text: preset.text,
+                      durationSec: preset.dur,
+                    })
+                  }
+                  className="h-[58px] w-32 px-2 py-1 rounded-xl bg-[#141a24] hover:border-amber-400 border border-[#263142] text-left flex flex-col justify-center shrink-0 cursor-pointer"
+                >
+                  <span className="text-[8.5px] font-black text-amber-300 truncate">{preset.speaker}</span>
+                  <span className="text-[8.5px] text-zinc-300 truncate">{preset.text}</span>
+                </button>
+              ))}
+            </>
+          )}
 
-            {/* Drawer Split Body: Tools Column & Inspector Column */}
-            <div className="flex-1 min-h-0 flex flex-col md:flex-row overflow-hidden">
-              {/* COLUMN 1: TOOLS & MEDIA BROWSER */}
-              {isLeftPanelOpen && (
-                <div className="flex-1 min-h-0 bg-[#10151d] md:border-r border-[#1f2937] flex flex-col overflow-hidden">
-            {/* Top Category Tabs Bar */}
-            <div className="flex items-center justify-between px-1.5 border-b border-[#1f2937] bg-[#0c1017] shrink-0 text-[10px] font-medium text-zinc-400">
-              <div className="flex items-center gap-1 overflow-x-auto no-scrollbar py-1">
-                {[
-                  { id: 'Filters', label: 'Filters', icon: Palette },
-                  { id: 'Chroma', label: 'Chroma', icon: Scissors },
-                  { id: 'Split', label: 'Split Join', icon: Split },
-                  { id: 'Trailer', label: 'Trailer', icon: Clapperboard },
-                  { id: 'ProFX', label: 'Pro FX', icon: Wand2 },
-                  { id: 'Audio', label: 'Audio', icon: Music },
-                  { id: 'Transitions', label: 'Transitions', icon: SlidersHorizontal },
-                  { id: 'Effects', label: 'Effects', icon: Sparkles },
-                  { id: 'Titles', label: 'Titles', icon: Type },
-                  { id: 'VFX', label: 'VFX', icon: Crosshair },
-                  { id: 'Templates', label: 'Templates', icon: Layers },
-                  { id: 'Media', label: 'Media', icon: Video },
-                  { id: 'Stickers', label: 'Stickers', icon: Smile },
-                ].map((tab) => {
-                  const IconComp = tab.icon;
-                  const isActive = activeTab === tab.id;
-                  return (
-                    <button
-                      key={tab.id}
-                      type="button"
-                      onClick={() => {
-                        setActiveTab(tab.id as any);
-                        setActiveSubCategory('All');
-                        setSearchQuery('');
-                        setItemRenderLimit(100);
-                      }}
-                      className={`min-h-[36px] py-1 px-2 rounded-lg flex flex-col items-center justify-center gap-0.5 cursor-pointer transition-colors relative whitespace-nowrap ${
-                        isActive ? 'text-teal-300 bg-teal-500/15 font-bold' : 'hover:text-zinc-200 hover:bg-[#18202c]'
-                      }`}
-                    >
-                      <IconComp
-                        className={`w-3.5 h-3.5 ${
-                          tab.id === 'VFX' && !isActive
-                            ? 'text-rose-400'
-                            : tab.id === 'Chroma' && !isActive
-                            ? 'text-emerald-400'
-                            : tab.id === 'Split' && !isActive
-                            ? 'text-cyan-400'
-                            : tab.id === 'Trailer' && !isActive
-                            ? 'text-amber-400'
-                            : tab.id === 'ProFX' && !isActive
-                            ? 'text-amber-400'
-                            : ''
-                        }`}
-                      />
-                      <span className="text-[9.5px] sm:text-[10px]">{tab.label}</span>
-                      {isActive && <div className="absolute bottom-0 inset-x-1 h-0.5 bg-teal-400 rounded-t" />}
-                    </button>
-                  );
-                })}
-              </div>
+          {/* 6. TITLES HORIZONTAL COMPACT CARDS */}
+          {activeWheelCategory.id === 'titles' && (
+            <>
+              {showTitleOverlay && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowTitleOverlay(false);
+                    setMovieTitle('');
+                    setSubtitle('');
+                  }}
+                  className="h-[58px] px-2.5 rounded-xl bg-rose-950/50 border border-rose-500/40 text-rose-200 font-bold text-[9px] shrink-0 cursor-pointer whitespace-nowrap"
+                >
+                  Clear Title
+                </button>
+              )}
+              {filteredTitles.slice(0, itemRenderLimit).map((t) => {
+                const isCur = showTitleOverlay && movieTitle === t.titleText;
+                return (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => {
+                      setMovieTitle(t.titleText);
+                      setSubtitle(t.subtitleText);
+                      setShowTitleOverlay(true);
+                      setTitleStartSec(Number(Math.max(0, currentTimeRef.current).toFixed(1)));
+                      setTitleDurationSec(Math.max(3, Math.min(8, totalDuration || 6)));
+                      setSelectedFeatureType('title');
+                      setActiveInspectorTab('adjust');
+                      saveCurrentProjectToStorage();
+                      logEditorTelemetry('edit_timeline');
+                    }}
+                    className={`h-[58px] w-28 px-2 py-1 rounded-xl border text-left flex flex-col justify-center shrink-0 cursor-pointer transition-all ${
+                      isCur
+                        ? 'border-amber-400 bg-amber-950/40 text-amber-100'
+                        : 'border-[#263142] bg-[#141a24] hover:border-amber-400 text-white'
+                    }`}
+                  >
+                    <span className={`text-[10px] font-black truncate ${t.styleClass}`}>{t.titleText}</span>
+                    <span className="text-[8px] text-zinc-400 truncate">{t.subtitleText}</span>
+                  </button>
+                );
+              })}
+              {filteredTitles.length > itemRenderLimit && (
+                <button
+                  type="button"
+                  onClick={() => setItemRenderLimit((n) => n + 150)}
+                  className="h-[58px] px-3 rounded-xl bg-[#18202c] hover:bg-amber-400 hover:text-black border border-[#2b3648] text-amber-300 font-bold text-[9.5px] shrink-0 cursor-pointer whitespace-nowrap"
+                >
+                  + More
+                </button>
+              )}
+            </>
+          )}
 
-              {/* Collapse Left Panel Button */}
+          {/* 7. EMOJI & STICKERS HORIZONTAL COMPACT CARDS */}
+          {activeWheelCategory.id === 'stickers' && (
+            <>
+              {filteredStickers.slice(0, itemRenderLimit).map((stk) => {
+                const addedCount = activeStickers.filter((s) => s.sticker.id === stk.id).length;
+                return (
+                  <button
+                    key={stk.id}
+                    type="button"
+                    onClick={() => handleAddStickerLayer(stk)}
+                    className={`h-[58px] w-16 px-1 rounded-xl border flex flex-col items-center justify-center gap-0.5 shrink-0 cursor-pointer transition-all ${
+                      addedCount > 0
+                        ? 'border-sky-400 bg-sky-950/45 text-white'
+                        : 'border-[#263142] bg-[#141a24] hover:border-sky-400 text-zinc-200'
+                    }`}
+                  >
+                    <span className="text-lg leading-none">{stk.emoji}</span>
+                    <span className="text-[8px] font-bold truncate w-full text-center">{stk.name}</span>
+                  </button>
+                );
+              })}
+              {filteredStickers.length > itemRenderLimit && (
+                <button
+                  type="button"
+                  onClick={() => setItemRenderLimit((n) => n + 150)}
+                  className="h-[58px] px-3 rounded-xl bg-[#18202c] hover:bg-sky-400 hover:text-black border border-[#2b3648] text-sky-300 font-bold text-[9.5px] shrink-0 cursor-pointer whitespace-nowrap"
+                >
+                  + More
+                </button>
+              )}
+            </>
+          )}
+
+          {/* 8. ACTION VFX HORIZONTAL COMPACT CARDS */}
+          {activeWheelCategory.id === 'vfx' && (
+            <>
+              {filteredVfxCatalog.slice(0, itemRenderLimit).map((v) => {
+                const addedCount = vfxLayers.filter((l) => l.vfx.id === v.id).length;
+                return (
+                  <button
+                    key={v.id}
+                    type="button"
+                    onClick={() => handleAddVfxLayer(v)}
+                    className={`h-[58px] w-20 px-1.5 rounded-xl border flex flex-col items-center justify-center gap-0.5 shrink-0 cursor-pointer transition-all ${
+                      addedCount > 0
+                        ? 'border-rose-400 bg-rose-950/45 text-white'
+                        : 'border-[#263142] bg-[#141a24] hover:border-rose-400 text-zinc-200'
+                    }`}
+                    style={{ backgroundImage: `radial-gradient(circle at 50% 30%, ${v.primaryColor}22, transparent 75%)` }}
+                  >
+                    <span className="text-base leading-none">{v.emoji}</span>
+                    <span className="text-[8.5px] font-bold truncate w-full text-center">{v.name}</span>
+                  </button>
+                );
+              })}
+              {filteredVfxCatalog.length > itemRenderLimit && (
+                <button
+                  type="button"
+                  onClick={() => setItemRenderLimit((n) => n + 200)}
+                  className="h-[58px] px-3 rounded-xl bg-[#18202c] hover:bg-rose-400 hover:text-black border border-[#2b3648] text-rose-300 font-bold text-[9.5px] shrink-0 cursor-pointer whitespace-nowrap"
+                >
+                  + More
+                </button>
+              )}
+            </>
+          )}
+
+          {/* 9. TRAILER CARD HORIZONTAL COMPACT CARDS */}
+          {activeWheelCategory.id === 'card' && (
+            <>
+              <button
+                type="button"
+                onClick={() => trailerCardInputRef.current?.click()}
+                className="h-[58px] w-20 rounded-xl bg-amber-500/15 hover:bg-amber-400 hover:text-black border border-dashed border-amber-400/60 text-amber-300 flex flex-col items-center justify-center gap-0.5 shrink-0 cursor-pointer transition-colors"
+              >
+                <Upload className="w-4 h-4" />
+                <span className="text-[8.5px] font-black whitespace-nowrap">+ Img Card</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleAddTrailerCard()}
+                className="h-[58px] w-20 rounded-xl bg-gradient-to-br from-amber-400 to-orange-400 text-black font-black flex flex-col items-center justify-center gap-0.5 shrink-0 cursor-pointer shadow"
+              >
+                <Plus className="w-4 h-4 stroke-[3]" />
+                <span className="text-[8.5px] whitespace-nowrap">Add Card</span>
+              </button>
+              {TRAILER_PRESET_PACKS.map((pack) => (
+                <button
+                  key={pack.id}
+                  type="button"
+                  onClick={() => {
+                    setMovieTitle(pack.title);
+                    setSubtitle(pack.subtitle);
+                    setDirectorText(pack.director);
+                    setShowTitleOverlay(true);
+                    setTitleStartSec(0);
+                    setTitleDurationSec(Math.max(4, totalDuration || 6));
+                    setTitleAnimType(pack.titleAnim);
+                    setTitleThemeType(pack.titleTheme);
+                    setTrailerFxMode(pack.fxMode);
+                    setDraftCardTitle(pack.title);
+                    setDraftCardSubtitle(pack.subtitle);
+                    setDraftCardBadge(pack.category.toUpperCase() + ' TRAILER');
+                    setDraftCardTheme(pack.cardTheme);
+                    setDraftCardAnim(pack.cardAnim);
+                    setSelectedFeatureType('title');
+                    logEditorTelemetry('edit_timeline');
+                  }}
+                  className="h-[58px] w-28 px-2 py-1 rounded-xl border border-[#263142] bg-[#141a24] hover:border-amber-400 text-left flex flex-col justify-between shrink-0 cursor-pointer"
+                >
+                  <span className="text-[8px] font-black uppercase px-1 rounded text-black w-fit" style={{ backgroundColor: pack.accent }}>
+                    {pack.category}
+                  </span>
+                  <span className="text-[9.5px] font-bold text-white truncate w-full">{pack.name}</span>
+                </button>
+              ))}
+            </>
+          )}
+
+          {/* 10. CHROMA KEY HORIZONTAL COMPACT CARDS */}
+          {activeWheelCategory.id === 'chroma' && (
+            <>
+              <button
+                type="button"
+                onClick={() => setChromaConfig((p) => ({ ...p, enabled: !p.enabled }))}
+                className={`h-[58px] px-3 rounded-xl border font-black text-[9.5px] shrink-0 cursor-pointer ${
+                  chromaConfig.enabled
+                    ? 'bg-emerald-400 text-black border-emerald-200'
+                    : 'bg-[#141a24] text-emerald-300 border-emerald-500/40'
+                }`}
+              >
+                {chromaConfig.enabled ? 'Chroma ON ✓' : 'Enable Chroma'}
+              </button>
+              {(
+                [
+                  { id: 'green', label: 'Green', hex: '#00b140' },
+                  { id: 'neon_green', label: 'Neon', hex: '#00ff00' },
+                  { id: 'blue', label: 'Blue', hex: '#0047bb' },
+                  { id: 'cyan', label: 'Cyan', hex: '#00d2ff' },
+                ] as Array<{ id: ChromaKeyColorPreset; label: string; hex: string }>
+              ).map((sw) => (
+                <button
+                  key={sw.id}
+                  type="button"
+                  onClick={() => setChromaConfig((p) => ({ ...p, enabled: true, colorPreset: sw.id }))}
+                  className={`h-[58px] px-2.5 rounded-xl border flex flex-col items-center justify-center gap-1 shrink-0 cursor-pointer ${
+                    chromaConfig.colorPreset === sw.id && chromaConfig.enabled
+                      ? 'border-emerald-400 bg-emerald-950/50 text-white'
+                      : 'border-[#263142] bg-[#141a24] text-zinc-300'
+                  }`}
+                >
+                  <span className="w-4 h-4 rounded-full border border-white/50" style={{ backgroundColor: sw.hex }} />
+                  <span className="text-[8.5px] font-bold">{sw.label}</span>
+                </button>
+              ))}
+              <button
+                type="button"
+                onClick={() => chromaBgInputRef.current?.click()}
+                className="h-[58px] px-2.5 rounded-xl bg-emerald-500/15 hover:bg-emerald-400 hover:text-black border border-dashed border-emerald-400/60 text-emerald-300 flex flex-col items-center justify-center gap-0.5 shrink-0 cursor-pointer"
+              >
+                <Upload className="w-3.5 h-3.5" />
+                <span className="text-[8.5px] font-black whitespace-nowrap">+ BG Photo</span>
+              </button>
+              {(
+                [
+                  { id: 'studio_teal', label: 'Teal Stage' },
+                  { id: 'cyber_grid', label: 'Cyber Grid' },
+                  { id: 'sunset_gold', label: 'Sunset' },
+                  { id: 'action_crimson', label: 'Crimson' },
+                  { id: 'blur_bg', label: 'DSLR Blur' },
+                  { id: 'black', label: 'Cinema Black' },
+                ] as Array<{ id: ChromaBgMode; label: string }>
+              ).map((bg) => (
+                <button
+                  key={bg.id}
+                  type="button"
+                  onClick={() => setChromaConfig((p) => ({ ...p, enabled: true, bgMode: bg.id }))}
+                  className={`h-[58px] px-2.5 rounded-xl border text-[9px] font-bold shrink-0 cursor-pointer ${
+                    chromaConfig.bgMode === bg.id && chromaConfig.enabled
+                      ? 'border-emerald-400 bg-emerald-950/50 text-emerald-200'
+                      : 'border-[#263142] bg-[#141a24] text-zinc-300'
+                  }`}
+                >
+                  {bg.label}
+                </button>
+              ))}
+            </>
+          )}
+
+          {/* 11. SPLIT SCREEN HORIZONTAL COMPACT CARDS */}
+          {activeWheelCategory.id === 'split' && (
+            <>
+              <button
+                type="button"
+                onClick={() => setSplitScreenConfig((p) => ({ ...p, enabled: !p.enabled }))}
+                className={`h-[58px] px-3 rounded-xl border font-black text-[9.5px] shrink-0 cursor-pointer ${
+                  splitScreenConfig.enabled
+                    ? 'bg-cyan-400 text-black border-cyan-200'
+                    : 'bg-[#141a24] text-cyan-300 border-cyan-500/40'
+                }`}
+              >
+                {splitScreenConfig.enabled ? 'Split ON ✓' : 'Enable Split'}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const c1 = timelineClips[0] || mediaGallery[0];
+                  const c2 = timelineClips[1] || mediaGallery[1] || c1;
+                  setSplitScreenConfig((p) => ({
+                    ...p,
+                    enabled: true,
+                    leftMediaUrl: c1?.url || p.leftMediaUrl,
+                    leftMediaType: c1?.type || p.leftMediaType,
+                    leftLabel: c1?.title || p.leftLabel,
+                    rightMediaUrl: c2?.url || p.rightMediaUrl,
+                    rightMediaType: c2?.type || p.rightMediaType,
+                    rightLabel: c2?.title || p.rightLabel,
+                  }));
+                }}
+                className="h-[58px] px-2.5 rounded-xl bg-cyan-500/20 border border-cyan-400/50 text-cyan-200 font-bold text-[9px] shrink-0 cursor-pointer whitespace-nowrap"
+              >
+                ⚡ Auto-Join 2
+              </button>
+              <button
+                type="button"
+                onClick={() => splitLeftInputRef.current?.click()}
+                className="h-[58px] px-2.5 rounded-xl bg-[#141a24] border border-teal-500/40 text-teal-300 font-bold text-[9px] shrink-0 cursor-pointer whitespace-nowrap"
+              >
+                + Side 1
+              </button>
+              <button
+                type="button"
+                onClick={() => splitRightInputRef.current?.click()}
+                className="h-[58px] px-2.5 rounded-xl bg-[#141a24] border border-amber-500/40 text-amber-300 font-bold text-[9px] shrink-0 cursor-pointer whitespace-nowrap"
+              >
+                + Side 2
+              </button>
+              {(
+                [
+                  { id: 'left_right', label: 'Left | Right' },
+                  { id: 'top_bottom', label: 'Top / Bot' },
+                  { id: 'dual_cards', label: 'Dual Cards' },
+                  { id: 'diagonal', label: 'Diagonal' },
+                  { id: 'pip_bottom_right', label: 'PiP B-R' },
+                  { id: 'pip_top_right', label: 'PiP T-R' },
+                  { id: 'mirror_twin', label: 'Mirror' },
+                  { id: 'triple_trio', label: '3-Panel' },
+                ] as Array<{ id: SplitLayoutType; label: string }>
+              ).map((lay) => (
+                <button
+                  key={lay.id}
+                  type="button"
+                  onClick={() => setSplitScreenConfig((p) => ({ ...p, enabled: true, layout: lay.id }))}
+                  className={`h-[58px] px-2.5 rounded-xl border text-[9px] font-bold shrink-0 cursor-pointer whitespace-nowrap ${
+                    splitScreenConfig.layout === lay.id && splitScreenConfig.enabled
+                      ? 'border-cyan-400 bg-cyan-950/50 text-cyan-200'
+                      : 'border-[#263142] bg-[#141a24] text-zinc-300'
+                  }`}
+                >
+                  {lay.label}
+                </button>
+              ))}
+            </>
+          )}
+
+          {/* 12. TRANSITIONS HORIZONTAL COMPACT CARDS */}
+          {activeWheelCategory.id === 'transitions' && (
+            <>
+              {filteredTransitions.slice(0, itemRenderLimit).map((t) => {
+                const isSel = selectedTransitionId === t.id;
+                return (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => handleSelectTransition(t)}
+                    className={`h-[58px] w-24 px-2 py-1 rounded-xl border text-left flex flex-col justify-between shrink-0 cursor-pointer transition-all ${
+                      isSel
+                        ? 'border-amber-400 bg-amber-950/45 text-amber-100'
+                        : 'border-[#263142] bg-[#141a24] hover:border-amber-400 text-zinc-200'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between w-full">
+                      <span className="text-[9px] font-black text-teal-300">{t.icon}</span>
+                      <span className="text-[8px] font-mono text-zinc-400">{t.durationSec}s</span>
+                    </div>
+                    <span className="text-[9px] font-bold truncate w-full">{t.name}</span>
+                  </button>
+                );
+              })}
+              {filteredTransitions.length > itemRenderLimit && (
+                <button
+                  type="button"
+                  onClick={() => setItemRenderLimit((n) => n + 150)}
+                  className="h-[58px] px-3 rounded-xl bg-[#18202c] hover:bg-amber-400 hover:text-black border border-[#2b3648] text-amber-300 font-bold text-[9.5px] shrink-0 cursor-pointer whitespace-nowrap"
+                >
+                  + More
+                </button>
+              )}
+            </>
+          )}
+
+          {/* 13. EFFECTS HORIZONTAL COMPACT CARDS */}
+          {activeWheelCategory.id === 'effects' && (
+            <>
+              {activeEffect && (
+                <button
+                  type="button"
+                  onClick={() => setActiveEffect(null)}
+                  className="h-[58px] px-2.5 rounded-xl bg-rose-950/50 border border-rose-500/40 text-rose-200 font-bold text-[9px] shrink-0 cursor-pointer whitespace-nowrap"
+                >
+                  Clear FX
+                </button>
+              )}
+              {filteredEffects.slice(0, itemRenderLimit).map((eff) => {
+                const isCur = activeEffect?.id === eff.id;
+                return (
+                  <button
+                    key={eff.id}
+                    type="button"
+                    onClick={() => {
+                      const nextEff = isCur ? null : eff;
+                      setActiveEffect(nextEff);
+                      if (nextEff) {
+                        setSelectedFeatureType('effect');
+                        setActiveInspectorTab('adjust');
+                        logEditorTelemetry('edit_timeline');
+                      }
+                    }}
+                    className={`h-[58px] w-24 px-2 py-1 rounded-xl border text-left flex flex-col justify-between shrink-0 cursor-pointer transition-all ${
+                      isCur
+                        ? 'border-purple-400 bg-purple-950/45 text-purple-100'
+                        : 'border-[#263142] bg-[#141a24] hover:border-purple-400 text-zinc-200'
+                    }`}
+                  >
+                    <Sparkles className="w-3.5 h-3.5" style={{ color: eff.accentColor }} />
+                    <span className="text-[9px] font-bold truncate w-full">{eff.name}</span>
+                  </button>
+                );
+              })}
+              {filteredEffects.length > itemRenderLimit && (
+                <button
+                  type="button"
+                  onClick={() => setItemRenderLimit((n) => n + 150)}
+                  className="h-[58px] px-3 rounded-xl bg-[#18202c] hover:bg-purple-400 hover:text-black border border-[#2b3648] text-purple-300 font-bold text-[9.5px] shrink-0 cursor-pointer whitespace-nowrap"
+                >
+                  + More
+                </button>
+              )}
+            </>
+          )}
+
+          {/* 14. TEMPLATES HORIZONTAL COMPACT CARDS */}
+          {activeWheelCategory.id === 'templates' && (
+            <>
+              {filteredTemplates.slice(0, itemRenderLimit).map((tpl) => {
+                const isCur = selectedTemplate.id === tpl.id;
+                return (
+                  <button
+                    key={tpl.id}
+                    type="button"
+                    onClick={() => {
+                      setSelectedTemplate(tpl);
+                      setActiveTemplate({ id: tpl.id, name: tpl.title });
+                      setMovieTitle(tpl.movieTitle);
+                      setSubtitle(tpl.subtitle);
+                      setDirectorText(tpl.director);
+                      setShowTitleOverlay(true);
+                      setSelectedFeatureType('title');
+                      setActiveInspectorTab('adjust');
+                      saveCurrentProjectToStorage();
+                      logEditorTelemetry('edit_timeline');
+                    }}
+                    className={`h-[58px] w-28 rounded-xl border overflow-hidden relative shrink-0 cursor-pointer transition-all ${
+                      isCur ? 'border-teal-400 ring-1 ring-teal-400/60' : 'border-[#263142] hover:border-teal-400'
+                    }`}
+                  >
+                    <img src={tpl.thumbnail} alt={tpl.title} className="w-full h-full object-cover opacity-80" />
+                    <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/95 via-black/70 to-transparent px-1.5 py-0.5 text-left">
+                      <span className="text-[8.5px] font-bold text-white block truncate">{tpl.title}</span>
+                    </div>
+                  </button>
+                );
+              })}
+              {filteredTemplates.length > itemRenderLimit && (
+                <button
+                  type="button"
+                  onClick={() => setItemRenderLimit((n) => n + 150)}
+                  className="h-[58px] px-3 rounded-xl bg-[#18202c] hover:bg-teal-400 hover:text-black border border-[#2b3648] text-teal-300 font-bold text-[9.5px] shrink-0 cursor-pointer whitespace-nowrap"
+                >
+                  + More
+                </button>
+              )}
+            </>
+          )}
+        </div>
+
+        {/* OPTIONAL FLOATING SEARCH / SUB-FILTER POPOVER (Opened via Wheel's Grid/Search Icon — Zero Duplicate Category Tabs) */}
+        {isLeftPanelOpen && (
+          <div className="absolute top-2 left-12 z-40 w-[260px] sm:w-[300px] max-h-[65%] bg-[#10151d]/95 backdrop-blur-md border border-teal-500/40 rounded-2xl shadow-2xl p-2.5 flex flex-col gap-2 overflow-hidden">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[10.5px] font-black truncate" style={{ color: activeWheelCategory.accentHex }}>
+                {activeWheelCategory.label} Filter
+              </span>
               <button
                 type="button"
                 onClick={() => setIsLeftPanelOpen(false)}
-                className="min-h-[32px] min-w-[32px] p-1 rounded-lg hover:bg-[#18202c] text-zinc-400 hover:text-white cursor-pointer shrink-0 flex items-center justify-center"
-                title="Collapse Tools Panel (ഹൈഡ് ചെയ്യുക)"
+                className="p-1 rounded-lg hover:bg-[#1a2230] text-zinc-400 hover:text-white cursor-pointer"
               >
-                <ChevronLeft className="w-4 h-4" />
+                <X className="w-3.5 h-3.5" />
               </button>
             </div>
-
-            {/* Sub Layout: Left Tree Sub-sidebar + Main Dynamic Content Column */}
-            <div className="flex-1 flex overflow-hidden min-h-0">
-              {/* Sub-Sidebar */}
-              <div className="w-[64px] sm:w-28 bg-[#0c1017] border-r border-[#1f2937] p-1.5 sm:p-2 space-y-1 text-[10px] sm:text-[11px] shrink-0 text-zinc-400 overflow-y-auto no-scrollbar">
-                <div className="pt-0.5">
-                  <div className="flex items-center gap-1 py-1 px-1 text-zinc-200 font-semibold cursor-pointer">
-                    <ChevronDown className="w-3 h-3 text-teal-400" />
-                    <span className="truncate">{activeTab}</span>
-                  </div>
-                  <div className="pl-1 space-y-0.5">
-                    {(activeTab === 'Filters'
-                      ? ['All', 'Cinematic', 'Retro', 'Portrait', 'Nature', 'Black & White', 'Sci-Fi', 'Moody', 'Vivid', 'Anime & Pastel', 'Sunset Gold']
-                      : activeTab === 'Chroma'
-                      ? ['All', 'Green Screen', 'Blue Screen', 'BG Studio']
-                      : activeTab === 'Split'
-                      ? ['All', 'Side by Side', 'Top Bottom', 'PiP Overlay']
-                      : activeTab === 'Trailer'
-                      ? ['All', 'Presets', 'Card Builder', 'Title Motion', 'Trailer FX']
-                      : activeTab === 'ProFX'
-                      ? ['All', ...PRO_FEATURE_CATEGORIES]
-                      : activeTab === 'Audio'
-                      ? ['All', 'Dialogues', 'Funny & Meme SFX', 'Comedy Tracks', 'Cinematic Score', 'Background Music', 'Trailer Hits', 'Upbeat Beat', 'Lo-Fi Chill', 'Electronic', 'Sound Effects']
-                      : activeTab === 'Transitions'
-                      ? ['All', 'Dissolve', 'Dynamic Zoom', 'Flash & Light', 'Glitch & Warp', 'Slide & Push', '3D & Cube', 'Wipe & Shapes', 'Whip Pan']
-                      : activeTab === 'Effects'
-                      ? ['All', 'Light Leaks', 'Particles & Dust', 'Film Grain', 'Distortion', 'Atmosphere', 'Prism & Glow', 'Cyber & Neon', 'Retro Halftone']
-                      : activeTab === 'Titles'
-                      ? ['All', 'Cinematic Openers', 'Neon 3D', 'Lower Thirds', 'Minimal Titles', 'Social & Vlog', 'Retro & Movie']
-                      : activeTab === 'VFX'
-                      ? ['All', ...VFX_CATEGORIES]
-                      : activeTab === 'Templates'
-                      ? ['All', 'Cinematic Intro', 'Action Trailer', 'YouTube Vlog', 'Business Promo', 'Social Reels', 'Gaming Esports', 'Travel Nature', 'Comedy & Meme']
-                      : activeTab === 'Media'
-                      ? ['All', 'Video', 'Photo']
-                      : ['All', 'Subscribe & Social', 'Badges & Seals', 'Arrows & Pointers', 'Cinema Icons', 'Emoji & Reactions', 'Meme & Comedy Stickers', 'Gaming & Stream']
-                    ).map((sub) => {
-                      const isCur = activeSubCategory === sub;
-                      return (
-                        <div
-                          key={sub}
-                          onClick={() => {
-                            setActiveSubCategory(sub);
-                            setItemRenderLimit(100);
-                            if (activeTab === 'Media') setMediaFilter(sub as any);
-                          }}
-                          className={`min-h-[28px] flex items-center py-1 px-2 rounded-lg text-[10px] cursor-pointer truncate transition-colors ${
-                            isCur ? 'text-teal-300 bg-teal-500/15 border border-teal-500/30 font-bold' : 'hover:text-zinc-200 hover:bg-[#18202c]'
-                          }`}
-                        >
-                          <span className="truncate">{sub}</span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* Upload to Gallery button */}
-                <div className="pt-2">
-                  <button
-                    type="button"
-                    onClick={() => multiFileInputRef.current?.click()}
-                    className="w-full min-h-[34px] py-1.5 bg-[#18202c] hover:bg-teal-400 hover:text-black text-teal-300 font-bold rounded-lg text-[10px] border border-teal-500/30 flex items-center justify-center gap-1 cursor-pointer transition-all"
-                  >
-                    <Upload className="w-3.5 h-3.5" />
-                    <span>Upload</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* Dynamic Content Grid with Feature Guide Banner & Full Details */}
-              <div className="flex-1 min-w-0 flex flex-col p-1.5 sm:p-2.5 overflow-y-auto no-scrollbar space-y-2 min-h-0">
-                {/* Search Bar */}
-                <div className="relative shrink-0">
-                  <Search className="w-3.5 h-3.5 absolute left-2.5 top-2.5 text-zinc-500" />
-                  <input
-                    type="text"
-                    value={searchQuery}
-                    onChange={(e) => {
-                      setSearchQuery(e.target.value);
-                      setItemRenderLimit(100);
-                    }}
-                    placeholder={`Search ${activeTab}...`}
-                    className="w-full min-h-[34px] bg-[#0c1017] border border-[#242e3d] rounded-xl pl-8 pr-2.5 py-1.5 text-[11px] text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-teal-400"
-                  />
-                </div>
-
-                {/* Live Guide Banner explaining how the selected feature works */}
-                <div className="p-2.5 rounded-xl bg-teal-950/25 border border-teal-500/30 text-[10px] text-zinc-300 leading-relaxed shrink-0">
-                  <div className="flex items-center justify-between font-bold text-teal-300 mb-0.5">
-                    <span>
-                      {activeTab === 'Transitions' && '✨ ട്രാൻസിഷൻസ് ഗൈഡ്'}
-                      {activeTab === 'Filters' && '🎨 ഫിൽട്ടറുകൾ ഗൈഡ്'}
-                      {activeTab === 'Chroma' && '🟩 ഗ്രീൻ സ്ക്രീൻ / ക്രോമാ കീ സ്റ്റുഡിയോ'}
-                      {activeTab === 'Split' && '🌗 ഡ്യുവൽ സ്പ്ലിറ്റ് (2 വീഡിയോ / ഫോട്ടോ ഒരുമിച്ച്)'}
-                      {activeTab === 'Trailer' && '🎬 മൂവി ട്രെയിലർ & ഇമേജ് കാർഡ് സ്റ്റുഡിയോ'}
-                      {activeTab === 'ProFX' && '⚡ പ്രോ എഡിറ്റിംഗ് (1,200 ഫീച്ചറുകൾ × 660 പാർട്ട്സ്)'}
-                      {activeTab === 'Audio' && '🎵 ബാഗ്രൗണ്ട് മ്യൂസിക് & SFX'}
-                      {activeTab === 'Effects' && '🌟 വിഷ്വൽ ഇഫക്റ്റുകൾ'}
-                      {activeTab === 'Titles' && '🔤 ടൈറ്റിൽ സ്റ്റൈലുകൾ & ആനിമേഷൻ'}
-                      {activeTab === 'VFX' && '🔫 സിനിമ ആക്ഷൻ VFX'}
-                      {activeTab === 'Templates' && '🎬 ടെംപ്ലേറ്റുകൾ'}
-                      {activeTab === 'Stickers' && '🏷️ സ്റ്റിക്കറുകൾ & ഇമോജി'}
-                      {activeTab === 'Media' && '📁 മീഡിയ പൂൾ'}
-                    </span>
-                    {activeTab === 'Chroma' && chromaConfig.enabled && (
-                      <button
-                        type="button"
-                        onClick={() => setChromaConfig(DEFAULT_CHROMA_KEY_CONFIG)}
-                        className="text-[10px] text-rose-400 hover:text-rose-300 underline cursor-pointer"
-                      >
-                        Turn Off Chroma
-                      </button>
-                    )}
-                    {activeTab === 'Split' && splitScreenConfig.enabled && (
-                      <button
-                        type="button"
-                        onClick={() => setSplitScreenConfig(DEFAULT_SPLIT_SCREEN_CONFIG)}
-                        className="text-[10px] text-rose-400 hover:text-rose-300 underline cursor-pointer"
-                      >
-                        Reset Split
-                      </button>
-                    )}
-                    {activeTab === 'ProFX' && activeProFeature && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setActiveProFeature(null);
-                          setProSettingOverrides({});
-                        }}
-                        className="text-[10px] text-rose-400 hover:text-rose-300 underline cursor-pointer"
-                      >
-                        Clear Pro FX
-                      </button>
-                    )}
-                    {activeTab === 'Effects' && activeEffect && (
-                      <button
-                        type="button"
-                        onClick={() => setActiveEffect(null)}
-                        className="text-[10px] text-rose-400 hover:text-rose-300 underline cursor-pointer"
-                      >
-                        Clear Effect
-                      </button>
-                    )}
-                    {activeTab === 'VFX' && vfxLayers.length > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setVfxLayers([]);
-                          setSelectedVfxLayerId(null);
-                        }}
-                        className="text-[10px] text-rose-400 hover:text-rose-300 underline cursor-pointer"
-                      >
-                        Clear All
-                      </button>
-                    )}
-                    {activeTab === 'Stickers' && activeStickers.length > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setActiveStickers([]);
-                          setSelectedStickerLayerId(null);
-                        }}
-                        className="text-[10px] text-rose-400 hover:text-rose-300 underline cursor-pointer"
-                      >
-                        Clear All
-                      </button>
-                    )}
-                  </div>
-                  <p className="text-[9.5px] text-zinc-400">
-                    {activeTab === 'Transitions' &&
-                      'ഏതെങ്കിലും ട്രാൻസിഷനിൽ ടച്ച് ചെയ്യുമ്പോൾ തന്നെ മുകളിലെ വീഡിയോ സ്ക്രീനിൽ അത് ലൈവായി പ്രവർത്തിക്കുന്നത് കാണാം. രണ്ട് ക്ലിപ്പുകൾക്കിടയിലും ഓട്ടോമാറ്റിക്കായി ചേർക്കപ്പെടും.'}
-                    {activeTab === 'Filters' &&
-                      'ഏതെങ്കിലും ഫിൽട്ടർ ക്ലിക്ക് ചെയ്താൽ വീഡിയോയിൽ ഉടൻ നിറം മാറുന്നത് കാണാം. കളർ ഗ്രേഡിംഗ് പാനലും വലത് സൈഡിൽ തുറക്കും.'}
-                    {activeTab === 'Chroma' &&
-                      'ഗ്രീൻ സ്ക്രീൻ / ബ്ലൂ സ്ക്രീൻ കട്ട് ചെയ്ത് ഇഷ്ടമുള്ള സ്റ്റുഡിയോ ബാഗ്രൗണ്ടോ നിങ്ങളുടെ ഫോട്ടോ/വീഡിയോയോ പിന്നിൽ വെക്കാം! ലൈവായും എക്സ്പോർട്ടിലും വർക്ക് ചെയ്യും.'}
-                    {activeTab === 'Split' &&
-                      'രണ്ട് ഫോട്ടോകളോ വീഡിയോകളോ ഒരേ സ്ക്രീനിൽ ബോർഡർ ഇല്ലാതെ (Seamless Frame) അല്ലെങ്കിൽ Divider Border ഓപ്ഷനോടെ ജോയിൻ ചെയ്യാം.'}
-                    {activeTab === 'Trailer' &&
-                      'ഹോളിവുഡ് സ്റ്റൈൽ ആനിമേറ്റഡ് ടൈറ്റിലുകൾ, ലെൻസ് ഫ്ലെയർ, കൗണ്ട്‌ഡൗൺ, ഇമേജ്-ടു-ട്രെയിലർ ആനിമേറ്റഡ് പോസ്റ്റർ കാർഡുകൾ എന്നിവ നിമിഷങ്ങൾക്കുള്ളിൽ നിർമ്മിക്കാം.'}
-                    {activeTab === 'ProFX' &&
-                      '1,200 പ്രോ ഫീച്ചറുകളിൽ ഏതെങ്കിലും ഒന്ന് തിരഞ്ഞെടുത്താൽ വലതുവശത്തുള്ള "Pro 660" പാനലിൽ 12 മോഡ്യൂളുകളിലായി 660 സെറ്റിംഗ്സ്/പാർട്ടുകൾ ലൈവായി അഡ്ജസ്റ്റ് ചെയ്യാം.'}
-                    {activeTab === 'Audio' &&
-                      'ബാഗ്രൗണ്ട് മ്യൂസിക്, കോമഡി, മീം സൗണ്ടുകൾ എന്നിവയിൽ 🔊 ക്ലിക്ക് ചെയ്താൽ അപ്പോൾ തന്നെ ശബ്ദം കേൾക്കാനും ടൈംലൈനിൽ ആഡ് ചെയ്യാനും സാധിക്കും.'}
-                    {activeTab === 'Effects' &&
-                      'ലൈറ്റ് ലീക്ക്, പാർട്ടിക്കിൾസ്, ഗ്ലിച്ച്, ഫോഗ്, നിയോൺ തുടങ്ങിയ വിഷ്വൽ ഇഫക്റ്റുകളിൽ ക്ലിക്ക് ചെയ്താൽ സ്ക്രീനിൽ തത്സമയം അപ്ലൈ ആകും.'}
-                    {activeTab === 'Titles' &&
-                      'ഏത് ടൈറ്റിലിൽ ക്ലിക്ക് ചെയ്താലും ടൈംലൈനിൽ ചേരും; സ്ക്രീനിലെ റൗണ്ട് ഹാൻഡിൽ വഴി വലിപ്പം കൂട്ടാനും നീക്കാനും വലതു സൈഡിൽ അഡ്ജസ്റ്റ് ചെയ്യാനും സാധിക്കും.'}
-                    {activeTab === 'VFX' &&
-                      'തോക്കിൽ നിന്നുള്ള വെടിയുണ്ട ശരീരത്തിൽ കയറുന്നത് (Gun→Body), രക്തം തെറിക്കൽ, സ്ഫോടനം, മിന്നൽ തുടങ്ങി സിനിമ ആക്ഷൻ VFX! ടച്ച് ചെയ്യുമ്പോൾ താഴെ VFX ടൈംലൈനും വലത് സൈഡിൽ റൂട്ട്/സൈസ് അഡ്ജസ്റ്റും വരും.'}
-                    {activeTab === 'Templates' &&
-                      'റെഡിമെയ്ഡ് ടൈറ്റിൽ, സബ്ടൈറ്റിൽ, ഡയറക്ടർ ക്രെഡിറ്റുകൾ ഒറ്റ ക്ലിക്കിൽ വീഡിയോയിൽ ചേർക്കാം.'}
-                    {activeTab === 'Stickers' &&
-                      'ഏത് ഇമോജി/സ്റ്റിക്കറിലും ക്ലിക്ക് ചെയ്താൽ താഴെ സെപ്പറേറ്റ് ടൈംലൈനിൽ വരും; സ്ക്രീനിലെ റൗണ്ട് വലയം വലിച്ച് വലുതാക്കാനും ചെറുതാക്കാനും സാധിക്കും.'}
-                    {activeTab === 'Media' &&
-                      'നിങ്ങൾ അപ്‌ലോഡ് ചെയ്ത ഫോട്ടോകളിലും വീഡിയോകളിലും "+ Add to Timeline" ക്ലിക്ക് ചെയ്ത് എഡിറ്റ് ചെയ്യാം.'}
-                  </p>
-                </div>
-
-                {/* SECTION 1: FILTERS TAB */}
-                {activeTab === 'Filters' && (
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
-                      <span>Cinematic Filters &amp; LUTs</span>
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 sm:gap-2">
-                      {filteredFilters.slice(0, itemRenderLimit).map((f) => {
-                        const isCur = activeFilter.id === f.id;
-                        return (
-                          <div
-                            key={f.id}
-                            onClick={() => {
-                              setActiveFilter(f);
-                              setSelectedFeatureType('filter');
-                              setActiveInspectorTab('color');
-                              setIsRightPanelOpen(true);
-                              saveCurrentProjectToStorage();
-                              logEditorTelemetry('edit_timeline');
-                            }}
-                            className={`rounded-xl border overflow-hidden cursor-pointer group transition-all ${
-                              isCur
-                                ? 'border-teal-400 ring-2 ring-teal-400/50 shadow-md bg-teal-950/30'
-                                : 'border-[#242e3d] bg-[#141a24] hover:border-teal-400/60'
-                            }`}
-                          >
-                            <div className="aspect-video bg-black overflow-hidden relative">
-                              <img
-                                src={activePreviewThumbUrl || f.thumbnail}
-                                alt={f.name}
-                                style={{ filter: f.cssFilter }}
-                                className="w-full h-full object-cover group-hover:scale-105 transition-transform"
-                              />
-                              {isCur && (
-                                <div className="absolute top-1.5 right-1.5 w-4 h-4 rounded-full bg-teal-400 text-black flex items-center justify-center font-bold text-[9px]">
-                                  ✓
-                                </div>
-                              )}
-                              <span className="absolute bottom-1 left-1 px-1.5 py-0.5 rounded bg-black/80 text-[8px] font-mono text-zinc-300">
-                                {f.category}
-                              </span>
-                            </div>
-                            <div className="p-2 space-y-0.5">
-                              <div className="truncate text-[10.5px] font-bold text-zinc-200 group-hover:text-teal-300">
-                                {f.name}
-                              </div>
-                              <div className="text-[8.5px] text-zinc-400 line-clamp-2 leading-snug">
-                                {f.description}
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                    {filteredFilters.length > itemRenderLimit && (
-                      <div className="flex gap-2 pt-1">
-                        <button
-                          type="button"
-                          onClick={() => setItemRenderLimit((n) => n + 150)}
-                          className="flex-1 min-h-[36px] py-1.5 rounded-xl bg-[#18202c] hover:bg-[#222d3d] border border-[#2b3648] text-teal-300 font-bold text-[11px] cursor-pointer"
-                        >
-                          + Load More
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setItemRenderLimit(filteredFilters.length)}
-                          className="min-h-[36px] px-3.5 py-1.5 rounded-xl bg-teal-500/20 border border-teal-500/40 text-teal-300 font-bold text-[11px] cursor-pointer"
-                        >
-                          Show All
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* SECTION 2: AUDIO, MUSIC & DIALOGUES TAB */}
-                {activeTab === 'Audio' && (
-                  <div className="space-y-2.5">
-                    {/* Local Device Audio / Music Upload Card (100% Private Local Storage) */}
-                    <div className="p-2.5 rounded-xl bg-emerald-950/25 border border-emerald-500/40 flex items-center justify-between gap-2">
-                      <div className="min-w-0">
-                        <span className="text-[10.5px] font-extrabold text-emerald-300 block truncate">
-                          {isMl ? 'ഫോണിൽ നിന്ന് ഓഡിയോ / മ്യൂസിക് ചേർക്കുക' : 'Pick Audio / Music from Device'}
-                        </span>
-                        <span className="text-[9px] text-zinc-400 block truncate">
-                          MP3, WAV, M4A, AAC · {isMl ? 'ലോക്കൽ പ്രോസസ്സിംഗ് മാത്രം' : 'Stays 100% private on device'}
-                        </span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => userAudioInputRef.current?.click()}
-                        className="min-h-[34px] px-3 py-1.5 rounded-lg bg-emerald-400 hover:bg-emerald-300 text-zinc-950 font-extrabold text-[10.5px] flex items-center gap-1.5 cursor-pointer shrink-0 shadow"
-                      >
-                        <Upload className="w-3.5 h-3.5" />
-                        <span>{isMl ? 'ഓഡിയോ' : 'Pick Audio'}</span>
-                      </button>
-                    </div>
-
-                    {/* Dedicated Dialogue / REC Track Builder Card */}
-                    {(activeSubCategory === 'Dialogues' || activeSubCategory === 'All') && (
-                      <div className="p-2.5 rounded-xl bg-amber-950/25 border border-amber-500/40 space-y-2">
-                        <div className="flex items-center justify-between">
-                          <span className="text-[10.5px] font-extrabold text-amber-300 flex items-center gap-1.5">
-                            <Mic className="w-3.5 h-3.5" />
-                            <span>Dialogue &amp; Voiceover (Track 6)</span>
-                          </span>
-                          {activeDialogue && (
-                            <button
-                              type="button"
-                              onClick={() => setActiveDialogue(null)}
-                              className="text-[9.5px] text-rose-400 hover:text-rose-300 underline cursor-pointer"
-                            >
-                              Delete Dialogue
-                            </button>
-                          )}
-                        </div>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
-                          <input
-                            type="text"
-                            value={dialogueSpeakerInput}
-                            onChange={(e) => setDialogueSpeakerInput(e.target.value)}
-                            placeholder="Speaker (e.g. Hero)"
-                            className="bg-[#0c1017] border border-[#2a3444] rounded-lg px-2 py-1 text-[10.5px] text-white font-semibold"
-                          />
-                          <div className="flex items-center gap-1.5 bg-[#0c1017] border border-[#2a3444] rounded-lg px-2 py-1">
-                            <span className="text-[9.5px] text-zinc-400 shrink-0">Dur:</span>
-                            <input
-                              type="number"
-                              min={1}
-                              max={60}
-                              value={dialogueDurInput}
-                              onChange={(e) => setDialogueDurInput(Math.max(1, Number(e.target.value) || 4))}
-                              className="w-full bg-transparent text-[10.5px] text-amber-300 font-mono outline-none"
-                            />
-                            <span className="text-[9px] text-zinc-500">s</span>
-                          </div>
-                        </div>
-                        <input
-                          type="text"
-                          value={dialogueTextInput}
-                          onChange={(e) => setDialogueTextInput(e.target.value)}
-                          placeholder="Enter dialogue / voiceover script..."
-                          className="w-full bg-[#0c1017] border border-[#2a3444] rounded-lg px-2.5 py-1.5 text-[10.5px] text-zinc-100"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setActiveDialogue({
-                              id: `dlg_${Date.now()}`,
-                              speaker: dialogueSpeakerInput || 'Speaker',
-                              text: dialogueTextInput || 'Dialogue Line',
-                              durationSec: dialogueDurInput || 6,
-                            });
-                            syncWheelToTrack('dialogues', false);
-                          }}
-                          className="w-full min-h-[34px] py-1.5 rounded-lg bg-amber-400 hover:bg-amber-300 text-black font-extrabold text-[10.5px] cursor-pointer"
-                        >
-                          + Apply Dialogue to Track 6
-                        </button>
-                      </div>
-                    )}
-
-                    <div className="flex items-center justify-between text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
-                      <span>Background Music &amp; Meme SFX</span>
-                    </div>
-                    <div className="space-y-1.5">
-                      {filteredAudio.slice(0, itemRenderLimit).map((a) => {
-                        const isCur = activeAudio.id === a.id;
-                        const isPrev = previewingAudioId === a.id;
-                        return (
-                          <div
-                            key={a.id}
-                            onClick={() => {
-                              setActiveAudio(a);
-                              setSelectedFeatureType('audio');
-                              setActiveInspectorTab('audio');
-                              setIsRightPanelOpen(true);
-                              playAudioPreview(a);
-                              saveCurrentProjectToStorage();
-                              logEditorTelemetry('edit_timeline');
-                            }}
-                            className={`p-2.5 rounded-xl border flex items-start justify-between gap-2 cursor-pointer group transition-all ${
-                              isCur
-                                ? 'bg-emerald-950/40 border-emerald-400 text-emerald-200'
-                                : 'bg-[#141a24] border-[#242e3d] hover:border-emerald-400/60 text-zinc-300'
-                            }`}
-                          >
-                            <div className="flex items-start gap-2.5 min-w-0 flex-1">
-                              <div className="relative w-14 h-10 rounded-lg overflow-hidden bg-black shrink-0 border border-emerald-500/30">
-                                <img
-                                  src={activePreviewThumbUrl}
-                                  alt={a.title}
-                                  className="w-full h-full object-cover opacity-55"
-                                />
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setActiveAudio(a);
-                                    playAudioPreview(a);
-                                    logEditorTelemetry('edit_timeline');
-                                  }}
-                                  className={`absolute inset-0 flex items-center justify-center cursor-pointer transition-colors ${
-                                    isPrev
-                                      ? 'bg-amber-400/80 text-black animate-pulse'
-                                      : isCur
-                                      ? 'bg-emerald-400/75 text-black'
-                                      : 'bg-black/45 text-white hover:bg-teal-400/85 hover:text-black'
-                                  }`}
-                                  title="Play Audio Preview"
-                                >
-                                  {isPrev ? <Volume2 className="w-4 h-4" /> : <Play className="w-4 h-4 fill-current" />}
-                                </button>
-                              </div>
-                              <div className="min-w-0 flex-1">
-                                <span className="font-bold text-[10.5px] block truncate">{a.title}</span>
-                                <span className="text-[9px] text-teal-400 font-mono block">
-                                  {a.category} · {a.bpm} BPM · {a.mood} · {a.duration}
-                                </span>
-                                <span className="text-[8.5px] text-zinc-400 block leading-snug pt-0.5 line-clamp-2">
-                                  {a.description}
-                                </span>
-                              </div>
-                            </div>
-                            {isCur && (
-                              <span className="px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 font-bold text-[8.5px] shrink-0">
-                                Active
-                              </span>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                    {filteredAudio.length > itemRenderLimit && (
-                      <div className="flex gap-2 pt-1">
-                        <button
-                          type="button"
-                          onClick={() => setItemRenderLimit((n) => n + 150)}
-                          className="flex-1 min-h-[36px] py-1.5 rounded-xl bg-[#18202c] hover:bg-[#222d3d] border border-[#2b3648] text-teal-300 font-bold text-[11px] cursor-pointer"
-                        >
-                          + Load More
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setItemRenderLimit(filteredAudio.length)}
-                          className="min-h-[36px] px-3.5 py-1.5 rounded-xl bg-teal-500/20 border border-teal-500/40 text-teal-300 font-bold text-[11px] cursor-pointer"
-                        >
-                          Show All
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* SECTION 3: TRANSITIONS TAB */}
-                {activeTab === 'Transitions' && (
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
-                      <span>Live Video Transitions</span>
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      {filteredTransitions.slice(0, itemRenderLimit).map((t) => {
-                        const isSel = selectedTransitionId === t.id;
-                        return (
-                          <div
-                            key={t.id}
-                            onClick={() => handleSelectTransition(t)}
-                            className={`p-2 rounded-xl border cursor-pointer flex flex-col group transition-all text-left ${
-                              isSel
-                                ? 'border-teal-400 bg-teal-950/40 ring-1 ring-teal-400/50'
-                                : 'border-[#242e3d] bg-[#141a24] hover:border-teal-400'
-                            }`}
-                          >
-                            <div className="aspect-video bg-black overflow-hidden relative rounded-lg mb-1.5 w-full">
-                              <img
-                                src={activePreviewThumbUrl}
-                                alt={t.name}
-                                className="w-full h-full object-cover opacity-80 group-hover:scale-105 transition-transform"
-                              />
-                              <div className="absolute inset-0 bg-gradient-to-r from-teal-500/35 via-transparent to-cyan-500/45 flex items-center justify-between px-2">
-                                <span className="px-1.5 py-0.5 rounded bg-black/75 text-teal-300 font-black text-[9px]">{t.icon}</span>
-                                <span className="px-1.5 py-0.5 rounded bg-black/75 text-zinc-200 font-mono text-[8px]">{t.durationSec}s</span>
-                              </div>
-                            </div>
-                            <div className="min-w-0 flex-1">
-                              <div className="flex items-center justify-between gap-1">
-                                <span className="text-[10.5px] font-bold text-zinc-100 truncate">{t.name}</span>
-                                <span className="text-[8px] px-1.5 py-0.5 rounded bg-[#1e2736] text-teal-300 font-mono shrink-0">
-                                  {t.category}
-                                </span>
-                              </div>
-                              <p className="text-[8.5px] text-zinc-400 leading-snug pt-0.5 line-clamp-2">
-                                {t.description}
-                              </p>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                    {filteredTransitions.length > itemRenderLimit && (
-                      <div className="flex gap-2 pt-1">
-                        <button
-                          type="button"
-                          onClick={() => setItemRenderLimit((n) => n + 150)}
-                          className="flex-1 min-h-[38px] py-1.5 rounded-xl bg-[#18202c] hover:bg-[#222d3d] border border-[#2b3648] text-teal-300 font-bold text-[11px] cursor-pointer whitespace-nowrap"
-                        >
-                          + Load More
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setItemRenderLimit(filteredTransitions.length)}
-                          className="min-h-[38px] px-3.5 py-1.5 rounded-xl bg-teal-500/20 border border-teal-500/40 text-teal-300 font-bold text-[11px] cursor-pointer whitespace-nowrap"
-                        >
-                          Show All ({filteredTransitions.length})
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* SECTION 4: EFFECTS TAB */}
-                {activeTab === 'Effects' && (
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
-                      <span>Visual Overlays &amp; VFX ({filteredEffects.length})</span>
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      {filteredEffects.slice(0, itemRenderLimit).map((eff) => {
-                        const isCur = activeEffect?.id === eff.id;
-                        return (
-                          <div
-                            key={eff.id}
-                            onClick={() => {
-                              const nextEff = isCur ? null : eff;
-                              setActiveEffect(nextEff);
-                              if (nextEff) {
-                                setSelectedFeatureType('effect');
-                                setActiveInspectorTab('adjust');
-                                setIsRightPanelOpen(true);
-                                logEditorTelemetry('edit_timeline');
-                              }
-                            }}
-                            className={`p-2 rounded-xl border cursor-pointer flex flex-col group transition-all text-left ${
-                              isCur
-                                ? 'border-teal-400 bg-teal-950/40 ring-1 ring-teal-400/50'
-                                : 'border-[#242e3d] bg-[#141a24] hover:border-teal-400'
-                            }`}
-                          >
-                            <div className="aspect-video w-full rounded-lg overflow-hidden bg-black relative mb-1.5">
-                              <img
-                                src={activePreviewThumbUrl}
-                                alt={eff.name}
-                                className="w-full h-full object-cover opacity-80 group-hover:scale-105 transition-transform"
-                              />
-                              <div
-                                className="absolute inset-0 mix-blend-screen opacity-55"
-                                style={{ background: `radial-gradient(circle at 30% 35%, ${eff.accentColor}, transparent 70%)` }}
-                              />
-                              <div className="absolute top-1.5 left-1.5 w-6 h-6 rounded-md bg-black/75 flex items-center justify-center border border-white/15">
-                                <Sparkles className="w-3.5 h-3.5" style={{ color: eff.accentColor }} />
-                              </div>
-                              {isCur && (
-                                <span className="absolute top-1.5 right-1.5 px-1.5 py-0.5 rounded bg-teal-400 text-black text-[8px] font-black">
-                                  ON ✓
-                                </span>
-                              )}
-                            </div>
-                            <div className="min-w-0 flex-1">
-                              <div className="flex items-center justify-between gap-1">
-                                <span className="text-[10.5px] font-bold text-zinc-100 truncate">{eff.name}</span>
-                              </div>
-                              <span className="text-[8.5px] text-teal-400 font-mono block">{eff.category}</span>
-                              <p className="text-[8.5px] text-zinc-400 leading-snug pt-0.5 line-clamp-2">
-                                {eff.description}
-                              </p>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                    {filteredEffects.length > itemRenderLimit && (
-                      <div className="flex gap-2 pt-1">
-                        <button
-                          type="button"
-                          onClick={() => setItemRenderLimit((n) => n + 150)}
-                          className="flex-1 min-h-[36px] py-1.5 rounded-xl bg-[#18202c] hover:bg-[#222d3d] border border-[#2b3648] text-teal-300 font-bold text-[11px] cursor-pointer"
-                        >
-                          + Load More
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setItemRenderLimit(filteredEffects.length)}
-                          className="min-h-[36px] px-3.5 py-1.5 rounded-xl bg-teal-500/20 border border-teal-500/40 text-teal-300 font-bold text-[11px] cursor-pointer"
-                        >
-                          Show All
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* SECTION 5: TITLES TAB */}
-                {activeTab === 'Titles' && (
-                  <div className="space-y-2.5">
-                    <div className="flex items-center justify-between text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
-                      <span>Titles &amp; Lower Thirds</span>
-                    </div>
-                    {/* Animated Title Motion & Color Theme Quick Selector */}
-                    <div className="p-2 rounded-xl bg-[#0c1017] border border-[#242e3d] space-y-1.5">
-                      <span className="text-[9.5px] font-bold text-amber-300 block">🎬 Title Animation &amp; Color Style</span>
-                      <div className="flex flex-wrap gap-1">
-                        {TRAILER_TITLE_ANIMATIONS.slice(0, 6).map((anim) => (
-                          <button
-                            key={anim.id}
-                            type="button"
-                            onClick={() => {
-                              setTitleAnimType(anim.id);
-                              if (!movieTitle) {
-                                setMovieTitle('CINEMA PREMIERE');
-                                setSubtitle('COMING SOON');
-                              }
-                              setShowTitleOverlay(true);
-                              setSelectedFeatureType('title');
-                            }}
-                            className={`px-1.5 py-0.5 rounded text-[8.5px] font-bold cursor-pointer ${
-                              titleAnimType === anim.id
-                                ? 'bg-amber-400 text-black'
-                                : 'bg-[#18202c] text-zinc-300 hover:bg-[#222d3d]'
-                            }`}
-                          >
-                            {anim.name}
-                          </button>
-                        ))}
-                      </div>
-                      <div className="flex flex-wrap gap-1 pt-1 border-t border-zinc-800/80">
-                        {TRAILER_TITLE_THEMES.map((th) => (
-                          <button
-                            key={th.id}
-                            type="button"
-                            onClick={() => {
-                              setTitleThemeType(th.id);
-                              setShowTitleOverlay(true);
-                            }}
-                            className={`px-1.5 py-0.5 rounded text-[8.5px] font-bold flex items-center gap-1 cursor-pointer border ${
-                              titleThemeType === th.id
-                                ? 'border-amber-400 bg-amber-950/40 text-amber-200'
-                                : 'border-zinc-800 bg-[#141a24] text-zinc-300'
-                            }`}
-                          >
-                            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: th.previewColor }} />
-                            <span>{th.name.split(' ')[0]}</span>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
-                      {filteredTitles.slice(0, itemRenderLimit).map((t) => (
-                        <div
-                          key={t.id}
-                          onClick={() => {
-                            setMovieTitle(t.titleText);
-                            setSubtitle(t.subtitleText);
-                            setShowTitleOverlay(true);
-                            setTitleStartSec(Number(Math.max(0, currentTimeRef.current).toFixed(1)));
-                            setTitleDurationSec(Math.max(3, Math.min(8, totalDuration || 6)));
-                            setSelectedFeatureType('title');
-                            setActiveInspectorTab('adjust');
-                            setIsRightPanelOpen(true);
-                            saveCurrentProjectToStorage();
-                            logEditorTelemetry('edit_timeline');
-                          }}
-                          className="p-2 rounded-xl border border-[#242e3d] bg-[#141a24] hover:border-amber-400 cursor-pointer group transition-all text-left space-y-1.5"
-                        >
-                          <div className="aspect-video w-full rounded-lg overflow-hidden bg-black relative">
-                            <img
-                              src={activePreviewThumbUrl}
-                              alt={t.titleText}
-                              className="w-full h-full object-cover opacity-70 group-hover:scale-105 transition-transform"
-                            />
-                            <div className="absolute inset-0 bg-black/45 flex flex-col items-center justify-center px-2 text-center">
-                              <span className={`text-[11px] font-black leading-tight ${t.styleClass} drop-shadow`}>{t.titleText}</span>
-                              <span className="text-[7.5px] text-amber-300/90 uppercase tracking-widest truncate max-w-full mt-0.5">{t.subtitleText}</span>
-                            </div>
-                          </div>
-                          <div>
-                            <div className="flex items-center justify-between gap-2">
-                              <div className="text-[10.5px] font-bold text-white truncate">{t.titleText}</div>
-                              <span className="text-[8px] font-mono text-amber-400 shrink-0">{t.category}</span>
-                            </div>
-                            <div className="text-[8.5px] text-zinc-400 leading-snug line-clamp-2">{t.description}</div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                    {filteredTitles.length > itemRenderLimit && (
-                      <div className="flex gap-2 pt-1">
-                        <button
-                          type="button"
-                          onClick={() => setItemRenderLimit((n) => n + 150)}
-                          className="flex-1 min-h-[38px] py-1.5 rounded-xl bg-[#18202c] hover:bg-[#222d3d] border border-[#2b3648] text-teal-300 font-bold text-[11px] cursor-pointer whitespace-nowrap"
-                        >
-                          + Load More
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setItemRenderLimit(filteredTitles.length)}
-                          className="min-h-[38px] px-3.5 py-1.5 rounded-xl bg-teal-500/20 border border-teal-500/40 text-teal-300 font-bold text-[11px] cursor-pointer whitespace-nowrap"
-                        >
-                          Show All ({filteredTitles.length})
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* SECTION 5B: CINEMA ACTION VFX TAB */}
-                {activeTab === 'VFX' && (
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
-                      <span>Cinema Action VFX Library ({filteredVfxCatalog.length})</span>
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
-                      {filteredVfxCatalog.slice(0, itemRenderLimit).map((v) => {
-                        const addedCount = vfxLayers.filter((l) => l.vfx.id === v.id).length;
-                        return (
-                          <div
-                            key={v.id}
-                            onClick={() => handleAddVfxLayer(v)}
-                            className={`p-2 rounded-xl border cursor-pointer flex flex-col group transition-all text-left ${
-                              addedCount > 0
-                                ? 'border-rose-400 bg-rose-950/35 ring-1 ring-rose-400/50'
-                                : 'border-[#242e3d] bg-[#141a24] hover:border-rose-400'
-                            }`}
-                          >
-                            <div className="aspect-video w-full rounded-lg overflow-hidden bg-black relative mb-1.5">
-                              <img
-                                src={activePreviewThumbUrl}
-                                alt={v.name}
-                                className="w-full h-full object-cover opacity-75 group-hover:scale-105 transition-transform"
-                              />
-                              <div
-                                className="absolute inset-0 opacity-60"
-                                style={{
-                                  background: `radial-gradient(circle at 60% 45%, ${v.primaryColor}, ${v.secondaryColor}44 45%, transparent 75%)`,
-                                }}
-                              />
-                              <div className="absolute inset-0 flex items-center justify-center">
-                                <span className="text-2xl drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)]">{v.emoji}</span>
-                              </div>
-                              {addedCount > 0 && (
-                                <span className="absolute top-1.5 right-1.5 text-[8px] px-1.5 py-0.5 rounded bg-rose-500 text-white font-bold">
-                                  Active
-                                </span>
-                              )}
-                            </div>
-                            <div className="min-w-0 flex-1">
-                              <div className="flex items-center justify-between gap-1">
-                                <span className="text-[10.5px] font-bold text-zinc-100 truncate">{v.name}</span>
-                              </div>
-                              <div className="flex items-center gap-1 text-[8.5px] font-mono text-rose-300">
-                                <span>{v.category}</span>
-                                {v.hasMotionRoute && <span className="text-amber-300">• Gun→Body Route</span>}
-                              </div>
-                              <p className="text-[8.5px] text-zinc-400 leading-snug pt-0.5 line-clamp-2">{v.description}</p>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                    {filteredVfxCatalog.length > itemRenderLimit && (
-                      <div className="flex gap-2 pt-1">
-                        <button
-                          type="button"
-                          onClick={() => setItemRenderLimit((n) => n + 200)}
-                          className="flex-1 min-h-[38px] py-1.5 rounded-xl bg-[#18202c] hover:bg-[#222d3d] border border-[#2b3648] text-rose-300 font-bold text-[11px] cursor-pointer whitespace-nowrap"
-                        >
-                          + Load More
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setItemRenderLimit(filteredVfxCatalog.length)}
-                          className="min-h-[38px] px-3.5 py-1.5 rounded-xl bg-rose-500/20 border border-rose-500/40 text-rose-300 font-bold text-[11px] cursor-pointer whitespace-nowrap"
-                        >
-                          Show All ({filteredVfxCatalog.length})
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* SECTION 6: TEMPLATES TAB */}
-                {activeTab === 'Templates' && (
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
-                      <span>Cinematic Templates</span>
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 sm:gap-2">
-                      {filteredTemplates.slice(0, itemRenderLimit).map((tpl) => (
-                        <div
-                          key={tpl.id}
-                          onClick={() => {
-                            setSelectedTemplate(tpl);
-                            setMovieTitle(tpl.movieTitle);
-                            setSubtitle(tpl.subtitle);
-                            setDirectorText(tpl.director);
-                            setShowTitleOverlay(true);
-                            setSelectedFeatureType('title');
-                            setActiveInspectorTab('adjust');
-                            setIsRightPanelOpen(true);
-                            saveCurrentProjectToStorage();
-                            logEditorTelemetry('edit_timeline');
-                          }}
-                          className={`rounded-xl border overflow-hidden cursor-pointer hover:border-teal-400 transition-all group ${
-                            selectedTemplate.id === tpl.id ? 'border-teal-400 bg-teal-950/30' : 'border-[#242e3d] bg-[#141a24]'
-                          }`}
-                        >
-                          <div className="aspect-video bg-black relative">
-                            <img src={tpl.thumbnail} alt={tpl.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
-                            <div className="absolute bottom-1 left-1 px-1.5 py-0.5 rounded bg-black/75 text-[9px] font-mono text-zinc-300">
-                              {tpl.duration}
-                            </div>
-                          </div>
-                          <div className="bg-[#0e131b] p-2 space-y-0.5">
-                            <div className="truncate text-[10.5px] font-bold text-zinc-200">{tpl.title}</div>
-                            <div className="text-[8.5px] text-zinc-400 line-clamp-2 leading-snug">{tpl.description}</div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                    {filteredTemplates.length > itemRenderLimit && (
-                      <div className="flex gap-2 pt-1">
-                        <button
-                          type="button"
-                          onClick={() => setItemRenderLimit((n) => n + 150)}
-                          className="flex-1 min-h-[36px] py-1.5 rounded-xl bg-[#18202c] hover:bg-[#222d3d] border border-[#2b3648] text-teal-300 font-bold text-[11px] cursor-pointer"
-                        >
-                          + Load More
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setItemRenderLimit(filteredTemplates.length)}
-                          className="min-h-[36px] px-3.5 py-1.5 rounded-xl bg-teal-500/20 border border-teal-500/40 text-teal-300 font-bold text-[11px] cursor-pointer"
-                        >
-                          Show All
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* SECTION 7: USER ONLY MEDIA TAB (MEDIA POOL) */}
-                {activeTab === 'Media' && (
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
-                        My Gallery Pool
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => multiFileInputRef.current?.click()}
-                        className="min-h-[30px] px-3 py-1 rounded-lg bg-teal-400 hover:bg-teal-300 text-black font-bold text-[10px] flex items-center gap-1 cursor-pointer"
-                      >
-                        <Upload className="w-3 h-3" /> + Upload
-                      </button>
-                    </div>
-
-                    {filteredUserMedia.length === 0 ? (
-                      <div className="p-6 rounded-xl border-2 border-dashed border-[#2b3648] bg-[#141a24] text-center space-y-2.5">
-                        <div className="w-10 h-10 rounded-full bg-teal-500/10 text-teal-400 mx-auto flex items-center justify-center">
-                          <Upload className="w-4 h-4" />
-                        </div>
-                        <p className="text-[11px] text-zinc-300 font-bold">
-                          {isMl ? 'നിങ്ങളുടെ ഗാലറിയിൽ ഫോട്ടോകൾ ചേർത്തിട്ടില്ല' : 'No Gallery Media Added Yet'}
-                        </p>
-                        <button
-                          type="button"
-                          onClick={() => multiFileInputRef.current?.click()}
-                          className="min-h-[36px] px-4 py-1.5 bg-teal-400 hover:bg-teal-300 text-black font-extrabold rounded-xl text-[11px] cursor-pointer"
-                        >
-                          + Upload from Device
-                        </button>
-                      </div>
-                    ) : (
-                      <>
-                        <div className="flex items-center gap-2 text-[10px]">
-                          {(['All', 'Video', 'Photo'] as const).map((cat) => (
-                            <button
-                              key={cat}
-                              type="button"
-                              onClick={() => setMediaFilter(cat)}
-                              className={`min-h-[28px] px-3 py-1 rounded-lg font-bold cursor-pointer transition-colors ${
-                                mediaFilter === cat ? 'bg-zinc-200 text-black' : 'bg-[#18202c] text-zinc-400 hover:text-white'
-                              }`}
-                            >
-                              {cat}
-                            </button>
-                          ))}
-                        </div>
-
-                        {/* Media Tiles with Prominent Add-to-Timeline Button */}
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 sm:gap-2 pt-1">
-                          {filteredUserMedia.map((m) => (
-                            <div
-                              key={m.id}
-                              className="rounded-xl border border-[#242e3d] bg-[#141a24] overflow-hidden relative group transition-all"
-                            >
-                              <div className="aspect-video bg-black relative">
-                                {m.type === 'video' && !m.thumbnailUrl ? (
-                                  <video src={m.url} className="w-full h-full object-cover" muted playsInline />
-                                ) : (
-                                  <img src={m.thumbnailUrl || m.url} alt={m.title} className="w-full h-full object-cover" />
-                                )}
-                                <div className="absolute bottom-1 left-1 px-1.5 py-0.5 rounded bg-black/80 font-mono text-[9px] text-zinc-300">
-                                  {m.type === 'video' ? '🎬' : '📷'} {m.duration}
-                                </div>
-                                <button
-                                  type="button"
-                                  onClick={(e) => handleDeleteUploadedMedia(m.id, e)}
-                                  className="absolute top-1 left-1 w-6 h-6 rounded-lg bg-black/75 hover:bg-rose-600 text-zinc-300 hover:text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
-                                  title="Delete from Gallery"
-                                >
-                                  <Trash2 className="w-3 h-3" />
-                                </button>
-                              </div>
-                              <div className="p-2 bg-[#0e131b] space-y-1.5">
-                                <span className="font-bold text-[10.5px] text-zinc-200 block truncate">{m.title}</span>
-                                <button
-                                  type="button"
-                                  onClick={(e) => handleAddMediaToTimeline(m, e)}
-                                  className="w-full min-h-[32px] py-1 bg-teal-400 hover:bg-teal-300 text-black font-extrabold rounded-lg text-[10px] flex items-center justify-center gap-1 cursor-pointer transition-colors shadow"
-                                >
-                                  <Plus className="w-3 h-3 stroke-[3]" />
-                                  <span>+ Add to Timeline</span>
-                                </button>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </>
-                    )}
-                  </div>
-                )}
-
-                {/* SECTION 8: STICKERS TAB */}
-                {activeTab === 'Stickers' && (
-                  <div className="space-y-2">
-                    <div className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider flex justify-between">
-                      <span>Animated Badges &amp; Stickers</span>
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1.5 sm:gap-2">
-                      {filteredStickers.slice(0, itemRenderLimit).map((stk) => {
-                        const addedCount = activeStickers.filter((s) => s.sticker.id === stk.id).length;
-                        return (
-                          <div
-                            key={stk.id}
-                            onClick={() => handleAddStickerLayer(stk)}
-                            className={`p-1.5 rounded-xl border cursor-pointer flex flex-col items-center justify-center text-center group transition-all ${
-                              addedCount > 0
-                                ? 'border-teal-400 bg-teal-950/40 ring-1 ring-teal-400/50'
-                                : 'border-[#242e3d] bg-[#141a24] hover:border-teal-400'
-                            }`}
-                          >
-                            <div className="aspect-video w-full rounded-lg overflow-hidden bg-black relative mb-1">
-                              <img
-                                src={activePreviewThumbUrl}
-                                alt={stk.name}
-                                className="w-full h-full object-cover opacity-65 group-hover:scale-105 transition-transform"
-                              />
-                              <div className="absolute inset-0 flex flex-col items-center justify-center gap-0.5">
-                                <span className="text-xl drop-shadow">{stk.emoji}</span>
-                                <span className={`px-1.5 py-0.2 rounded text-[7.5px] font-black ${stk.colorClass} truncate max-w-[90%]`}>
-                                  {stk.badgeText}
-                                </span>
-                              </div>
-                            </div>
-                            <span className="text-[8.5px] font-bold text-zinc-300 truncate w-full">{stk.name}</span>
-                            <span className="text-[7.5px] text-zinc-400 line-clamp-1 w-full">{stk.description}</span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                    {filteredStickers.length > itemRenderLimit && (
-                      <div className="flex gap-2 pt-1">
-                        <button
-                          type="button"
-                          onClick={() => setItemRenderLimit((n) => n + 150)}
-                          className="flex-1 min-h-[38px] py-1.5 rounded-xl bg-[#18202c] hover:bg-[#222d3d] border border-[#2b3648] text-teal-300 font-bold text-[11px] cursor-pointer whitespace-nowrap"
-                        >
-                          + Load More
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setItemRenderLimit(filteredStickers.length)}
-                          className="min-h-[38px] px-3.5 py-1.5 rounded-xl bg-teal-500/20 border border-teal-500/40 text-teal-300 font-bold text-[11px] cursor-pointer whitespace-nowrap"
-                        >
-                          Show All ({filteredStickers.length})
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* SECTION 9: PRO FX (1,200 FEATURES × 660 SETTINGS ENGINE) */}
-                {activeTab === 'ProFX' && (
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
-                      <span>1,200 Pro Features ({filteredProFeatures.length} matching)</span>
-                      <span className="text-amber-300">660 Parts Each</span>
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 sm:gap-2">
-                      {filteredProFeatures.slice(0, itemRenderLimit).map((feat) => {
-                        const isCur = activeProFeature?.id === feat.id;
-                        return (
-                          <div
-                            key={feat.id}
-                            onClick={() => {
-                              setActiveProFeature(feat);
-                              setSelectedFeatureType('profx');
-                              setActiveInspectorTab('profx');
-                              setProSettingsModuleFilter('all');
-                              setProSettingsSearch('');
-                              setProSettingsPage(0);
-                              setIsRightPanelOpen(true);
-                              logEditorTelemetry('edit_timeline');
-                            }}
-                            className={`p-2 rounded-xl border cursor-pointer flex flex-col group transition-all text-left ${
-                              isCur
-                                ? 'border-amber-400 bg-amber-950/35 ring-1 ring-amber-400/50 shadow-md'
-                                : 'border-[#242e3d] bg-[#141a24] hover:border-amber-400/60'
-                            }`}
-                          >
-                            <div className="aspect-video w-full rounded-lg overflow-hidden bg-black relative mb-1.5">
-                              <img
-                                src={activePreviewThumbUrl}
-                                alt={feat.name}
-                                className="w-full h-full object-cover opacity-75 group-hover:scale-105 transition-transform"
-                              />
-                              <div
-                                className="absolute inset-0 opacity-45"
-                                style={{ background: `linear-gradient(135deg, ${feat.accentHex}88, transparent 70%)` }}
-                              />
-                              <span
-                                className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded bg-black/80 font-mono text-[8.5px] font-black"
-                                style={{ color: feat.accentHex }}
-                              >
-                                #{String(feat.index).padStart(4, '0')}
-                              </span>
-                              {isCur && (
-                                <span className="absolute top-1.5 right-1.5 px-1.5 py-0.5 rounded bg-amber-400 text-black text-[8px] font-black">
-                                  ON ✓
-                                </span>
-                              )}
-                            </div>
-                            <div className="min-w-0 flex-1">
-                              <div className="flex items-center justify-between gap-1">
-                                <span className="text-[10.5px] font-bold text-zinc-100 group-hover:text-amber-300 truncate">
-                                  {feat.name}
-                                </span>
-                              </div>
-                              <span className="text-[8px] font-mono text-teal-400 block truncate">{feat.category}</span>
-                              <p className="text-[8.5px] text-zinc-400 leading-snug pt-0.5 line-clamp-2">{feat.shortDesc}</p>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                    {filteredProFeatures.length > itemRenderLimit && (
-                      <div className="flex gap-2 pt-1">
-                        <button
-                          type="button"
-                          onClick={() => setItemRenderLimit((n) => n + 150)}
-                          className="flex-1 min-h-[38px] py-1.5 rounded-xl bg-[#18202c] hover:bg-[#222d3d] border border-[#2b3648] text-amber-300 font-bold text-[11px] cursor-pointer whitespace-nowrap"
-                        >
-                          + Load More ({filteredProFeatures.length - itemRenderLimit} left)
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setItemRenderLimit(filteredProFeatures.length)}
-                          className="min-h-[38px] px-3.5 py-1.5 rounded-xl bg-amber-500/20 border border-amber-500/40 text-amber-300 font-bold text-[11px] cursor-pointer whitespace-nowrap"
-                        >
-                          Show All 1,200
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* SECTION 10: CHROMA KEY / GREEN SCREEN STUDIO */}
-                {activeTab === 'Chroma' && (
-                  <div className="space-y-2.5 text-[10.5px]">
-                    <div className="p-2.5 rounded-xl border border-emerald-500/40 bg-emerald-950/25 flex items-center justify-between gap-2">
-                      <div>
-                        <span className="text-[11px] font-extrabold text-emerald-300 block">
-                          🟩 Green Screen Chroma Key
-                        </span>
-                        <span className="text-[9px] text-zinc-400">
-                          {chromaConfig.enabled ? 'Real-Time Background Cut Active ✓' : 'Tap Enable to remove green/blue background'}
-                        </span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const next = !chromaConfig.enabled;
-                          setChromaConfig((p) => ({ ...p, enabled: next }));
-                          if (next) {
-                            setSelectedFeatureType('chroma');
-                            setActiveInspectorTab('adjust');
-                            setIsRightPanelOpen(true);
-                          }
-                        }}
-                        className={`min-h-[34px] px-3 py-1 rounded-xl font-black text-[10px] cursor-pointer transition-all ${
-                          chromaConfig.enabled
-                            ? 'bg-emerald-400 text-black shadow-lg'
-                            : 'bg-[#18202c] text-emerald-300 border border-emerald-500/40 hover:bg-emerald-500/20'
-                        }`}
-                      >
-                        {chromaConfig.enabled ? 'ON ✓' : 'Enable'}
-                      </button>
-                    </div>
-
-                    {/* Key Color Selector */}
-                    {(activeSubCategory === 'All' || activeSubCategory === 'Green Screen' || activeSubCategory === 'Blue Screen') && (
-                      <div className="p-2.5 rounded-xl bg-[#141a24] border border-[#242e3d] space-y-2">
-                        <span className="text-[10px] font-bold text-zinc-200 block">1. Key Color (കട്ട് ചെയ്യേണ്ട നിറം)</span>
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
-                          {(
-                            [
-                              { id: 'green', label: 'Studio Green', hex: '#00b140' },
-                              { id: 'neon_green', label: 'Neon Green', hex: '#00ff00' },
-                              { id: 'blue', label: 'Blue Screen', hex: '#0047bb' },
-                              { id: 'cyan', label: 'Cyan Key', hex: '#00d2ff' },
-                            ] as Array<{ id: ChromaKeyColorPreset; label: string; hex: string }>
-                          ).map((sw) => {
-                            const isSel = chromaConfig.colorPreset === sw.id;
-                            return (
-                              <button
-                                key={sw.id}
-                                type="button"
-                                onClick={() => setChromaConfig((p) => ({ ...p, enabled: true, colorPreset: sw.id }))}
-                                className={`p-1.5 rounded-lg border text-left cursor-pointer flex items-center gap-1.5 ${
-                                  isSel ? 'border-emerald-400 bg-emerald-950/40 text-white' : 'border-[#242e3d] bg-[#0c1017] text-zinc-300'
-                                }`}
-                              >
-                                <span className="w-3.5 h-3.5 rounded-full border border-white/40 shrink-0" style={{ backgroundColor: sw.hex }} />
-                                <span className="text-[9px] font-bold truncate">{sw.label}</span>
-                              </button>
-                            );
-                          })}
-                        </div>
-                        <div className="flex items-center justify-between pt-1 border-t border-zinc-800/80">
-                          <span className="text-[9.5px] text-zinc-400">Custom Key Color:</span>
-                          <div className="flex items-center gap-2">
-                            <input
-                              type="color"
-                              value={chromaConfig.customHex}
-                              onChange={(e) =>
-                                setChromaConfig((p) => ({ ...p, enabled: true, colorPreset: 'custom', customHex: e.target.value }))
-                              }
-                              className="w-7 h-6 rounded bg-transparent cursor-pointer"
-                            />
-                            <span className="font-mono text-[9.5px] text-emerald-300">{chromaConfig.customHex}</span>
-                          </div>
-                        </div>
-
-                        {/* Matte Fine Tuning Sliders */}
-                        <div className="space-y-1.5 pt-1.5 border-t border-zinc-800/80">
-                          <div>
-                            <div className="flex justify-between text-[9.5px]">
-                              <span className="text-zinc-300">Similarity / Cut Strength</span>
-                              <span className="font-mono text-emerald-300">{chromaConfig.similarity}%</span>
-                            </div>
-                            <input
-                              type="range"
-                              min="10"
-                              max="90"
-                              value={chromaConfig.similarity}
-                              onChange={(e) => setChromaConfig((p) => ({ ...p, enabled: true, similarity: Number(e.target.value) }))}
-                              className="w-full h-1 accent-emerald-400 cursor-pointer"
-                            />
-                          </div>
-                          <div>
-                            <div className="flex justify-between text-[9.5px]">
-                              <span className="text-zinc-300">Edge Smoothness / Feather</span>
-                              <span className="font-mono text-emerald-300">{chromaConfig.smoothness}%</span>
-                            </div>
-                            <input
-                              type="range"
-                              min="0"
-                              max="50"
-                              value={chromaConfig.smoothness}
-                              onChange={(e) => setChromaConfig((p) => ({ ...p, enabled: true, smoothness: Number(e.target.value) }))}
-                              className="w-full h-1 accent-emerald-400 cursor-pointer"
-                            />
-                          </div>
-                          <div>
-                            <div className="flex justify-between text-[9.5px]">
-                              <span className="text-zinc-300">Green Spill Reduction</span>
-                              <span className="font-mono text-teal-300">{chromaConfig.spillReduction}%</span>
-                            </div>
-                            <input
-                              type="range"
-                              min="0"
-                              max="100"
-                              value={chromaConfig.spillReduction}
-                              onChange={(e) => setChromaConfig((p) => ({ ...p, enabled: true, spillReduction: Number(e.target.value) }))}
-                              className="w-full h-1 accent-teal-400 cursor-pointer"
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Replacement Background Selector */}
-                    {(activeSubCategory === 'All' || activeSubCategory === 'BG Studio') && (
-                      <div className="p-2.5 rounded-xl bg-[#141a24] border border-[#242e3d] space-y-2">
-                        <div className="flex items-center justify-between">
-                          <span className="text-[10px] font-bold text-zinc-200">2. New Background (പുതിയ ബാഗ്രൗണ്ട്)</span>
-                          <button
-                            type="button"
-                            onClick={() => chromaBgInputRef.current?.click()}
-                            className="px-2 py-1 rounded-lg bg-emerald-400 hover:bg-emerald-300 text-black font-black text-[9.5px] flex items-center gap-1 cursor-pointer"
-                          >
-                            <Upload className="w-3 h-3" />
-                            <span>+ Upload BG</span>
-                          </button>
-                        </div>
-                        <div className="grid grid-cols-2 gap-1.5">
-                          {(
-                            [
-                              { id: 'studio_teal', label: 'Studio Teal Stage', grad: 'from-teal-700/80 via-cyan-900/80 to-black' },
-                              { id: 'cyber_grid', label: 'Cyber 3D Neon Grid', grad: 'from-fuchsia-700/80 via-indigo-900/80 to-black' },
-                              { id: 'sunset_gold', label: 'Sunset Gold Studio', grad: 'from-amber-500/80 via-orange-900/80 to-black' },
-                              { id: 'action_crimson', label: 'Action Crimson', grad: 'from-rose-700/80 via-red-950/80 to-black' },
-                              { id: 'blur_bg', label: 'DSLR Blurred Back', grad: 'from-zinc-500/70 via-zinc-800/80 to-black' },
-                              { id: 'black', label: 'Pure Cinema Black', grad: 'from-zinc-900 via-black to-black' },
-                            ] as Array<{ id: ChromaBgMode; label: string; grad: string }>
-                          ).map((bg) => (
-                            <button
-                              key={bg.id}
-                              type="button"
-                              onClick={() => setChromaConfig((p) => ({ ...p, enabled: true, bgMode: bg.id }))}
-                              className={`p-1.5 rounded-lg border text-left text-[9.5px] font-bold cursor-pointer flex flex-col gap-1 ${
-                                chromaConfig.bgMode === bg.id
-                                  ? 'border-emerald-400 bg-emerald-950/40 text-emerald-200'
-                                  : 'border-[#242e3d] bg-[#0c1017] text-zinc-300 hover:border-zinc-500'
-                              }`}
-                            >
-                              <div className="w-full h-9 rounded overflow-hidden relative bg-black">
-                                <img src={activePreviewThumbUrl} alt={bg.label} className="w-full h-full object-cover opacity-55" />
-                                <div className={`absolute inset-0 bg-gradient-to-br ${bg.grad} mix-blend-screen`} />
-                              </div>
-                              <span className="truncate">{bg.label}</span>
-                            </button>
-                          ))}
-                        </div>
-                        {chromaConfig.bgMode === 'custom_media' && chromaConfig.bgLabel && (
-                          <div className="p-1.5 rounded-lg bg-emerald-950/30 border border-emerald-500/30 text-[9px] text-emerald-200 flex items-center justify-between">
-                            <span className="truncate">BG: {chromaConfig.bgLabel}</span>
-                            <button
-                              type="button"
-                              onClick={() => setChromaConfig((p) => ({ ...p, bgMode: 'studio_teal', bgMediaUrl: undefined }))}
-                              className="text-rose-400 hover:text-rose-300 ml-2 cursor-pointer"
-                            >
-                              Remove
-                            </button>
-                          </div>
-                        )}
-                        {mediaGallery.length > 0 && (
-                          <div className="pt-1 border-t border-zinc-800/80 space-y-1">
-                            <span className="text-[9px] text-zinc-400 block">Or Pick From Your Gallery Pool:</span>
-                            <div className="flex gap-1.5 overflow-x-auto no-scrollbar pb-1">
-                              {mediaGallery.slice(0, 8).map((m) => (
-                                <button
-                                  key={m.id}
-                                  type="button"
-                                  onClick={() =>
-                                    setChromaConfig((p) => ({
-                                      ...p,
-                                      enabled: true,
-                                      bgMode: 'custom_media',
-                                      bgMediaUrl: m.url,
-                                      bgMediaType: m.type,
-                                      bgLabel: m.title,
-                                    }))
-                                  }
-                                  className="w-16 shrink-0 rounded-lg border border-[#242e3d] hover:border-emerald-400 overflow-hidden bg-black cursor-pointer"
-                                >
-                                  <div className="aspect-video bg-black">
-                                    {m.type === 'video' && !m.thumbnailUrl ? (
-                                      <video src={m.url} className="w-full h-full object-cover" muted playsInline />
-                                    ) : (
-                                      <img src={m.thumbnailUrl || m.url} alt={m.title} className="w-full h-full object-cover" />
-                                    )}
-                                  </div>
-                                  <span className="block truncate text-[8px] px-1 py-0.5 text-zinc-300">{m.title}</span>
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* SECTION 11: DUAL SPLIT-SCREEN / 2-CLIP SIDE-BY-SIDE JOINER */}
-                {activeTab === 'Split' && (
-                  <div className="space-y-2.5 text-[10.5px]">
-                    <div className="p-2.5 rounded-xl border border-cyan-500/40 bg-cyan-950/25 flex items-center justify-between gap-2">
-                      <div>
-                        <span className="text-[11px] font-extrabold text-cyan-300 block">
-                          🌗 Dual Side-by-Side Joiner
-                        </span>
-                        <span className="text-[9px] text-zinc-400">
-                          {splitScreenConfig.enabled ? '2 Pictures / Videos Combined ✓' : 'Combine 2 videos or photos on 1 screen'}
-                        </span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const next = !splitScreenConfig.enabled;
-                          setSplitScreenConfig((p) => ({ ...p, enabled: next }));
-                          if (next) {
-                            setSelectedFeatureType('split');
-                            setActiveInspectorTab('adjust');
-                            setIsRightPanelOpen(true);
-                            if (timelineClips.length === 0 && mediaGallery.length > 0) {
-                              const first = mediaGallery[0];
-                              setTimelineClips([
-                                {
-                                  id: `split_seed_${Date.now()}`,
-                                  mediaId: first.id,
-                                  title: first.title,
-                                  durationSec: first.durationSec || 6,
-                                  url: first.url,
-                                  thumbnailUrl: first.thumbnailUrl,
-                                  type: first.type,
-                                },
-                              ]);
-                            }
-                          }
-                        }}
-                        className={`min-h-[34px] px-3 py-1 rounded-xl font-black text-[10px] cursor-pointer transition-all ${
-                          splitScreenConfig.enabled
-                            ? 'bg-cyan-400 text-black shadow-lg'
-                            : 'bg-[#18202c] text-cyan-300 border border-cyan-500/40 hover:bg-cyan-500/20'
-                        }`}
-                      >
-                        {splitScreenConfig.enabled ? 'ON ✓' : 'Enable'}
-                      </button>
-                    </div>
-
-                    {/* Quick 1-Tap Actions */}
-                    <div className="grid grid-cols-2 gap-1.5">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const c1 = timelineClips[0] || mediaGallery[0];
-                          const c2 = timelineClips[1] || mediaGallery[1] || c1;
-                          setSplitScreenConfig((p) => ({
-                            ...p,
-                            enabled: true,
-                            leftMediaUrl: c1?.url || p.leftMediaUrl,
-                            leftMediaType: c1?.type || p.leftMediaType,
-                            leftLabel: c1?.title || p.leftLabel,
-                            rightMediaUrl: c2?.url || p.rightMediaUrl,
-                            rightMediaType: c2?.type || p.rightMediaType,
-                            rightLabel: c2?.title || p.rightLabel,
-                          }));
-                          setSelectedFeatureType('split');
-                          setActiveInspectorTab('adjust');
-                          setIsRightPanelOpen(true);
-                        }}
-                        className="min-h-[34px] px-2 py-1.5 rounded-xl bg-cyan-400 hover:bg-cyan-300 text-black font-extrabold text-[9.5px] cursor-pointer"
-                      >
-                        ⚡ Auto-Join 2 Clips
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setSplitScreenConfig((p) => ({ ...p, swapSides: !p.swapSides }))}
-                        className="min-h-[34px] px-2 py-1.5 rounded-xl bg-[#18202c] hover:bg-[#222d3d] border border-[#2b3648] text-cyan-300 font-bold text-[9.5px] flex items-center justify-center gap-1 cursor-pointer"
-                      >
-                        <RefreshCw className="w-3 h-3" />
-                        <span>Swap Left ⇄ Right</span>
-                      </button>
-                    </div>
-
-                    {/* Clip 1 & Clip 2 Dual Slot Cards */}
-                    <div className="grid grid-cols-2 gap-2">
-                      <div className="p-2 rounded-xl bg-[#141a24] border border-[#242e3d] space-y-1.5">
-                        <span className="text-[9.5px] font-bold text-teal-300 block truncate">
-                          Side 1: {splitScreenConfig.leftLabel}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => splitLeftInputRef.current?.click()}
-                          className="w-full py-1.5 rounded-lg bg-[#18202c] hover:bg-teal-400 hover:text-black border border-teal-500/40 text-teal-300 font-bold text-[9.5px] flex items-center justify-center gap-1 cursor-pointer"
-                        >
-                          <Upload className="w-3 h-3" />
-                          <span>Upload Side 1</span>
-                        </button>
-                        {mediaGallery.length > 0 && (
-                          <select
-                            value={splitScreenConfig.leftMediaUrl}
-                            onChange={(e) => {
-                              const m = mediaGallery.find((x) => x.url === e.target.value);
-                              if (m) {
-                                setSplitScreenConfig((p) => ({
-                                  ...p,
-                                  enabled: true,
-                                  leftMediaUrl: m.url,
-                                  leftMediaType: m.type,
-                                  leftLabel: m.title,
-                                }));
-                              }
-                            }}
-                            className="w-full bg-[#0c1017] border border-zinc-700 rounded px-1.5 py-1 text-[9px] text-zinc-200"
-                          >
-                            <option value="">-- Pool Clip 1 --</option>
-                            {mediaGallery.map((m) => (
-                              <option key={m.id} value={m.url}>
-                                {m.title}
-                              </option>
-                            ))}
-                          </select>
-                        )}
-                      </div>
-
-                      <div className="p-2 rounded-xl bg-[#141a24] border border-[#242e3d] space-y-1.5">
-                        <span className="text-[9.5px] font-bold text-amber-300 block truncate">
-                          Side 2: {splitScreenConfig.rightLabel}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => splitRightInputRef.current?.click()}
-                          className="w-full py-1.5 rounded-lg bg-[#18202c] hover:bg-amber-400 hover:text-black border border-amber-500/40 text-amber-300 font-bold text-[9.5px] flex items-center justify-center gap-1 cursor-pointer"
-                        >
-                          <Upload className="w-3 h-3" />
-                          <span>Upload Side 2</span>
-                        </button>
-                        {mediaGallery.length > 0 && (
-                          <select
-                            value={splitScreenConfig.rightMediaUrl}
-                            onChange={(e) => {
-                              const m = mediaGallery.find((x) => x.url === e.target.value);
-                              if (m) {
-                                setSplitScreenConfig((p) => ({
-                                  ...p,
-                                  enabled: true,
-                                  rightMediaUrl: m.url,
-                                  rightMediaType: m.type,
-                                  rightLabel: m.title,
-                                }));
-                              }
-                            }}
-                            className="w-full bg-[#0c1017] border border-zinc-700 rounded px-1.5 py-1 text-[9px] text-zinc-200"
-                          >
-                            <option value="">-- Pool Clip 2 --</option>
-                            {mediaGallery.map((m) => (
-                              <option key={m.id} value={m.url}>
-                                {m.title}
-                              </option>
-                            ))}
-                          </select>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* 2-Option Center Line / Border Selector */}
-                    <div className="p-2.5 rounded-xl bg-[#141a24] border border-[#242e3d] space-y-2">
-                      <span className="text-[10px] font-bold text-cyan-300 block">
-                        Center Line / Frame Mode (വര വേണോ വേണ്ടയോ?)
-                      </span>
-                      <div className="grid grid-cols-2 gap-1.5">
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setSplitScreenConfig((p) => ({
-                              ...p,
-                              enabled: true,
-                              showBorder: false,
-                              gapPx: 0,
-                              cornerRadius: 0,
-                            }))
-                          }
-                          className={`min-h-[38px] p-2 rounded-lg border text-left text-[9.5px] font-bold cursor-pointer transition-all ${
-                            !splitScreenConfig.showBorder
-                              ? 'border-cyan-400 bg-cyan-950/45 text-cyan-200 ring-1 ring-cyan-400/40'
-                              : 'border-[#242e3d] bg-[#0c1017] text-zinc-300 hover:border-zinc-500'
-                          }`}
-                        >
-                          <div className="font-black">Seamless Frame</div>
-                          <div className="text-[8px] font-normal text-zinc-400">No Center Line (ഒരേ ഫ്രയിം)</div>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setSplitScreenConfig((p) => ({
-                              ...p,
-                              enabled: true,
-                              showBorder: true,
-                              gapPx: Math.max(4, p.gapPx),
-                            }))
-                          }
-                          className={`min-h-[38px] p-2 rounded-lg border text-left text-[9.5px] font-bold cursor-pointer transition-all ${
-                            splitScreenConfig.showBorder
-                              ? 'border-cyan-400 bg-cyan-950/45 text-cyan-200 ring-1 ring-cyan-400/40'
-                              : 'border-[#242e3d] bg-[#0c1017] text-zinc-300 hover:border-zinc-500'
-                          }`}
-                        >
-                          <div className="font-black">Center Border Line</div>
-                          <div className="text-[8px] font-normal text-zinc-400">Show Divider Line (വര വെക്കുക)</div>
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* 8 Visual Split Screen Layout Presets with Visual Diagrams */}
-                    <div className="p-2.5 rounded-xl bg-[#141a24] border border-[#242e3d] space-y-2">
-                      <span className="text-[10px] font-bold text-zinc-200 block">Choose Dual Layout (ലേഔട്ട്)</span>
-                      <div className="grid grid-cols-2 gap-1.5">
-                        {(
-                          [
-                            { id: 'left_right', label: 'Left | Right (2-Side)' },
-                            { id: 'top_bottom', label: 'Top / Bottom Split' },
-                            { id: 'dual_cards', label: 'Dual Floating Cards' },
-                            { id: 'diagonal', label: 'Diagonal Action Slash' },
-                            { id: 'pip_bottom_right', label: 'PiP Bottom-Right' },
-                            { id: 'pip_top_right', label: 'PiP Top-Right' },
-                            { id: 'mirror_twin', label: 'Mirror Twin Sym' },
-                            { id: 'triple_trio', label: 'Triple 3-Panel Trio' },
-                          ] as Array<{ id: SplitLayoutType; label: string }>
-                        ).map((lay) => (
-                          <button
-                            key={lay.id}
-                            type="button"
-                            onClick={() => setSplitScreenConfig((p) => ({ ...p, enabled: true, layout: lay.id }))}
-                            className={`p-1.5 rounded-lg border text-left text-[9px] font-bold cursor-pointer flex items-center gap-2 ${
-                              splitScreenConfig.layout === lay.id
-                                ? 'border-cyan-400 bg-cyan-950/40 text-cyan-200'
-                                : 'border-[#242e3d] bg-[#0c1017] text-zinc-300 hover:border-zinc-500'
-                            }`}
-                          >
-                            <svg viewBox="0 0 36 22" className="w-8 h-5 shrink-0 rounded border border-zinc-700 bg-zinc-950">
-                              {lay.id === 'left_right' && (
-                                <>
-                                  <rect x="1" y="1" width="16.5" height="20" fill="#14b8a6" opacity="0.7" />
-                                  <rect x="18.5" y="1" width="16.5" height="20" fill="#f59e0b" opacity="0.7" />
-                                </>
-                              )}
-                              {lay.id === 'top_bottom' && (
-                                <>
-                                  <rect x="1" y="1" width="34" height="9.5" fill="#14b8a6" opacity="0.7" />
-                                  <rect x="1" y="11.5" width="34" height="9.5" fill="#f59e0b" opacity="0.7" />
-                                </>
-                              )}
-                              {lay.id === 'dual_cards' && (
-                                <>
-                                  <rect x="2" y="3" width="15" height="16" rx="2" fill="#14b8a6" opacity="0.75" />
-                                  <rect x="19" y="3" width="15" height="16" rx="2" fill="#f59e0b" opacity="0.75" />
-                                </>
-                              )}
-                              {lay.id === 'diagonal' && (
-                                <>
-                                  <polygon points="1,1 24,1 12,21 1,21" fill="#14b8a6" opacity="0.75" />
-                                  <polygon points="24,1 35,1 35,21 12,21" fill="#f59e0b" opacity="0.75" />
-                                </>
-                              )}
-                              {lay.id === 'pip_bottom_right' && (
-                                <>
-                                  <rect x="1" y="1" width="34" height="20" fill="#14b8a6" opacity="0.55" />
-                                  <rect x="21" y="11" width="12" height="8" rx="1.5" fill="#f59e0b" opacity="0.95" />
-                                </>
-                              )}
-                              {lay.id === 'pip_top_right' && (
-                                <>
-                                  <rect x="1" y="1" width="34" height="20" fill="#14b8a6" opacity="0.55" />
-                                  <rect x="21" y="3" width="12" height="8" rx="1.5" fill="#f59e0b" opacity="0.95" />
-                                </>
-                              )}
-                              {lay.id === 'mirror_twin' && (
-                                <>
-                                  <rect x="1" y="1" width="16.5" height="20" fill="#22d3ee" opacity="0.75" />
-                                  <rect x="18.5" y="1" width="16.5" height="20" fill="#22d3ee" opacity="0.45" />
-                                </>
-                              )}
-                              {lay.id === 'triple_trio' && (
-                                <>
-                                  <rect x="1" y="1" width="10.5" height="20" fill="#14b8a6" opacity="0.75" />
-                                  <rect x="12.5" y="1" width="11" height="20" fill="#f59e0b" opacity="0.75" />
-                                  <rect x="24.5" y="1" width="10.5" height="20" fill="#38bdf8" opacity="0.75" />
-                                </>
-                              )}
-                            </svg>
-                            <span className="truncate">{lay.label}</span>
-                          </button>
-                        ))}
-                      </div>
-
-                      <div className="space-y-1.5 pt-1 border-t border-zinc-800/80">
-                        <div className="flex justify-between text-[9.5px]">
-                          <span className="text-zinc-300">Split Ratio</span>
-                          <span className="font-mono text-cyan-300">{splitScreenConfig.splitRatio}% / {100 - splitScreenConfig.splitRatio}%</span>
-                        </div>
-                        <input
-                          type="range"
-                          min="25"
-                          max="75"
-                          value={splitScreenConfig.splitRatio}
-                          onChange={(e) => setSplitScreenConfig((p) => ({ ...p, enabled: true, splitRatio: Number(e.target.value) }))}
-                          className="w-full h-1 accent-cyan-400 cursor-pointer"
-                        />
-                        {splitScreenConfig.showBorder && (
-                          <div className="grid grid-cols-2 gap-2 pt-1">
-                            <div>
-                              <span className="text-[9px] text-zinc-400">Divider Gap: {splitScreenConfig.gapPx}px</span>
-                              <input
-                                type="range"
-                                min="0"
-                                max="24"
-                                value={splitScreenConfig.gapPx}
-                                onChange={(e) => setSplitScreenConfig((p) => ({ ...p, gapPx: Number(e.target.value) }))}
-                                className="w-full h-1 accent-cyan-400 cursor-pointer"
-                              />
-                            </div>
-                            <div>
-                              <span className="text-[9px] text-zinc-400">Radius: {splitScreenConfig.cornerRadius}px</span>
-                              <input
-                                type="range"
-                                min="0"
-                                max="28"
-                                value={splitScreenConfig.cornerRadius}
-                                onChange={(e) => setSplitScreenConfig((p) => ({ ...p, cornerRadius: Number(e.target.value) }))}
-                                className="w-full h-1 accent-cyan-400 cursor-pointer"
-                              />
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* SECTION 12: MOVIE TRAILER STUDIO & IMAGE-TO-TRAILER ANIMATED CARD BUILDER */}
-                {activeTab === 'Trailer' && (
-                  <div className="space-y-2.5 text-[10.5px]">
-                    {/* One-Tap Blockbuster Trailer Preset Packs */}
-                    {(activeSubCategory === 'All' || activeSubCategory === 'Presets') && (
-                      <div className="space-y-1.5">
-                        <span className="text-[10px] font-bold text-amber-300 uppercase tracking-wider block">
-                          🎬 1-Tap Trailer Preset Packs
-                        </span>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
-                          {TRAILER_PRESET_PACKS.map((pack) => (
-                            <button
-                              key={pack.id}
-                              type="button"
-                              onClick={() => {
-                                setMovieTitle(pack.title);
-                                setSubtitle(pack.subtitle);
-                                setDirectorText(pack.director);
-                                setShowTitleOverlay(true);
-                                setTitleStartSec(0);
-                                setTitleDurationSec(Math.max(4, totalDuration || 6));
-                                setTitleAnimType(pack.titleAnim);
-                                setTitleThemeType(pack.titleTheme);
-                                setTrailerFxMode(pack.fxMode);
-                                setDraftCardTitle(pack.title);
-                                setDraftCardSubtitle(pack.subtitle);
-                                setDraftCardBadge(pack.category.toUpperCase() + ' TRAILER');
-                                setDraftCardTheme(pack.cardTheme);
-                                setDraftCardAnim(pack.cardAnim);
-                                setSelectedFeatureType('title');
-                                setActiveInspectorTab('adjust');
-                                setIsRightPanelOpen(true);
-                                logEditorTelemetry('edit_timeline');
-                              }}
-                              className="p-2 rounded-xl border border-[#242e3d] bg-[#141a24] hover:border-amber-400 text-left cursor-pointer transition-all flex flex-col gap-1.5 group"
-                            >
-                              <div className="aspect-video w-full rounded-lg overflow-hidden bg-black relative">
-                                <img
-                                  src={activePreviewThumbUrl}
-                                  alt={pack.name}
-                                  className="w-full h-full object-cover opacity-70 group-hover:scale-105 transition-transform"
-                                />
-                                <div
-                                  className="absolute inset-0 opacity-45"
-                                  style={{ background: `linear-gradient(135deg, ${pack.accent}, transparent 70%)` }}
-                                />
-                                <span
-                                  className="absolute bottom-1 right-1 px-1.5 py-0.5 rounded text-[8px] font-bold text-black"
-                                  style={{ backgroundColor: pack.accent }}
-                                >
-                                  {pack.category}
-                                </span>
-                              </div>
-                              <div className="flex items-center justify-between gap-1">
-                                <span className="font-black text-[10px] text-white truncate">{pack.name}</span>
-                              </div>
-                              <p className="text-[8.5px] text-zinc-400 line-clamp-2">{pack.description}</p>
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Image-to-Trailer Animated Card Builder */}
-                    {(activeSubCategory === 'All' || activeSubCategory === 'Card Builder') && (
-                      <div className="p-2.5 rounded-xl bg-gradient-to-br from-amber-950/35 to-[#141a24] border border-amber-500/40 space-y-2">
-                        <div className="flex items-center justify-between">
-                          <span className="text-[10.5px] font-black text-amber-300">
-                            🃏 Image-to-Trailer Card Maker
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => trailerCardInputRef.current?.click()}
-                            className="px-2 py-1 rounded-lg bg-amber-400 hover:bg-amber-300 text-black font-black text-[9px] flex items-center gap-1 cursor-pointer"
-                          >
-                            <Upload className="w-3 h-3" />
-                            <span>Upload Image</span>
-                          </button>
-                        </div>
-                        <input
-                          type="text"
-                          value={draftCardTitle}
-                          onChange={(e) => setDraftCardTitle(e.target.value)}
-                          placeholder="Poster Card Title..."
-                          className="w-full bg-[#0c1017] border border-zinc-700 rounded-lg px-2 py-1 text-[10px] font-bold text-white"
-                        />
-                        <div className="grid grid-cols-2 gap-1.5">
-                          <input
-                            type="text"
-                            value={draftCardSubtitle}
-                            onChange={(e) => setDraftCardSubtitle(e.target.value)}
-                            placeholder="Tagline..."
-                            className="bg-[#0c1017] border border-zinc-700 rounded-lg px-2 py-1 text-[9.5px] text-zinc-200"
-                          />
-                          <input
-                            type="text"
-                            value={draftCardBadge}
-                            onChange={(e) => setDraftCardBadge(e.target.value)}
-                            placeholder="Badge (COMING SOON)"
-                            className="bg-[#0c1017] border border-zinc-700 rounded-lg px-2 py-1 text-[9.5px] text-amber-300 font-bold"
-                          />
-                        </div>
-                        <div className="grid grid-cols-2 gap-1.5">
-                          <select
-                            value={draftCardTheme}
-                            onChange={(e) => setDraftCardTheme(e.target.value as TrailerCardTheme)}
-                            className="bg-[#0c1017] border border-zinc-700 rounded-lg px-1.5 py-1 text-[9.5px] text-zinc-200"
-                          >
-                            {TRAILER_CARD_THEMES.map((t) => (
-                              <option key={t.id} value={t.id}>
-                                {t.name}
-                              </option>
-                            ))}
-                          </select>
-                          <select
-                            value={draftCardAnim}
-                            onChange={(e) => setDraftCardAnim(e.target.value as TrailerCardAnimation)}
-                            className="bg-[#0c1017] border border-zinc-700 rounded-lg px-1.5 py-1 text-[9.5px] text-zinc-200"
-                          >
-                            {TRAILER_CARD_ANIMATIONS.map((a) => (
-                              <option key={a.id} value={a.id}>
-                                {a.name}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => handleAddTrailerCard()}
-                          className="w-full min-h-[34px] py-1.5 rounded-xl bg-gradient-to-r from-amber-400 to-orange-400 hover:brightness-105 text-black font-black text-[10px] flex items-center justify-center gap-1 cursor-pointer shadow"
-                        >
-                          <Plus className="w-3.5 h-3.5 stroke-[3]" />
-                          <span>+ Create Animated Trailer Card</span>
-                        </button>
-
-                        {trailerCardLayers.length > 0 && (
-                          <div className="space-y-1 pt-1 border-t border-amber-500/20">
-                            {trailerCardLayers.map((c) => (
-                              <div
-                                key={c.id}
-                                onClick={() => {
-                                  setSelectedTrailerCardId(c.id);
-                                  setSelectedFeatureType('trailer_card');
-                                  setActiveInspectorTab('adjust');
-                                  setIsRightPanelOpen(true);
-                                }}
-                                className={`p-1.5 rounded-lg border flex items-center justify-between cursor-pointer ${
-                                  selectedTrailerCardId === c.id
-                                    ? 'border-amber-400 bg-amber-950/40 text-amber-200'
-                                    : 'border-zinc-800 bg-[#0c1017] text-zinc-300'
-                                }`}
-                              >
-                                <span className="truncate font-bold text-[9.5px]">🃏 {c.title} ({c.startTimeSec}s)</span>
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setTrailerCardLayers((prev) => prev.filter((x) => x.id !== c.id));
-                                    if (selectedTrailerCardId === c.id) setSelectedTrailerCardId(null);
-                                  }}
-                                  className="text-rose-400 hover:text-rose-300 ml-1 cursor-pointer"
-                                >
-                                  <Trash2 className="w-3 h-3" />
-                                </button>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    {/* Animated Title & Trailer Visual FX Controls */}
-                    {(activeSubCategory === 'All' || activeSubCategory === 'Title Motion') && (
-                      <div className="p-2.5 rounded-xl bg-[#141a24] border border-[#242e3d] space-y-2">
-                        <span className="text-[10px] font-bold text-zinc-200 block">Title Animation Motion</span>
-                        <div className="grid grid-cols-2 gap-1.5">
-                          {TRAILER_TITLE_ANIMATIONS.map((anim) => (
-                            <button
-                              key={anim.id}
-                              type="button"
-                              onClick={() => {
-                                setTitleAnimType(anim.id);
-                                if (!movieTitle) {
-                                  setMovieTitle('COMING SOON');
-                                  setSubtitle('A CINEMA PREMIERE');
-                                }
-                                setShowTitleOverlay(true);
-                                setSelectedFeatureType('title');
-                              }}
-                              className={`p-1.5 rounded-lg border text-left cursor-pointer ${
-                                titleAnimType === anim.id
-                                  ? 'border-amber-400 bg-amber-950/40 text-amber-200'
-                                  : 'border-[#242e3d] bg-[#0c1017] text-zinc-300'
-                              }`}
-                            >
-                              <span className="font-bold text-[9.5px] block truncate">{anim.name}</span>
-                              <span className="text-[8px] text-zinc-400">{anim.tag}</span>
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {(activeSubCategory === 'All' || activeSubCategory === 'Trailer FX') && (
-                      <div className="p-2.5 rounded-xl bg-[#141a24] border border-[#242e3d] space-y-2">
-                        <span className="text-[10px] font-bold text-zinc-200 block">Trailer Screen Visual FX</span>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
-                          {TRAILER_FX_OPTIONS.map((fx) => (
-                            <button
-                              key={fx.id}
-                              type="button"
-                              onClick={() => setTrailerFxMode(fx.id as TrailerFxMode)}
-                              className={`p-1.5 rounded-lg border text-left cursor-pointer ${
-                                trailerFxMode === fx.id
-                                  ? 'border-rose-400 bg-rose-950/40 text-rose-200'
-                                  : 'border-[#242e3d] bg-[#0c1017] text-zinc-300'
-                              }`}
-                            >
-                              <div className="flex items-center justify-between gap-1">
-                                <span className="font-bold text-[9.5px] truncate">{fx.name}</span>
-                                <span className="text-[8px] text-amber-300 font-mono">{fx.badge}</span>
-                              </div>
-                              <p className="text-[8px] text-zinc-400 line-clamp-1">{fx.description}</p>
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
+            <div className="relative">
+              <Search className="w-3.5 h-3.5 absolute left-2.5 top-2.5 text-zinc-500" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  setItemRenderLimit(100);
+                }}
+                placeholder={`Search ${activeWheelCategory.shortLabel}...`}
+                className="w-full min-h-[32px] bg-[#0c1017] border border-[#242e3d] rounded-xl pl-8 pr-2 py-1 text-[10.5px] text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-teal-400"
+              />
+            </div>
+            <div className="flex flex-wrap gap-1 overflow-y-auto no-scrollbar max-h-36">
+              {(activeTab === 'Filters'
+                ? ['All', 'Cinematic', 'Retro', 'Portrait', 'Nature', 'Black & White', 'Sci-Fi', 'Moody', 'Vivid', 'Anime & Pastel', 'Sunset Gold']
+                : activeTab === 'Audio'
+                ? ['All', 'Dialogues', 'Funny & Meme SFX', 'Comedy Tracks', 'Cinematic Score', 'Background Music', 'Trailer Hits', 'Upbeat Beat', 'Lo-Fi Chill', 'Electronic', 'Sound Effects']
+                : activeTab === 'Transitions'
+                ? ['All', 'Dissolve', 'Dynamic Zoom', 'Flash & Light', 'Glitch & Warp', 'Slide & Push', '3D & Cube', 'Wipe & Shapes', 'Whip Pan']
+                : activeTab === 'Effects'
+                ? ['All', 'Light Leaks', 'Particles & Dust', 'Film Grain', 'Distortion', 'Atmosphere', 'Prism & Glow', 'Cyber & Neon', 'Retro Halftone']
+                : activeTab === 'Titles'
+                ? ['All', 'Cinematic Openers', 'Neon 3D', 'Lower Thirds', 'Minimal Titles', 'Social & Vlog', 'Retro & Movie']
+                : activeTab === 'VFX'
+                ? ['All', ...VFX_CATEGORIES]
+                : activeTab === 'Templates'
+                ? ['All', 'Cinematic Intro', 'Action Trailer', 'YouTube Vlog', 'Business Promo', 'Social Reels', 'Gaming Esports', 'Travel Nature', 'Comedy & Meme']
+                : activeTab === 'Media'
+                ? ['All', 'Video', 'Photo']
+                : activeTab === 'Stickers'
+                ? ['All', 'Subscribe & Social', 'Badges & Seals', 'Arrows & Pointers', 'Cinema Icons', 'Emoji & Reactions', 'Meme & Comedy Stickers', 'Gaming & Stream']
+                : ['All']
+              ).map((sub) => (
+                <button
+                  key={sub}
+                  type="button"
+                  onClick={() => {
+                    setActiveSubCategory(sub);
+                    setItemRenderLimit(100);
+                    if (activeTab === 'Media') setMediaFilter(sub as any);
+                  }}
+                  className={`px-2 py-1 rounded-lg text-[9.5px] font-bold cursor-pointer ${
+                    activeSubCategory === sub
+                      ? 'bg-teal-400 text-black'
+                      : 'bg-[#18202c] text-zinc-300 hover:text-white'
+                  }`}
+                >
+                  {sub}
+                </button>
+              ))}
             </div>
           </div>
         )}
 
-        {/* COLUMN 3: RIGHT PROPERTIES & CONTEXTUAL LIVE INSPECTOR INSIDE DRAWER */}
+        {/* FLOATING RIGHT INSPECTOR DRAWER (ONLY WHEN OPENED FROM WHEEL INSPECTOR ICON) */}
         {isRightPanelOpen && (
-          <div className="flex-1 md:flex-none md:w-[320px] lg:w-[360px] min-h-0 bg-[#10151d] border-t md:border-t-0 border-[#1f2937] flex flex-col shrink-0 overflow-hidden">
+          <div className="absolute top-0 right-0 bottom-0 z-40 w-[290px] sm:w-[340px] bg-[#10151d]/95 backdrop-blur-md border-l border-[#263142] shadow-2xl flex flex-col shrink-0 overflow-hidden">
             {/* Header Tabs with Collapse Button */}
             <div className="flex items-center justify-between border-b border-[#1f2937] bg-[#0c1017] shrink-0">
               <div className="flex-1 grid grid-cols-6 text-[8px] sm:text-[10px] font-semibold text-center text-zinc-400">
@@ -8491,23 +7049,31 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                 return (
                   <div className="space-y-2.5 text-[10.5px]">
                     {!activeProFeature ? (
-                      <div className="p-4 rounded-xl bg-[#0c1017] border border-[#242e3d] text-center space-y-2.5">
-                        <Wand2 className="w-6 h-6 text-amber-400 mx-auto" />
-                        <p className="font-bold text-zinc-200 text-xs">No Pro Feature Selected Yet</p>
-                        <p className="text-[10px] text-zinc-400 leading-relaxed">
-                          Pick any of the 1,200 Pro Features from the left panel to adjust all 660 fine-tuned engine parts live!
-                        </p>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setActiveTab('ProFX');
-                            setIsLeftPanelOpen(true);
-                            setMobilePanel('tools');
-                          }}
-                          className="w-full min-h-[38px] py-1.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-black font-extrabold text-[11px] cursor-pointer whitespace-nowrap"
-                        >
-                          Browse 1,200 Pro Features
-                        </button>
+                      <div className="space-y-2">
+                        <div className="p-2.5 rounded-xl bg-[#0c1017] border border-[#242e3d] text-center space-y-1">
+                          <Wand2 className="w-5 h-5 text-amber-400 mx-auto" />
+                          <p className="font-bold text-zinc-200 text-[11px]">Select a Pro Feature (1,200 × 660 Parts)</p>
+                        </div>
+                        <div className="space-y-1 max-h-60 overflow-y-auto no-scrollbar">
+                          {filteredProFeatures.slice(0, 30).map((feat) => (
+                            <button
+                              key={feat.id}
+                              type="button"
+                              onClick={() => {
+                                setActiveProFeature(feat);
+                                setSelectedFeatureType('profx');
+                                setProSettingsModuleFilter('all');
+                                setProSettingsSearch('');
+                                setProSettingsPage(0);
+                                logEditorTelemetry('edit_timeline');
+                              }}
+                              className="w-full p-2 rounded-lg bg-[#141a24] hover:border-amber-400 border border-[#242e3d] text-left cursor-pointer flex items-center justify-between gap-2"
+                            >
+                              <span className="font-bold text-[10px] text-zinc-100 truncate">{feat.name}</span>
+                              <span className="text-[8.5px] font-mono text-amber-300 shrink-0">#{feat.index}</span>
+                            </button>
+                          ))}
+                        </div>
                       </div>
                     ) : (
                       <>
@@ -10233,42 +8799,21 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
             </div>
           </div>
         )}
-            </div>
-          </div>
-        )}
 
       {/* =========================================================================
           3. LOWER SINGLE ACTIVE CATEGORY TIMELINE (FOCUSED — NEVER ALL 14 STACKED)
           ========================================================================= */}
       <div className="flex-1 min-h-0 bg-[#090c11] flex flex-col overflow-hidden">
-        {/* Centered Red Capsule Timecode Strip + Single Active Category Indicator */}
-        <div className="h-6 px-2.5 sm:px-3.5 bg-[#0a0e14] border-b border-[#1c2330] grid grid-cols-3 items-center shrink-0 select-none">
-          <div className="flex items-center gap-1.5 min-w-0">
+        {/* Combined Slim Action Toolbar + Red Capsule Timecode */}
+        <div className="h-8 border-b border-[#1f2937] px-2 sm:px-3 flex items-center justify-between bg-[#10151d] text-zinc-400 shrink-0 overflow-x-auto no-scrollbar gap-2">
+          <div className="flex items-center gap-1.5 shrink-0">
             <span
-              className="font-mono font-bold text-[10px] truncate"
+              className="font-mono font-black text-[9.5px] px-1.5 py-0.5 rounded bg-[#161c26] border border-[#242f42] whitespace-nowrap"
               style={{ color: activeWheelCategory.accentHex }}
             >
               T{activeWheelCategory.trackNumber} · {activeWheelCategory.trackName}
             </span>
-          </div>
-          <div className="flex justify-center">
-            <span
-              ref={redBadgeTimeRef}
-              className="px-2.5 py-0.2 rounded-full bg-rose-500 text-white font-mono font-black text-[10.5px] shadow-[0_0_10px_rgba(244,63,94,0.6)] tracking-tight tabular-nums"
-            >
-              {formatMsTimecode(currentTimeSec)}
-            </span>
-          </div>
-          <div className="flex justify-end">
-            <span className="text-zinc-300 font-mono font-bold text-[10px] tabular-nums">
-              {formatMsTimecode(totalDuration)}
-            </span>
-          </div>
-        </div>
 
-        {/* Focused Timeline Action Toolbar */}
-        <div className="h-9 border-b border-[#1f2937] px-2 sm:px-3 flex items-center justify-between bg-[#10151d] text-zinc-400 shrink-0 overflow-x-auto no-scrollbar gap-2">
-          <div className="flex items-center gap-1.5 shrink-0">
             {/* Split Scissors Button */}
             <button
               type="button"
@@ -10276,10 +8821,10 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                 setIsPlaying(false);
                 handleSplitClipAtPlayhead();
               }}
-              className="min-h-[28px] px-2 py-0.5 rounded-lg bg-rose-500/15 hover:bg-rose-500 hover:text-white text-rose-300 border border-rose-500/40 flex items-center gap-1 cursor-pointer font-bold text-[10.5px] transition-colors whitespace-nowrap"
+              className="min-h-[26px] px-2 py-0.5 rounded-lg bg-rose-500/15 hover:bg-rose-500 hover:text-white text-rose-300 border border-rose-500/40 flex items-center gap-1 cursor-pointer font-bold text-[10px] transition-colors whitespace-nowrap"
               title="Split Clip at Playhead"
             >
-              <Scissors className="w-3.5 h-3.5 stroke-[2.5]" />
+              <Scissors className="w-3 h-3 stroke-[2.5]" />
               <span>Split</span>
             </button>
 
@@ -10433,26 +8978,24 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
             <button
               type="button"
               onClick={() => setRotationDeg((r) => (r + 90) % 360)}
-              className="min-h-[28px] min-w-[28px] p-1 rounded-lg hover:bg-[#18202c] hover:text-white flex items-center justify-center cursor-pointer transition-colors"
+              className="min-h-[26px] min-w-[26px] p-1 rounded-lg hover:bg-[#18202c] hover:text-white flex items-center justify-center cursor-pointer transition-colors"
               title="Rotate 90°"
             >
               <RotateCw className="w-3.5 h-3.5" />
             </button>
-
-            <div className="h-4 w-px bg-[#1f2937] mx-0.5" />
-
-            <button
-              type="button"
-              onClick={() => handleSelectWheelCategory(activeWheelCategory, true)}
-              className="min-h-[28px] px-2.5 py-0.5 rounded-lg bg-[#18202c] hover:bg-teal-400 hover:text-black border border-[#2b3648] text-teal-300 font-bold text-[10.5px] flex items-center gap-1 cursor-pointer transition-colors whitespace-nowrap"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>{activeWheelCategory.shortLabel} Tools</span>
-            </button>
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
-            <span className="text-[10px] text-zinc-400 font-mono">Zoom</span>
+            <span
+              ref={redBadgeTimeRef}
+              className="px-2 py-0.5 rounded-full bg-rose-500 text-white font-mono font-black text-[10px] shadow-[0_0_8px_rgba(244,63,94,0.5)] tabular-nums"
+            >
+              {formatMsTimecode(currentTimeSec)}
+            </span>
+            <span className="text-zinc-400 font-mono font-bold text-[9.5px] tabular-nums hidden sm:inline">
+              / {formatMsTimecode(totalDuration)}
+            </span>
+            <span className="text-[9.5px] text-zinc-400 font-mono">Zoom</span>
             <input
               type="range"
               min="0.6"
@@ -10460,7 +9003,7 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
               step="0.1"
               value={timelineZoom}
               onChange={(e) => setTimelineZoom(Number(e.target.value))}
-              className="w-16 sm:w-20 h-1.5 accent-teal-400 cursor-pointer"
+              className="w-14 sm:w-20 h-1.5 accent-teal-400 cursor-pointer"
             />
           </div>
         </div>
