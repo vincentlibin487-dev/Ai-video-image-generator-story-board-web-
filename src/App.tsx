@@ -81,7 +81,11 @@ import { AdminDashboard } from './components/AdminDashboard';
 import { type SavedStoryItem } from './components/SavedStoriesModal';
 import { VideoEditorStudio } from './components/VideoEditorStudio';
 import { TermsAndConditionsModal, hasAcceptedTerms } from './components/TermsAndConditionsModal';
-import { isEmbeddedWebView } from './lib/deviceEnvironment';
+import {
+  isEmbeddedWebView,
+  tryLockLandscapeOrientation,
+  unlockScreenOrientation,
+} from './lib/deviceEnvironment';
 import {
   initGuestSession,
   recordGenerationActivity,
@@ -1165,6 +1169,7 @@ export default function App() {
           lang={lang}
           currentUser={currentUser}
           onBackToStoryboard={() => {
+            unlockScreenOrientation();
             trackStepChange('input');
             setActiveStep('input');
           }}
@@ -3047,6 +3052,7 @@ ${imgPromptText}`;
           <button
             type="button"
             onClick={() => {
+              void tryLockLandscapeOrientation();
               setShowAdminPanel(false);
               trackStepChange('editor');
               setActiveStep('editor');

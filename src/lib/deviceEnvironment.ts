@@ -111,3 +111,38 @@ export async function shareMediaBlobToDevice(
   const ok = triggerLocalBlobDownload(blobUrl, filename);
   return ok ? 'downloaded' : 'failed';
 }
+
+/**
+ * Attempts native Screen Orientation API lock to landscape (works in fullscreen/PWA/WebView).
+ * Falls back cleanly to false when browser/WebView restricts programmatic orientation lock.
+ */
+export async function tryLockLandscapeOrientation(): Promise<boolean> {
+  if (typeof window === 'undefined') return false;
+  try {
+    const scr = window.screen as Screen & {
+      orientation?: {
+        lock?: (orientation: 'landscape' | 'landscape-primary' | 'portrait' | 'any') => Promise<void>;
+      };
+    };
+    if (scr?.orientation && typeof scr.orientation.lock === 'function') {
+      await scr.orientation.lock('landscape');
+      return true;
+    }
+  } catch {
+    // Expected when browser tab is not fullscreen or WebView disables screen.orientation.lock
+  }
+  return false;
+}
+
+export function unlockScreenOrientation(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    const scr = window.screen as Screen & {
+      orientation?: { unlock?: () => void };
+    };
+    if (scr?.orientation && typeof scr.orientation.unlock === 'function') {
+      scr.orientation.unlock();
+    }
+  } catch {}
+}
+
