@@ -240,7 +240,8 @@ async function renderMixedExportAudio(
   totalWallSec: number,
   speedFactor: number,
   volumePct: number,
-  isMuted: boolean
+  isMuted: boolean,
+  bgAudioUrl?: string
 ): Promise<{
   buffer: AudioBuffer;
   sampleRate: number;
@@ -251,7 +252,7 @@ async function renderMixedExportAudio(
   if (typeof AudioEncoder === 'undefined' || typeof OfflineAudioContext === 'undefined') return null;
 
   const videoClips = clips.filter((c) => c.type === 'video' && c.url);
-  if (videoClips.length === 0) return null;
+  if (videoClips.length === 0 && !bgAudioUrl) return null;
 
   let chosenAudioConfig: AudioEncoderConfig | null = null;
   for (const sr of [48000, 44100]) {
@@ -313,6 +314,26 @@ async function renderMixedExportAudio(
     }
   }
 
+  // Mix optional local background music / voiceover track if provided
+  if (bgAudioUrl) {
+    try {
+      const bgResp = await fetch(bgAudioUrl);
+      const bgArr = await bgResp.arrayBuffer();
+      const bgDecoded = await offlineCtx.decodeAudioData(bgArr);
+      if (bgDecoded && bgDecoded.duration > 0.02) {
+        hasAnyAudioStream = true;
+        const bgSrc = offlineCtx.createBufferSource();
+        bgSrc.buffer = bgDecoded;
+        bgSrc.loop = totalWallSec > bgDecoded.duration;
+        const bgGain = offlineCtx.createGain();
+        bgGain.gain.value = Math.max(0, Math.min(1, volumePct / 100));
+        bgSrc.connect(bgGain);
+        bgGain.connect(offlineCtx.destination);
+        bgSrc.start(0, 0, totalWallSec);
+      }
+    } catch {}
+  }
+
   if (!hasAnyAudioStream) return null;
 
   const buffer = await offlineCtx.startRendering();
@@ -334,6 +355,7 @@ export interface RunWebCodecsMp4ExportParams {
   speedFactor: number;
   isReversePlayback: boolean;
   clips: ExportAudioSourceClip[];
+  bgAudioUrl?: string;
   volumePct: number;
   isMuted: boolean;
   prepareFrameAtTime: (tPos: number) => Promise<void>;
@@ -358,6 +380,7 @@ export async function runWebCodecsMp4Export(params: RunWebCodecsMp4ExportParams)
     speedFactor,
     isReversePlayback,
     clips,
+    bgAudioUrl,
     volumePct,
     isMuted,
     prepareFrameAtTime,
@@ -375,7 +398,8 @@ export async function runWebCodecsMp4Export(params: RunWebCodecsMp4ExportParams)
     wallDurationSec,
     speedFactor,
     volumePct,
-    isMuted || isReversePlayback
+    isMuted || isReversePlayback,
+    bgAudioUrl
   ).catch(() => null);
 
   if (shouldCancel()) return null;

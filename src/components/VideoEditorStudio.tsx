@@ -77,6 +77,8 @@ import {
   Crosshair,
   Target,
   Move,
+  ChevronsUpDown,
+  ShieldCheck,
 } from 'lucide-react';
 import type { User as FirebaseUser } from 'firebase/auth';
 import type { AppLang } from '../lib/i18n';
@@ -87,7 +89,19 @@ import {
   saveLocalMediaRecord,
   updateLocalMediaMetadata,
 } from '../lib/localMediaDb';
+import {
+  canShareMediaFile,
+  safeSetLocalStorage,
+  shareMediaBlobToDevice,
+  triggerLocalBlobDownload,
+} from '../lib/deviceEnvironment';
 import { EditorBottomVideoAdBar, ExportModalVideoAdPlayer } from './AdsterraAds';
+import {
+  CircularToolWheel,
+  WHEEL_CATEGORIES,
+  type WheelCategoryItem,
+  type EditorToolTab,
+} from './CircularToolWheel';
 import {
   FILTERS_LIST,
   AUDIO_LIST,
@@ -157,6 +171,7 @@ export interface VideoEditorStudioProps {
   lang: AppLang;
   currentUser?: FirebaseUser | null;
   onBackToStoryboard: () => void;
+  onOpenTerms?: () => void;
 }
 
 export type AspectRatioType = '16:9' | '9:16' | '1:1' | '4:5' | '21:9' | '4:3';
@@ -861,6 +876,7 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
   lang,
   currentUser = null,
   onBackToStoryboard,
+  onOpenTerms,
 }) => {
   const isMl = lang === 'ml';
 
@@ -871,8 +887,9 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
 
   // =========================================================================
   // VIEW STATE: 'welcome' | 'new_project_setup' | 'editor'
+  // Opens directly in 16:9 Dual-Screen Editor when launched from Edit button
   // =========================================================================
-  const [studioView, setStudioView] = useState<'welcome' | 'new_project_setup' | 'editor'>('welcome');
+  const [studioView, setStudioView] = useState<'welcome' | 'new_project_setup' | 'editor'>('editor');
 
   // Active Project ID for editing
   const [currentEditingProjectId, setCurrentEditingProjectId] = useState<string | null>(null);
@@ -888,36 +905,24 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
     }
   });
 
-  // Video Project Configuration
+  // Video Project Configuration (Defaults to 16:9 Widescreen + Dual-Screen Preview)
   const [selectedAspectRatio, setSelectedAspectRatio] = useState<AspectRatioType>('16:9');
   const [projectName, setProjectName] = useState<string>('My Project 01');
   const [projectResolution, setProjectResolution] = useState<'4K' | '1080p' | '720p'>('1080p');
   const [setupSelectedMediaIds, setSetupSelectedMediaIds] = useState<string[]>([]);
 
   // =========================================================================
-  // COLLAPSIBLE PANELS & DYNAMIC SCREEN RESIZING
-  // Left and Right panels can collapse/auto-hide so the video player expands!
+  // COLLAPSIBLE TOOL DRAWER, INSPECTOR, CIRCULAR WHEEL & TIMELINE SYNC
   // =========================================================================
-  const [isLeftPanelOpen, setIsLeftPanelOpen] = useState<boolean>(true);
-  const [isRightPanelOpen, setIsRightPanelOpen] = useState<boolean>(true);
-  const [mobilePanel, setMobilePanel] = useState<'tools' | 'timeline' | 'inspector'>('tools');
+  const [isLeftPanelOpen, setIsLeftPanelOpen] = useState<boolean>(false);
+  const [isRightPanelOpen, setIsRightPanelOpen] = useState<boolean>(false);
+  const [mobilePanel, setMobilePanel] = useState<'tools' | 'timeline' | 'inspector'>('timeline');
+  const [isDualScreenPreview, setIsDualScreenPreview] = useState<boolean>(true);
+  const [isTimelineExpanded, setIsTimelineExpanded] = useState<boolean>(false);
+  const [selectedWheelCategoryId, setSelectedWheelCategoryId] = useState<string>('video');
 
-  // ACTIVE TOP TAB IN LEFT COLUMN (Studio Mode):
-  const [activeTab, setActiveTab] = useState<
-    | 'Media'
-    | 'Audio'
-    | 'Titles'
-    | 'VFX'
-    | 'Transitions'
-    | 'Effects'
-    | 'Filters'
-    | 'Stickers'
-    | 'Templates'
-    | 'ProFX'
-    | 'Chroma'
-    | 'Split'
-    | 'Trailer'
-  >('Filters');
+  // ACTIVE TOOL CATEGORY TAB (Synced with Circular Tool Wheel)
+  const [activeTab, setActiveTab] = useState<EditorToolTab>('Media');
 
   // Sub-category filter and search query inside the active column
   const [activeSubCategory, setActiveSubCategory] = useState<string>('All');
@@ -930,10 +935,12 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
   const [selectedMediaIds, setSelectedMediaIds] = useState<string[]>([]);
   const multiFileInputRef = useRef<HTMLInputElement | null>(null);
   const setupFileInputRef = useRef<HTMLInputElement | null>(null);
+  const userAudioInputRef = useRef<HTMLInputElement | null>(null);
   const chromaBgInputRef = useRef<HTMLInputElement | null>(null);
   const splitLeftInputRef = useRef<HTMLInputElement | null>(null);
   const splitRightInputRef = useRef<HTMLInputElement | null>(null);
   const trailerCardInputRef = useRef<HTMLInputElement | null>(null);
+  const bgMusicAudioElRef = useRef<HTMLAudioElement | null>(null);
 
   // Active Template / Background
   const [selectedTemplate, setSelectedTemplate] = useState<TemplateItem>(TEMPLATES_LIST[0]);
@@ -941,9 +948,11 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
   // Active Filter Applied
   const [activeFilter, setActiveFilter] = useState<FilterItem>(FILTERS_LIST[1]); // Teal & Orange
 
-  // Active Audio Score & Live Preview Synthesizer
+  // Active Audio Score, User Local Device Audio Library & Live Preview Synthesizer
+  const [userAudioLibrary, setUserAudioLibrary] = useState<AudioItem[]>([]);
   const [activeAudio, setActiveAudio] = useState<AudioItem>(AUDIO_LIST[0]);
   const [previewingAudioId, setPreviewingAudioId] = useState<string | null>(null);
+  const [exportShareNotice, setExportShareNotice] = useState<string | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const audioPreviewTimerRef = useRef<number | null>(null);
 
@@ -1000,6 +1009,169 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
   // Timeline Clips
   const [timelineClips, setTimelineClips] = useState<TimelineClip[]>([]);
   const [activeClipIndex, setActiveClipIndex] = useState<number>(0);
+  const [draggedClipIndex, setDraggedClipIndex] = useState<number | null>(null);
+  const [dragOverClipIndex, setDragOverClipIndex] = useState<number | null>(null);
+  const [activeDialogue, setActiveDialogue] = useState<{ id: string; speaker: string; text: string; durationSec: number } | null>(null);
+  const [dialogueSpeakerInput, setDialogueSpeakerInput] = useState<string>('Hero');
+  const [dialogueTextInput, setDialogueTextInput] = useState<string>('Mass Cinema Dialogue Line');
+  const [dialogueDurInput, setDialogueDurInput] = useState<number>(6);
+  const [activeTemplate, setActiveTemplate] = useState<{ id: string; name: string } | null>(null);
+  const trackHeadersRef = useRef<HTMLDivElement | null>(null);
+  const trackRowRefs = useRef<Record<number, HTMLDivElement | null>>({});
+
+  // Undo / Redo Snapshot Stack
+  interface EditorUndoSnapshot {
+    clips: TimelineClip[];
+    filterId: string;
+    audioId: string;
+    showTitleOverlay: boolean;
+    movieTitle: string;
+    subtitle: string;
+    stickers: TimelineStickerLayer[];
+    vfx: TimelineVfxLayer[];
+    dialogue: { id: string; speaker: string; text: string; durationSec: number } | null;
+    chroma: ChromaKeyConfig;
+    split: SplitScreenConfig;
+  }
+  const [undoStack, setUndoStack] = useState<EditorUndoSnapshot[]>([]);
+  const [redoStack, setRedoStack] = useState<EditorUndoSnapshot[]>([]);
+
+  const captureSnapshot = (): EditorUndoSnapshot => ({
+    clips: timelineClips,
+    filterId: activeFilter.id,
+    audioId: activeAudio.id,
+    showTitleOverlay,
+    movieTitle,
+    subtitle,
+    stickers: activeStickers,
+    vfx: vfxLayers,
+    dialogue: activeDialogue,
+    chroma: chromaConfig,
+    split: splitScreenConfig,
+  });
+
+  const applySnapshot = (snap: EditorUndoSnapshot) => {
+    setTimelineClips(snap.clips);
+    const f = FILTERS_LIST.find((x) => x.id === snap.filterId);
+    if (f) setActiveFilter(f);
+    const a = AUDIO_LIST.find((x) => x.id === snap.audioId);
+    if (a) setActiveAudio(a);
+    setShowTitleOverlay(snap.showTitleOverlay);
+    setMovieTitle(snap.movieTitle);
+    setSubtitle(snap.subtitle);
+    setActiveStickers(snap.stickers);
+    setVfxLayers(snap.vfx);
+    setActiveDialogue(snap.dialogue);
+    setChromaConfig(snap.chroma);
+    setSplitScreenConfig(snap.split);
+  };
+
+  const pushUndoCheckpoint = () => {
+    const snap = captureSnapshot();
+    setUndoStack((prev) => [...prev.slice(-19), snap]);
+    setRedoStack([]);
+  };
+
+  const handleUndoAction = () => {
+    if (undoStack.length === 0) return;
+    const prevSnap = undoStack[undoStack.length - 1];
+    const currentSnap = captureSnapshot();
+    setUndoStack((prev) => prev.slice(0, -1));
+    setRedoStack((prev) => [...prev.slice(-19), currentSnap]);
+    applySnapshot(prevSnap);
+  };
+
+  const handleRedoAction = () => {
+    if (redoStack.length === 0) return;
+    const nextSnap = redoStack[redoStack.length - 1];
+    const currentSnap = captureSnapshot();
+    setRedoStack((prev) => prev.slice(0, -1));
+    setUndoStack((prev) => [...prev.slice(-19), currentSnap]);
+    applySnapshot(nextSnap);
+  };
+
+  const handleSelectWheelCategory = (category: WheelCategoryItem, openDrawer = false) => {
+    setSelectedWheelCategoryId(category.id);
+    setActiveTab(category.tab);
+    setActiveSubCategory(category.subCategory || 'All');
+    setSearchQuery('');
+    setItemRenderLimit(100);
+    if (openDrawer) {
+      setIsLeftPanelOpen(true);
+      setMobilePanel('tools');
+    }
+    if (category.trackNumber > 0) {
+      window.requestAnimationFrame(() => {
+        const laneEl = trackRowRefs.current[category.trackNumber];
+        const scroller = timelineContainerRef.current;
+        if (laneEl && scroller) {
+          const targetTop = Math.max(0, laneEl.offsetTop - 28);
+          scroller.scrollTo({ top: targetTop, behavior: 'smooth' });
+          if (trackHeadersRef.current) {
+            trackHeadersRef.current.scrollTop = targetTop;
+          }
+        }
+      });
+    }
+  };
+
+  const syncWheelToTrack = (wheelId: string, openDrawer = false) => {
+    const found = WHEEL_CATEGORIES.find((c) => c.id === wheelId);
+    if (found) {
+      handleSelectWheelCategory(found, openDrawer);
+    }
+  };
+
+  // Reorder / Move clip left or right smoothly along the timeline
+  const handleMoveClip = (fromIndex: number, direction: 'left' | 'right', e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    const targetIndex = direction === 'left' ? fromIndex - 1 : fromIndex + 1;
+    if (targetIndex < 0 || targetIndex >= timelineClips.length) return;
+    pushUndoCheckpoint();
+    const updated = [...timelineClips];
+    const [moved] = updated.splice(fromIndex, 1);
+    updated.splice(targetIndex, 0, moved);
+    setTimelineClips(updated);
+    setActiveClipIndex(targetIndex);
+    saveCurrentProjectToStorage(updated);
+  };
+
+  // Duplicate clip at index and insert immediately adjacent
+  const handleDuplicateClipAt = (index: number, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    const clipToDup = timelineClips[index];
+    if (!clipToDup) return;
+    pushUndoCheckpoint();
+    const duplicated: TimelineClip = {
+      ...clipToDup,
+      id: `clip_${Date.now()}_dup_${clipToDup.id}`,
+      title: `${clipToDup.title} (Copy)`,
+    };
+    const updated = [...timelineClips];
+    updated.splice(index + 1, 0, duplicated);
+    setTimelineClips(updated);
+    setActiveClipIndex(index + 1);
+    saveCurrentProjectToStorage(updated);
+  };
+
+  // Reorder clips via smooth HTML5 drag and drop
+  const handleDropClipReorder = (targetIndex: number, e?: React.DragEvent) => {
+    if (e) e.preventDefault();
+    if (draggedClipIndex === null || draggedClipIndex === targetIndex) {
+      setDraggedClipIndex(null);
+      setDragOverClipIndex(null);
+      return;
+    }
+    pushUndoCheckpoint();
+    const updated = [...timelineClips];
+    const [moved] = updated.splice(draggedClipIndex, 1);
+    updated.splice(targetIndex, 0, moved);
+    setTimelineClips(updated);
+    setActiveClipIndex(targetIndex);
+    setDraggedClipIndex(null);
+    setDragOverClipIndex(null);
+    saveCurrentProjectToStorage(updated);
+  };
 
   // Transitions between adjacent clips (Name + Full Transition Object for live canvas rendering)
   const [activeTransitionBetween, setActiveTransitionBetween] = useState<number | null>(null);
@@ -1051,6 +1223,7 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
   const playheadLineRef = useRef<HTMLDivElement | null>(null);
   const playerRangeRef = useRef<HTMLInputElement | null>(null);
   const playerTimecodeRef = useRef<HTMLSpanElement | null>(null);
+  const redBadgeTimeRef = useRef<HTMLSpanElement | null>(null);
   const pxPerSecRef = useRef<number>(pxPerSec);
   pxPerSecRef.current = pxPerSec;
 
@@ -1324,6 +1497,7 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
     let active = true;
     void getAllLocalMediaRecords().then((records) => {
       if (!active || records.length === 0) return;
+      const hydratedUserAudio: AudioItem[] = [];
       records.forEach((rec) => {
         if (!localMediaUrlMapRef.current.has(rec.id)) {
           try {
@@ -1331,7 +1505,28 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
             localMediaUrlMapRef.current.set(rec.id, freshUrl);
           } catch {}
         }
+        if (rec.mediaType === 'audio') {
+          const freshAudioUrl = localMediaUrlMapRef.current.get(rec.id);
+          if (freshAudioUrl) {
+            hydratedUserAudio.push({
+              id: rec.id,
+              title: rec.name.replace(/\.[^/.]+$/, ''),
+              category: 'Device Audio',
+              duration: rec.duration || '00:15',
+              durationSec: rec.durationSec || 15,
+              bpm: 100,
+              mood: 'Local File',
+              description: 'Private audio/music stored locally on this device.',
+              synthPreset: 'cinematic',
+              url: freshAudioUrl,
+            });
+          }
+        }
       });
+
+      if (hydratedUserAudio.length > 0) {
+        setUserAudioLibrary(hydratedUserAudio);
+      }
 
       // Refresh stale blob URLs in saved projects so reopened projects play seamlessly
       setUserProjects((prev) =>
@@ -1359,11 +1554,18 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
 
     return () => {
       active = false;
+      localMediaUrlMapRef.current.forEach((blobUrl) => {
+        try {
+          if (blobUrl.startsWith('blob:')) URL.revokeObjectURL(blobUrl);
+        } catch {}
+      });
+      localMediaUrlMapRef.current.clear();
     };
   }, []);
 
-  // Canvas Ref
+  // Canvas Refs (Player + Dual-Screen Filter Preview)
   const playerCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const filterPreviewCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
   // Dynamic Canvas Dimensions & Aspect ratio styling based on selected format
   const canvasDims = useMemo(() => {
@@ -1394,7 +1596,41 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
     return `${String(hrs).padStart(2, '0')}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}:${String(frames).padStart(2, '0')}`;
   };
 
-  // Save current project state helper (auto-saves to Home page list)
+  const formatMsTimecode = (sec: number) => {
+    const s = Math.max(0, sec);
+    const mins = Math.floor(s / 60);
+    const secs = Math.floor(s % 60);
+    const ms = Math.floor((s % 1) * 1000);
+    return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}.${String(ms).padStart(3, '0')}`;
+  };
+
+  const persistProjectsSafely = (list: SavedUserProject[]) => {
+    const sanitizeThumb = (val?: string) => {
+      if (!val || val.startsWith('blob:')) return '';
+      if (val.length > 48_000) return '';
+      return val;
+    };
+    const compact = list.slice(0, 24).map((p) => ({
+      ...p,
+      thumbnailUrl: sanitizeThumb(p.thumbnailUrl),
+      clips: (p.clips || []).map((c) => ({
+        ...c,
+        thumbnailUrl: sanitizeThumb(c.thumbnailUrl),
+        url: c.url && c.url.startsWith('data:') && c.url.length > 48_000 ? '' : c.url,
+      })),
+    }));
+    if (!safeSetLocalStorage('cinestudio_user_projects', JSON.stringify(compact))) {
+      // Fallback if localStorage quota is nearly full: strip thumbnails and keep latest 12 projects
+      const minimal = compact.slice(0, 12).map((p) => ({
+        ...p,
+        thumbnailUrl: '',
+        clips: p.clips.map((c) => ({ ...c, thumbnailUrl: '' })),
+      }));
+      safeSetLocalStorage('cinestudio_user_projects', JSON.stringify(minimal));
+    }
+  };
+
+  // Save current project state helper (auto-saves to Home page list without exceeding storage quota)
   const saveCurrentProjectToStorage = (
     overrideClips?: TimelineClip[],
     overrideName?: string,
@@ -1414,7 +1650,7 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
     if (!thumb && studioView === 'editor' && activeClips.length > 0) {
       try {
         if (playerCanvasRef.current) {
-          thumb = playerCanvasRef.current.toDataURL('image/jpeg', 0.72);
+          thumb = playerCanvasRef.current.toDataURL('image/jpeg', 0.45);
         }
       } catch {}
     }
@@ -1439,10 +1675,8 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
 
     setUserProjects((prev) => {
       const filtered = prev.filter((p) => p.id !== projId);
-      const updatedList = [updatedProj, ...filtered];
-      try {
-        localStorage.setItem('cinestudio_user_projects', JSON.stringify(updatedList));
-      } catch {}
+      const updatedList = [updatedProj, ...filtered].slice(0, 24);
+      persistProjectsSafely(updatedList);
       return updatedList;
     });
   };
@@ -1452,9 +1686,7 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
     if (e) e.stopPropagation();
     setUserProjects((prev) => {
       const updated = prev.filter((p) => p.id !== id);
-      try {
-        localStorage.setItem('cinestudio_user_projects', JSON.stringify(updated));
-      } catch {}
+      persistProjectsSafely(updated);
       return updated;
     });
   };
@@ -1506,7 +1738,8 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
   const handleOpenSavedProject = (proj: SavedUserProject) => {
     setCurrentEditingProjectId(proj.id);
     setProjectName(proj.name);
-    setSelectedAspectRatio(proj.aspectRatio);
+    setSelectedAspectRatio(proj.aspectRatio || '16:9');
+    setIsDualScreenPreview(true);
     setProjectResolution(proj.resolution as any);
     setMovieTitle(proj.movieTitle || '');
     setSubtitle(proj.subtitle || '');
@@ -1540,8 +1773,11 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
     const matchedFlt = FILTERS_LIST.find((f) => f.id === proj.activeFilterId);
     if (matchedFlt) setActiveFilter(matchedFlt);
 
-    const matchedAud = AUDIO_LIST.find((a) => a.id === proj.activeAudioId);
-    if (matchedAud) setActiveAudio(matchedAud);
+    const matchedAud = [...userAudioLibrary, ...AUDIO_LIST].find((a) => a.id === proj.activeAudioId);
+    if (matchedAud) {
+      const freshAudioUrl = localMediaUrlMapRef.current.get(matchedAud.id);
+      setActiveAudio(freshAudioUrl ? { ...matchedAud, url: freshAudioUrl } : matchedAud);
+    }
 
     setStudioView('editor');
   };
@@ -1578,6 +1814,7 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
     const targetClip = timelineClips[targetIndex];
     if (!targetClip) return;
 
+    pushUndoCheckpoint();
     const splitPoint = Math.max(0.2, Math.min(targetClip.durationSec - 0.2, offsetInClip));
     const duration1 = Number(splitPoint.toFixed(2));
     const duration2 = Number((targetClip.durationSec - splitPoint).toFixed(2));
@@ -1721,6 +1958,11 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
       window.clearTimeout(audioPreviewTimerRef.current);
       audioPreviewTimerRef.current = null;
     }
+    if (bgMusicAudioElRef.current) {
+      try {
+        bgMusicAudioElRef.current.pause();
+      } catch {}
+    }
     setPreviewingAudioId(null);
   };
 
@@ -1731,6 +1973,30 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
     }
     stopAudioPreview();
     if (typeof window === 'undefined') return;
+
+    // Play real user-picked local audio file cleanly inside browser or WebView
+    if (item.url) {
+      try {
+        const audioEl = bgMusicAudioElRef.current || new Audio();
+        bgMusicAudioElRef.current = audioEl;
+        audioEl.src = item.url;
+        audioEl.currentTime = 0;
+        audioEl.muted = isMuted;
+        audioEl.volume = Math.max(0, Math.min(1, volume / 100));
+        void audioEl.play().catch(() => {});
+        setPreviewingAudioId(item.id);
+        audioPreviewTimerRef.current = window.setTimeout(() => {
+          if (!isPlayingRef.current) {
+            try {
+              audioEl.pause();
+            } catch {}
+          }
+          setPreviewingAudioId(null);
+        }, Math.min(8000, Math.max(2500, (item.durationSec || 6) * 1000)));
+      } catch {}
+      return;
+    }
+
     try {
       const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
       if (!AudioCtx) return;
@@ -1882,6 +2148,40 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
       }, previewMs);
     } catch {}
   };
+
+  // Sync user-picked local Audio / Music track cleanly with timeline play/pause & volume
+  useEffect(() => {
+    const audioEl = bgMusicAudioElRef.current;
+    if (!activeAudio?.url) {
+      if (audioEl) {
+        try {
+          audioEl.pause();
+        } catch {}
+      }
+      return;
+    }
+    const targetEl = audioEl || new Audio();
+    bgMusicAudioElRef.current = targetEl;
+    if (targetEl.src !== activeAudio.url) {
+      targetEl.src = activeAudio.url;
+      targetEl.loop = true;
+    }
+    targetEl.muted = isMuted;
+    targetEl.volume = Math.max(0, Math.min(1, volume / 100));
+
+    if (isPlaying) {
+      try {
+        if (Math.abs((targetEl.currentTime || 0) - currentTimeRef.current) > 0.45 && isFinite(targetEl.duration) && targetEl.duration > 0) {
+          targetEl.currentTime = currentTimeRef.current % targetEl.duration;
+        }
+        void targetEl.play().catch(() => {});
+      } catch {}
+    } else if (previewingAudioId !== activeAudio.id) {
+      try {
+        targetEl.pause();
+      } catch {}
+    }
+  }, [isPlaying, activeAudio.id, activeAudio.url, volume, isMuted, previewingAudioId]);
 
   // Add Cinema Action VFX Item directly to VFX Timeline Track & open Right Adjust Inspector + On-Screen Route Handles
   const handleAddVfxLayer = (vfx: CinemaVfxItem) => {
@@ -2218,6 +2518,9 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
       }
       if (playerTimecodeRef.current) {
         playerTimecodeRef.current.textContent = formatTimecode(tSec);
+      }
+      if (redBadgeTimeRef.current) {
+        redBadgeTimeRef.current.textContent = formatMsTimecode(tSec);
       }
     };
 
@@ -2944,6 +3247,41 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
         });
       }
 
+      // Dual-Screen Mode: Render Screen 1 (Active Filter & Effect Preview)
+      if (filterPreviewCanvasRef.current) {
+        const fCanvas = filterPreviewCanvasRef.current;
+        const fCtx = fCanvas.getContext('2d');
+        if (fCtx) {
+          fCtx.clearRect(0, 0, fCanvas.width, fCanvas.height);
+          fCtx.save();
+          fCtx.filter = ctx.filter;
+          if (activeClip) {
+            const mEl = getOrCreateMedia(activeClip);
+            if (mEl instanceof HTMLVideoElement && mEl.readyState >= 2) {
+              const vidAspect = mEl.videoWidth / mEl.videoHeight;
+              const cAspect = fCanvas.width / fCanvas.height;
+              let dW = fCanvas.width;
+              let dH = fCanvas.height;
+              if (vidAspect > cAspect) dW = fCanvas.height * vidAspect;
+              else dH = fCanvas.width / vidAspect;
+              fCtx.drawImage(mEl, (fCanvas.width - dW) / 2, (fCanvas.height - dH) / 2, dW, dH);
+            } else if (mEl instanceof HTMLImageElement && mEl.complete && mEl.naturalWidth > 0) {
+              const imgAspect = mEl.naturalWidth / mEl.naturalHeight;
+              const cAspect = fCanvas.width / fCanvas.height;
+              let dW = fCanvas.width;
+              let dH = fCanvas.height;
+              if (imgAspect > cAspect) dW = fCanvas.height * imgAspect;
+              else dH = fCanvas.width / imgAspect;
+              fCtx.drawImage(mEl, (fCanvas.width - dW) / 2, (fCanvas.height - dH) / 2, dW, dH);
+            }
+          } else {
+            fCtx.fillStyle = '#0a0e17';
+            fCtx.fillRect(0, 0, fCanvas.width, fCanvas.height);
+          }
+          fCtx.restore();
+        }
+      }
+
       animId = requestAnimationFrame(render);
     };
 
@@ -2960,14 +3298,182 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
     };
   }, [studioView, canvasDims]);
 
-  // Handle User Device Multi-file Upload (Saved inside device browser IndexedDB!)
+  // Sequential video probe helper so uploading multiple large phone videos never overwhelms WebView decoders
+  const probeVideoMetadataSafe = (id: string, url: string) =>
+    new Promise<void>((resolve) => {
+      const probeVid = document.createElement('video');
+      probeVid.preload = 'metadata';
+      probeVid.muted = true;
+      probeVid.playsInline = true;
+      let probeCleaned = false;
+      const cleanupProbe = () => {
+        if (probeCleaned) return;
+        probeCleaned = true;
+        try {
+          probeVid.onloadedmetadata = null;
+          probeVid.onseeked = null;
+          probeVid.onerror = null;
+          probeVid.pause();
+          probeVid.removeAttribute('src');
+          probeVid.load();
+        } catch {}
+        resolve();
+      };
+      const safetyTimer = window.setTimeout(cleanupProbe, 6500);
+      probeVid.src = url;
+      probeVid.load();
+      probeVid.onloadedmetadata = () => {
+        const realDur = isFinite(probeVid.duration) && probeVid.duration > 0 ? Number(probeVid.duration.toFixed(1)) : 10.0;
+        const mins = Math.floor(realDur / 60);
+        const secs = Math.floor(realDur % 60);
+        const fmt = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+        try {
+          probeVid.currentTime = Math.min(0.4, realDur / 3);
+        } catch {}
+
+        void updateLocalMediaMetadata(id, { duration: fmt, durationSec: realDur });
+
+        setMediaGallery((prev) =>
+          prev.map((m) => (m.id === id ? { ...m, durationSec: realDur, duration: fmt } : m))
+        );
+        setTimelineClips((prev) =>
+          prev.map((c) =>
+            c.url === url && !c.id.startsWith('clip_split_') && !c.id.startsWith('clip_trim_') && c.sourceStartSec === undefined
+              ? { ...c, durationSec: realDur }
+              : c
+          )
+        );
+      };
+      probeVid.onseeked = () => {
+        try {
+          const c = document.createElement('canvas');
+          c.width = 160;
+          c.height = 90;
+          const cctx = c.getContext('2d');
+          if (cctx && probeVid.videoWidth > 0) {
+            cctx.drawImage(probeVid, 0, 0, c.width, c.height);
+            const thumb = c.toDataURL('image/jpeg', 0.45);
+            void updateLocalMediaMetadata(id, { thumbnailUrl: thumb });
+            setMediaGallery((prev) =>
+              prev.map((m) => (m.id === id ? { ...m, thumbnailUrl: thumb } : m))
+            );
+            setTimelineClips((prev) =>
+              prev.map((cl) => (cl.url === url ? { ...cl, thumbnailUrl: thumb } : cl))
+            );
+          }
+        } catch {}
+        window.clearTimeout(safetyTimer);
+        cleanupProbe();
+      };
+      probeVid.onerror = () => {
+        window.clearTimeout(safetyTimer);
+        cleanupProbe();
+      };
+    });
+
+  // Handle User Device Multi-file Upload (Videos, Photos & Audio saved locally on device!)
+  const handleUserAudioUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    const addedItems: AudioItem[] = [];
+    Array.from(files).forEach((file, idx) => {
+      const url = URL.createObjectURL(file);
+      const id = `user_audio_${Date.now()}_${idx}`;
+      localMediaUrlMapRef.current.set(id, url);
+      const cleanTitle = file.name.replace(/\.[^/.]+$/, '');
+      const audioItem: AudioItem = {
+        id,
+        title: cleanTitle,
+        category: 'Device Audio',
+        duration: '00:15',
+        durationSec: 15,
+        bpm: 100,
+        mood: 'Local File',
+        description: 'Private audio/music stored locally on this device.',
+        synthPreset: 'cinematic',
+        url,
+      };
+      addedItems.push(audioItem);
+
+      void saveLocalMediaRecord({
+        id,
+        file,
+        name: file.name,
+        mimeType: file.type || 'audio/mpeg',
+        mediaType: 'audio',
+        duration: audioItem.duration,
+        durationSec: audioItem.durationSec,
+        createdAt: Date.now(),
+      });
+
+      const probeAud = new Audio();
+      probeAud.preload = 'metadata';
+      probeAud.src = url;
+      probeAud.onloadedmetadata = () => {
+        if (isFinite(probeAud.duration) && probeAud.duration > 0) {
+          const realDur = Number(probeAud.duration.toFixed(1));
+          const fmt = `${String(Math.floor(realDur / 60)).padStart(2, '0')}:${String(Math.floor(realDur % 60)).padStart(2, '0')}`;
+          void updateLocalMediaMetadata(id, { duration: fmt, durationSec: realDur });
+          setUserAudioLibrary((prev) =>
+            prev.map((a) => (a.id === id ? { ...a, duration: fmt, durationSec: realDur } : a))
+          );
+          setActiveAudio((cur) => (cur.id === id ? { ...cur, duration: fmt, durationSec: realDur } : cur));
+        }
+      };
+    });
+
+    if (addedItems.length > 0) {
+      setUserAudioLibrary((prev) => [...addedItems, ...prev]);
+      setActiveAudio(addedItems[0]);
+      setSelectedFeatureType('audio');
+      setActiveInspectorTab('audio');
+      setActiveTab('Audio');
+      setIsLeftPanelOpen(true);
+    }
+    e.target.value = '';
+  };
+
   const handleUserDeviceUpload = (e: React.ChangeEvent<HTMLInputElement>, isSetup = false) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
     const newMediaItems: MediaItem[] = [];
+    const videosToProbe: Array<{ id: string; url: string }> = [];
 
     Array.from(files).forEach((file, idx) => {
+      // Handle audio files gracefully if selected via general media picker on Android/WebView
+      if (file.type.startsWith('audio/') || /\.(mp3|wav|m4a|aac|ogg|flac)$/i.test(file.name)) {
+        const audioUrl = URL.createObjectURL(file);
+        const audioId = `user_audio_${Date.now()}_${idx}`;
+        localMediaUrlMapRef.current.set(audioId, audioUrl);
+        const audioItem: AudioItem = {
+          id: audioId,
+          title: file.name.replace(/\.[^/.]+$/, ''),
+          category: 'Device Audio',
+          duration: '00:15',
+          durationSec: 15,
+          bpm: 100,
+          mood: 'Local File',
+          description: 'Private audio/music stored locally on this device.',
+          synthPreset: 'cinematic',
+          url: audioUrl,
+        };
+        void saveLocalMediaRecord({
+          id: audioId,
+          file,
+          name: file.name,
+          mimeType: file.type || 'audio/mpeg',
+          mediaType: 'audio',
+          duration: '00:15',
+          durationSec: 15,
+          createdAt: Date.now(),
+        });
+        setUserAudioLibrary((prev) => [audioItem, ...prev]);
+        setActiveAudio(audioItem);
+        return;
+      }
+
       const url = URL.createObjectURL(file);
       const isVideo = file.type.startsWith('video/') || /\.(mp4|mov|webm|m4v|mkv|3gp|avi)$/i.test(file.name);
       const id = `user_media_${Date.now()}_${idx}`;
@@ -2986,7 +3492,7 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
       };
       newMediaItems.push(item);
 
-      // Persist actual File/Blob inside user's own device IndexedDB storage
+      // Persist actual File/Blob inside user's own device IndexedDB storage (with safe large-file fallback)
       void saveLocalMediaRecord({
         id,
         file,
@@ -2998,88 +3504,30 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
         createdAt: Date.now(),
       });
 
-      // Probe real video duration & capture thumbnail, then release hardware decoder immediately
       if (isVideo) {
-        const probeVid = document.createElement('video');
-        probeVid.preload = 'metadata';
-        probeVid.muted = true;
-        probeVid.playsInline = true;
-        let probeCleaned = false;
-        const cleanupProbe = () => {
-          if (probeCleaned) return;
-          probeCleaned = true;
-          try {
-            probeVid.onloadedmetadata = null;
-            probeVid.onseeked = null;
-            probeVid.onerror = null;
-            probeVid.pause();
-            probeVid.removeAttribute('src');
-            probeVid.load();
-          } catch {}
-        };
-        const safetyTimer = window.setTimeout(cleanupProbe, 8000);
-        probeVid.src = url;
-        probeVid.load();
-        probeVid.onloadedmetadata = () => {
-          const realDur = isFinite(probeVid.duration) && probeVid.duration > 0 ? Number(probeVid.duration.toFixed(1)) : 10.0;
-          const mins = Math.floor(realDur / 60);
-          const secs = Math.floor(realDur % 60);
-          const fmt = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
-          try {
-            probeVid.currentTime = Math.min(0.4, realDur / 3);
-          } catch {}
-
-          void updateLocalMediaMetadata(id, { duration: fmt, durationSec: realDur });
-
-          setMediaGallery((prev) =>
-            prev.map((m) => (m.id === id ? { ...m, durationSec: realDur, duration: fmt } : m))
-          );
-          setTimelineClips((prev) =>
-            prev.map((c) =>
-              c.url === url && !c.id.startsWith('clip_split_') && !c.id.startsWith('clip_trim_') && c.sourceStartSec === undefined
-                ? { ...c, durationSec: realDur }
-                : c
-            )
-          );
-        };
-        probeVid.onseeked = () => {
-          try {
-            const c = document.createElement('canvas');
-            c.width = 240;
-            c.height = 135;
-            const cctx = c.getContext('2d');
-            if (cctx && probeVid.videoWidth > 0) {
-              cctx.drawImage(probeVid, 0, 0, c.width, c.height);
-              const thumb = c.toDataURL('image/jpeg', 0.55);
-              void updateLocalMediaMetadata(id, { thumbnailUrl: thumb });
-              setMediaGallery((prev) =>
-                prev.map((m) => (m.id === id ? { ...m, thumbnailUrl: thumb } : m))
-              );
-              setTimelineClips((prev) =>
-                prev.map((cl) => (cl.url === url ? { ...cl, thumbnailUrl: thumb } : cl))
-              );
-            }
-          } catch {}
-          window.clearTimeout(safetyTimer);
-          cleanupProbe();
-        };
-        probeVid.onerror = () => {
-          window.clearTimeout(safetyTimer);
-          cleanupProbe();
-        };
+        videosToProbe.push({ id, url });
       }
     });
 
-    const updatedGallery = [...newMediaItems, ...mediaGallery];
-    setMediaGallery(updatedGallery);
-    logEditorTelemetry('add_media', timelineClips, totalDuration);
+    if (videosToProbe.length > 0) {
+      void (async () => {
+        for (const entry of videosToProbe) {
+          await probeVideoMetadataSafe(entry.id, entry.url);
+        }
+      })();
+    }
 
-    if (isSetup) {
-      setSetupSelectedMediaIds((prev) => [...prev, ...newMediaItems.map((m) => m.id)]);
-    } else {
-      // In editor mode: strictly added to the Media pool, and user chooses which to add to timeline!
-      setActiveTab('Media');
-      setIsLeftPanelOpen(true);
+    if (newMediaItems.length > 0) {
+      const updatedGallery = [...newMediaItems, ...mediaGallery];
+      setMediaGallery(updatedGallery);
+      logEditorTelemetry('add_media', timelineClips, totalDuration);
+
+      if (isSetup) {
+        setSetupSelectedMediaIds((prev) => [...prev, ...newMediaItems.map((m) => m.id)]);
+      } else {
+        setActiveTab('Media');
+        setIsLeftPanelOpen(true);
+      }
     }
     e.target.value = '';
   };
@@ -3103,13 +3551,19 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
     logEditorTelemetry('edit_timeline', nextClips);
   };
 
-  // Delete an uploaded media item from the user gallery & device IndexedDB
+  // Delete an uploaded media item from the user gallery & device IndexedDB + revoke blob URL
   const handleDeleteUploadedMedia = (id: string, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
     const updated = mediaGallery.filter((m) => m.id !== id);
     setMediaGallery(updated);
     setSetupSelectedMediaIds((prev) => prev.filter((mid) => mid !== id));
     setSelectedMediaIds((prev) => prev.filter((mid) => mid !== id));
+    const existingUrl = localMediaUrlMapRef.current.get(id);
+    if (existingUrl && existingUrl.startsWith('blob:')) {
+      try {
+        URL.revokeObjectURL(existingUrl);
+      } catch {}
+    }
     localMediaUrlMapRef.current.delete(id);
     void deleteLocalMediaRecord(id);
   };
@@ -3268,12 +3722,13 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
 
   const filteredAudio = useMemo(() => {
     const q = searchQuery.toLowerCase();
-    return AUDIO_LIST.filter((a) => {
+    const combined = [...userAudioLibrary, ...AUDIO_LIST];
+    return combined.filter((a) => {
       const matchCat = activeSubCategory === 'All' || a.category === activeSubCategory;
       const matchQ = !q || a.title.toLowerCase().includes(q) || a.category.toLowerCase().includes(q);
       return matchCat && matchQ;
     });
-  }, [activeSubCategory, searchQuery]);
+  }, [activeSubCategory, searchQuery, userAudioLibrary]);
 
   const filteredTransitions = useMemo(() => {
     const q = searchQuery.toLowerCase();
@@ -3474,9 +3929,18 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
     const lastValidFrames = new Map<string, HTMLCanvasElement>();
     let exportAudioCtx: AudioContext | null = null;
     let audioDest: MediaStreamAudioDestinationNode | null = null;
+    let exportBgAudioEl: HTMLAudioElement | null = null;
     let isDeterministicSeekMode = Boolean(probedWebCodecs);
 
     const cleanupExportResources = () => {
+      if (exportBgAudioEl) {
+        try {
+          exportBgAudioEl.pause();
+          exportBgAudioEl.removeAttribute('src');
+          exportBgAudioEl.load();
+        } catch {}
+        exportBgAudioEl = null;
+      }
       exportMediaMap.forEach((el) => {
         if (el instanceof HTMLVideoElement) {
           try {
@@ -4283,15 +4747,9 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
       setExportedVideoFilename(safeName);
       setExportedVideoSizeMb(sizeMb);
       setExportedVideoMetaLabel(`${ext.toUpperCase()} · ${outW}×${outH} (${projectResolution})`);
+      setExportShareNotice(null);
 
-      try {
-        const link = document.createElement('a');
-        link.download = safeName;
-        link.href = blobUrl;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-      } catch {}
+      triggerLocalBlobDownload(blobUrl, safeName);
 
       saveCurrentProjectToStorage(undefined, undefined, undefined, undefined, capturedProjectThumb || undefined);
       logEditorTelemetry('export_video', timelineClips, exactTotalSec);
@@ -4331,6 +4789,7 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
           speedFactor,
           isReversePlayback,
           clips: audioSourceClips,
+          bgAudioUrl: activeAudio?.url,
           volumePct: volume,
           isMuted: isMuted || isAudioTrackMuted,
           prepareFrameAtTime: prepareExportVideosAtTime,
@@ -4414,6 +4873,20 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
             }
           });
         }
+        if (!isMuted && !isAudioTrackMuted && activeAudio?.url) {
+          try {
+            const bgEl = new Audio();
+            if (!activeAudio.url.startsWith('blob:') && !activeAudio.url.startsWith('data:')) {
+              bgEl.crossOrigin = 'anonymous';
+            }
+            bgEl.src = activeAudio.url;
+            bgEl.loop = true;
+            bgEl.volume = 0.85;
+            const bgSrcNode = exportAudioCtx.createMediaElementSource(bgEl);
+            bgSrcNode.connect(audioDest);
+            exportBgAudioEl = bgEl;
+          } catch {}
+        }
       }
     } catch {}
 
@@ -4493,6 +4966,13 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
       recorder.start();
     } else {
       recorder.start(1000);
+    }
+
+    if (exportBgAudioEl) {
+      try {
+        exportBgAudioEl.currentTime = 0;
+        void exportBgAudioEl.play().catch(() => {});
+      } catch {}
     }
 
     renderSingleExportFrame(initialFramePos);
@@ -4757,7 +5237,7 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
           ref={setupFileInputRef}
           type="file"
           multiple
-          accept="video/*,image/*"
+          accept="video/*,image/*,audio/*"
           className="hidden"
           onChange={(e) => handleUserDeviceUpload(e, true)}
         />
@@ -4784,59 +5264,55 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
 
         {/* Scrollable Content Body */}
         <div className="flex-1 min-h-0 overflow-y-auto">
-          <div className="max-w-2xl mx-auto w-full px-4 py-5 space-y-6 pb-8">
+          <div className="max-w-2xl mx-auto w-full px-3 py-4 space-y-4 pb-8">
             {/* SECTION 1: VIDEO ASPECT RATIOS */}
-            <div className="space-y-3">
-              <div>
-                <h2 className="text-sm sm:text-base font-extrabold text-white flex items-center gap-2">
-                  <Tv className="w-4 h-4 text-teal-400" />
-                  <span>Select Video Format (വീഡിയോ ഫോർമാറ്റ് തിരഞ്ഞെടുക്കുക)</span>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <h2 className="text-xs sm:text-sm font-extrabold text-white flex items-center gap-1.5">
+                  <Tv className="w-3.5 h-3.5 text-teal-400" />
+                  <span>Select Video Format (ഫോർമാറ്റ്)</span>
                 </h2>
-                <p className="text-xs text-zinc-400 pt-0.5">
-                  {isMl
-                    ? 'നിങ്ങൾ നിർമ്മിക്കാൻ ആഗ്രഹിക്കുന്ന വീഡിയോ പ്ലാറ്റ്‌ഫോമിന് അനുയോജ്യമായ ഫോർമാറ്റ് തിരഞ്ഞെടുക്കുക:'
-                    : 'Choose the aspect ratio matching your video target platform:'}
-                </p>
+                <span className="text-[10px] text-zinc-400">Choose platform ratio</span>
               </div>
 
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
                 {ASPECT_RATIO_OPTIONS.map((opt) => {
                   const isSelected = selectedAspectRatio === opt.id;
                   return (
                     <div
                       key={opt.id}
                       onClick={() => setSelectedAspectRatio(opt.id)}
-                      className={`p-3.5 rounded-2xl border cursor-pointer transition-all flex flex-col justify-between relative ${
+                      className={`p-2.5 rounded-xl border cursor-pointer transition-all flex flex-col items-center text-center relative ${
                         isSelected
-                          ? 'bg-teal-950/40 border-teal-400 ring-2 ring-teal-400/30 shadow-lg shadow-teal-500/10'
+                          ? 'bg-teal-950/50 border-teal-400 ring-2 ring-teal-400/30 shadow-md shadow-teal-500/10'
                           : 'bg-[#10151d] border-[#1f2937] hover:border-[#334155] hover:bg-[#141b26]'
                       }`}
                     >
-                      <div className="h-14 flex items-center justify-center mb-2">
+                      <div className="h-8 flex items-center justify-center mb-1.5">
                         <div
-                          className={`${opt.iconWidthClass} ${opt.iconHeightClass} rounded border-2 flex items-center justify-center transition-all ${
+                          className={`${opt.iconWidthClass} ${opt.iconHeightClass} rounded border flex items-center justify-center transition-all ${
                             isSelected
                               ? 'border-teal-400 bg-teal-400/20 text-teal-300'
                               : 'border-zinc-600 bg-zinc-800 text-zinc-400'
                           }`}
+                          style={{ transform: 'scale(0.7)' }}
                         >
-                          <span className="text-[10px] font-black">{opt.id}</span>
+                          <span className="text-[9px] font-black">{opt.id}</span>
                         </div>
                       </div>
 
-                      <div>
-                        <div className="flex items-center justify-between mb-0.5">
-                          <span className={`font-black text-xs ${isSelected ? 'text-teal-300' : 'text-zinc-200'}`}>
-                            {opt.label}
+                      <div className="w-full">
+                        <div className="flex items-center justify-center gap-1">
+                          <span className={`font-black text-[11px] truncate ${isSelected ? 'text-teal-300' : 'text-zinc-200'}`}>
+                            {opt.id}
                           </span>
                           {isSelected && (
-                            <div className="w-4 h-4 rounded-full bg-teal-400 text-black flex items-center justify-center font-bold text-[10px]">
+                            <span className="w-3.5 h-3.5 rounded-full bg-teal-400 text-black flex items-center justify-center font-bold text-[9px]">
                               ✓
-                            </div>
+                            </span>
                           )}
                         </div>
-                        <span className="text-[10px] text-zinc-400 block truncate font-medium">{opt.sublabel}</span>
-                        <span className="text-[9px] font-mono text-zinc-500 block pt-0.5">{opt.description}</span>
+                        <span className="text-[9px] text-zinc-400 block truncate">{opt.label}</span>
                       </div>
                     </div>
                   );
@@ -4845,37 +5321,37 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
             </div>
 
             {/* SECTION 2: PROJECT SETTINGS */}
-            <div className="p-4 rounded-2xl bg-[#10151d] border border-[#1f2937] space-y-3.5">
-              <h3 className="text-xs font-extrabold text-white uppercase tracking-wider flex items-center gap-1.5">
+            <div className="p-3 rounded-xl bg-[#10151d] border border-[#1f2937] space-y-2.5">
+              <h3 className="text-[11px] font-extrabold text-white uppercase tracking-wider flex items-center gap-1.5">
                 <Settings className="w-3.5 h-3.5 text-teal-400" />
                 <span>Project Details (പേരും റെസല്യൂഷനും)</span>
               </h3>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs">
                 <div>
-                  <label className="text-[11px] text-zinc-400 font-semibold block mb-1">
-                    Project Title (പ്രോജക്റ്റ് പേര്):
+                  <label className="text-[10px] text-zinc-400 font-semibold block mb-1">
+                    Project Title:
                   </label>
                   <input
                     type="text"
                     value={projectName}
                     onChange={(e) => setProjectName(e.target.value)}
-                    className="w-full bg-[#080b10] border border-[#2a3647] rounded-xl px-3 py-2.5 text-white font-bold text-xs focus:outline-none focus:border-teal-400"
+                    className="w-full bg-[#080b10] border border-[#2a3647] rounded-lg px-2.5 py-2 text-white font-bold text-xs focus:outline-none focus:border-teal-400"
                     placeholder="My CineStudio Project"
                   />
                 </div>
 
                 <div>
-                  <label className="text-[11px] text-zinc-400 font-semibold block mb-1">
-                    Export Resolution (റെസല്യൂഷൻ):
+                  <label className="text-[10px] text-zinc-400 font-semibold block mb-1">
+                    Export Resolution:
                   </label>
-                  <div className="grid grid-cols-3 gap-2">
+                  <div className="grid grid-cols-3 gap-1.5">
                     {(['1080p', '4K', '720p'] as const).map((res) => (
                       <button
                         key={res}
                         type="button"
                         onClick={() => setProjectResolution(res)}
-                        className={`py-2 min-h-[38px] rounded-xl font-bold text-xs cursor-pointer transition-colors ${
+                        className={`py-1.5 min-h-[32px] rounded-lg font-bold text-xs cursor-pointer transition-colors ${
                           projectResolution === res
                             ? 'bg-teal-400 text-zinc-950 shadow'
                             : 'bg-[#080b10] border border-[#2a3647] text-zinc-300 hover:text-white'
@@ -4890,49 +5366,44 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
             </div>
 
             {/* SECTION 3: USER ONLY MEDIA SELECTION */}
-            <div className="p-4 rounded-2xl bg-[#10151d] border border-[#1f2937] space-y-3">
+            <div className="p-3 rounded-xl bg-[#10151d] border border-[#1f2937] space-y-2.5">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
-                  <h3 className="text-xs font-extrabold text-white uppercase tracking-wider flex items-center gap-1.5">
+                  <h3 className="text-[11px] font-extrabold text-white uppercase tracking-wider flex items-center gap-1.5">
                     <Film className="w-3.5 h-3.5 text-teal-400" />
-                    <span>Add Media Clips (ഗാലറി ഫോട്ടോ/വീഡിയോ തിരഞ്ഞെടുക്കുക)</span>
+                    <span>Add Media Clips (മീഡിയ ഫയലുകൾ)</span>
                   </h3>
-                  <p className="text-[11px] text-zinc-400 pt-0.5">
-                    {isMl
-                      ? 'നിങ്ങളുടെ ഫോണിലെ/കംപ്യൂട്ടറിലെ ഫോട്ടോകളും വീഡിയോകളും മാത്രം ചേർക്കുക.'
-                      : 'Select photos & videos strictly from your device gallery:'}
-                  </p>
                 </div>
 
                 <button
                   type="button"
                   onClick={() => setupFileInputRef.current?.click()}
-                  className="px-4 py-2 min-h-[40px] rounded-xl bg-teal-400 hover:bg-teal-300 text-zinc-950 font-extrabold text-xs flex items-center gap-1.5 cursor-pointer shadow-md transition-all shrink-0"
+                  className="px-3 py-1.5 min-h-[32px] rounded-lg bg-teal-400 hover:bg-teal-300 text-zinc-950 font-extrabold text-xs flex items-center gap-1.5 cursor-pointer shadow-sm transition-all shrink-0"
                 >
-                  <Upload className="w-4 h-4 stroke-[2.5]" />
-                  <span>+ Upload from Gallery</span>
+                  <Upload className="w-3.5 h-3.5 stroke-[2.5]" />
+                  <span>+ Upload</span>
                 </button>
               </div>
 
               {mediaGallery.length === 0 ? (
                 <div
                   onClick={() => setupFileInputRef.current?.click()}
-                  className="p-8 rounded-2xl border-2 border-dashed border-[#2a3647] hover:border-teal-400/80 bg-[#080b10] flex flex-col items-center justify-center text-center cursor-pointer group transition-all"
+                  className="p-4 rounded-xl border border-dashed border-[#2a3647] hover:border-teal-400/80 bg-[#080b10] flex items-center justify-center gap-3 text-center cursor-pointer group transition-all"
                 >
-                  <div className="w-12 h-12 rounded-2xl bg-teal-500/10 text-teal-400 flex items-center justify-center mb-2 group-hover:scale-110 transition-transform">
-                    <Upload className="w-6 h-6 stroke-[2]" />
+                  <div className="w-8 h-8 rounded-lg bg-teal-500/10 text-teal-400 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform">
+                    <Upload className="w-4 h-4 stroke-[2]" />
                   </div>
-                  <span className="font-extrabold text-xs sm:text-sm text-zinc-200 block">
-                    {isMl ? 'ഫോട്ടോകളും വീഡിയോകളും അപ്‌ലോഡ് ചെയ്യുക' : 'Upload Photos & Videos from your Device'}
-                  </span>
-                  <span className="text-[11px] text-zinc-400 block pt-1">
-                    {isMl
-                      ? 'ഒന്നിൽ കൂടുതൽ ഫയലുകൾ ഒരേ സമയം തിരഞ്ഞെടുക്കാം (MP4, MOV, JPG, PNG)'
-                      : 'Multi-file select supported. Stored safely on your device.'}
-                  </span>
+                  <div className="text-left">
+                    <span className="font-extrabold text-xs text-zinc-200 block">
+                      {isMl ? 'ഫോട്ടോകളും വീഡിയോകളും അപ്‌ലോഡ് ചെയ്യുക' : 'Upload Photos & Videos'}
+                    </span>
+                    <span className="text-[10px] text-zinc-400 block">
+                      MP4, MOV, JPG, PNG supported
+                    </span>
+                  </div>
                 </div>
               ) : (
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-1">
+                <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 pt-0.5">
                   {mediaGallery.map((m) => {
                     const isChecked = setupSelectedMediaIds.includes(m.id);
                     return (
@@ -4943,24 +5414,24 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                             isChecked ? prev.filter((id) => id !== m.id) : [...prev, m.id]
                           );
                         }}
-                        className={`rounded-xl border overflow-hidden cursor-pointer relative group transition-all ${
+                        className={`rounded-lg border overflow-hidden cursor-pointer relative group transition-all ${
                           isChecked
-                            ? 'border-teal-400 ring-2 ring-teal-400/50 shadow-md shadow-teal-500/10'
+                            ? 'border-teal-400 ring-2 ring-teal-400/40 shadow-sm'
                             : 'border-[#1f2937] bg-[#080b10] hover:border-[#334155]'
                         }`}
                       >
-                        <div className="aspect-video bg-black relative">
+                        <div className="aspect-square bg-black relative">
                           {m.type === 'video' && !m.thumbnailUrl ? (
                             <video src={m.url} className="w-full h-full object-cover" muted playsInline />
                           ) : (
                             <img src={m.thumbnailUrl || m.url} alt={m.title} className="w-full h-full object-cover" />
                           )}
-                          <div className="absolute bottom-1 left-1 px-1.5 py-0.5 rounded bg-black/80 font-mono text-[9px] text-zinc-200">
-                            {m.type === 'video' ? '🎬' : '📷'} {m.duration}
+                          <div className="absolute bottom-0.5 left-0.5 px-1 py-0.2 rounded bg-black/80 font-mono text-[8px] text-zinc-200">
+                            {m.type === 'video' ? '🎬' : '📷'}
                           </div>
                           <div
-                            className={`absolute top-1.5 right-1.5 w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold transition-all ${
-                              isChecked ? 'bg-teal-400 text-black shadow' : 'bg-black/60 border border-white/60 text-transparent'
+                            className={`absolute top-1 right-1 w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold transition-all ${
+                              isChecked ? 'bg-teal-400 text-black shadow' : 'bg-black/60 border border-white/50 text-transparent'
                             }`}
                           >
                             ✓
@@ -4968,13 +5439,13 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                           <button
                             type="button"
                             onClick={(e) => handleDeleteUploadedMedia(m.id, e)}
-                            className="absolute top-1.5 left-1.5 w-6 h-6 rounded-md bg-black/75 hover:bg-rose-600 text-zinc-200 hover:text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                            title="Delete from Gallery"
+                            className="absolute top-1 left-1 w-5 h-5 rounded bg-black/75 hover:bg-rose-600 text-zinc-200 hover:text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                            title="Delete"
                           >
-                            <Trash2 className="w-3.5 h-3.5" />
+                            <Trash2 className="w-3 h-3" />
                           </button>
                         </div>
-                        <div className="p-2 bg-[#10151d] truncate text-[10px] font-bold text-zinc-200">
+                        <div className="p-1 bg-[#10151d] truncate text-[9px] font-bold text-zinc-200">
                           {m.title}
                         </div>
                       </div>
@@ -5018,18 +5489,354 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
     );
   }
 
+  const activeWheelCategory =
+    WHEEL_CATEGORIES.find((c) => c.id === selectedWheelCategoryId) || WHEEL_CATEGORIES[0];
+
+  const renderPlayerCanvasWithGizmos = () => (
+    <div
+      ref={canvasOverlayRef}
+      onPointerMove={(e) => {
+        const drag = canvasDragStateRef.current;
+        const overlay = canvasOverlayRef.current;
+        if (!drag || !overlay) return;
+        e.stopPropagation();
+        const rect = overlay.getBoundingClientRect();
+        const px = Math.max(2, Math.min(98, ((e.clientX - rect.left) / Math.max(1, rect.width)) * 100));
+        const py = Math.max(2, Math.min(98, ((e.clientY - rect.top) / Math.max(1, rect.height)) * 100));
+        if (drag.mode === 'move_sticker' && drag.id) {
+          setActiveStickers((prev) => prev.map((s) => (s.id === drag.id ? { ...s, xPct: px, yPct: py } : s)));
+        } else if (drag.mode === 'resize_sticker' && drag.id && drag.originX !== undefined && drag.originY !== undefined) {
+          const dist = Math.hypot(e.clientX - drag.originX, e.clientY - drag.originY);
+          const ratio = dist / Math.max(12, drag.initDist || 40);
+          const nextScale = Number(Math.max(0.3, Math.min(3.2, (drag.initScale || 1) * ratio)).toFixed(2));
+          setActiveStickers((prev) => prev.map((s) => (s.id === drag.id ? { ...s, scale: nextScale } : s)));
+        } else if (drag.mode === 'move_title') {
+          setTitleXPct(px);
+          setTitleYPct(py);
+        } else if (drag.mode === 'resize_title' && drag.originX !== undefined && drag.originY !== undefined) {
+          const dist = Math.hypot(e.clientX - drag.originX, e.clientY - drag.originY);
+          const ratio = dist / Math.max(12, drag.initDist || 40);
+          setTitleScale(Number(Math.max(0.35, Math.min(2.8, (drag.initScale || 1) * ratio)).toFixed(2)));
+        } else if (drag.mode === 'vfx_start' && drag.id) {
+          setVfxLayers((prev) => prev.map((v) => (v.id === drag.id ? { ...v, startXPct: px, startYPct: py } : v)));
+        } else if (drag.mode === 'vfx_end' && drag.id) {
+          setVfxLayers((prev) => prev.map((v) => (v.id === drag.id ? { ...v, endXPct: px, endYPct: py } : v)));
+        } else if (drag.mode === 'vfx_scale' && drag.id && drag.originX !== undefined && drag.originY !== undefined) {
+          const dist = Math.hypot(e.clientX - drag.originX, e.clientY - drag.originY);
+          const ratio = dist / Math.max(12, drag.initDist || 40);
+          const nextScale = Number(Math.max(0.3, Math.min(3.5, (drag.initScale || 1) * ratio)).toFixed(2));
+          setVfxLayers((prev) => prev.map((v) => (v.id === drag.id ? { ...v, scale: nextScale } : v)));
+        } else if (drag.mode === 'move_card' && drag.id) {
+          setTrailerCardLayers((prev) => prev.map((c) => (c.id === drag.id ? { ...c, xPct: px, yPct: py } : c)));
+        } else if (drag.mode === 'resize_card' && drag.id && drag.originX !== undefined && drag.originY !== undefined) {
+          const dist = Math.hypot(e.clientX - drag.originX, e.clientY - drag.originY);
+          const ratio = dist / Math.max(12, drag.initDist || 40);
+          const nextScale = Number(Math.max(0.35, Math.min(2.2, (drag.initScale || 1) * ratio)).toFixed(2));
+          setTrailerCardLayers((prev) => prev.map((c) => (c.id === drag.id ? { ...c, scale: nextScale } : c)));
+        }
+      }}
+      onPointerUp={(e) => {
+        if (canvasDragStateRef.current) {
+          e.stopPropagation();
+          canvasDragStateRef.current = null;
+        }
+      }}
+      onPointerCancel={() => {
+        canvasDragStateRef.current = null;
+      }}
+      className="relative w-full h-full flex items-center justify-center touch-none select-none"
+    >
+      <canvas
+        ref={playerCanvasRef}
+        width={canvasDims.width}
+        height={canvasDims.height}
+        className="block w-full h-full object-contain rounded pointer-events-none"
+      />
+
+      {/* ON-SCREEN ROUND HANDLE GIZMOS: 1) Active Sticker / Emoji Transform Ring */}
+      {activeStickers.map((stkLayer) => {
+        const isSelected = selectedFeatureType === 'sticker' && selectedStickerLayerId === stkLayer.id;
+        const isInTimeWindow =
+          totalDuration <= 0 ||
+          (currentTimeSec >= stkLayer.startTimeSec - 0.1 &&
+            currentTimeSec <= stkLayer.startTimeSec + stkLayer.durationSec + 0.1);
+        if (!isSelected && !isInTimeWindow) return null;
+        return (
+          <div
+            key={stkLayer.id}
+            onPointerDown={(e) => {
+              e.stopPropagation();
+              setIsPlaying(false);
+              setSelectedStickerLayerId(stkLayer.id);
+              setSelectedVfxLayerId(null);
+              setSelectedFeatureType('sticker');
+              setActiveInspectorTab('adjust');
+              setIsRightPanelOpen(true);
+              canvasDragStateRef.current = { mode: 'move_sticker', id: stkLayer.id };
+              try {
+                canvasOverlayRef.current?.setPointerCapture(e.pointerId);
+              } catch {}
+            }}
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              left: `${stkLayer.xPct}%`,
+              top: `${stkLayer.yPct}%`,
+              width: `${Math.max(46, 62 * stkLayer.scale)}px`,
+              height: `${Math.max(26, 30 * stkLayer.scale)}px`,
+            }}
+            className={`absolute -translate-x-1/2 -translate-y-1/2 z-20 cursor-move transition-shadow ${
+              isSelected
+                ? 'rounded-full border-2 border-dashed border-teal-400 bg-teal-400/10 shadow-[0_0_12px_rgba(45,212,191,0.55)]'
+                : 'rounded-full border border-transparent hover:border-teal-400/50'
+            }`}
+            title="Drag to move or pull round corner dots to resize"
+          >
+            {isSelected && (
+              <>
+                <div
+                  onPointerDown={(e) => {
+                    e.stopPropagation();
+                    const box = (e.currentTarget.parentElement as HTMLElement).getBoundingClientRect();
+                    const cx = box.left + box.width / 2;
+                    const cy = box.top + box.height / 2;
+                    canvasDragStateRef.current = {
+                      mode: 'resize_sticker',
+                      id: stkLayer.id,
+                      initScale: stkLayer.scale,
+                      originX: cx,
+                      originY: cy,
+                      initDist: Math.hypot(e.clientX - cx, e.clientY - cy),
+                    };
+                    try {
+                      canvasOverlayRef.current?.setPointerCapture(e.pointerId);
+                    } catch {}
+                  }}
+                  className="absolute -bottom-2 -right-2 w-4 h-4 rounded-full bg-white border-2 border-teal-400 shadow-lg cursor-nwse-resize"
+                />
+                <button
+                  type="button"
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setActiveStickers((prev) => prev.filter((s) => s.id !== stkLayer.id));
+                    setSelectedStickerLayerId(null);
+                  }}
+                  className="absolute -top-2.5 -right-2.5 w-4 h-4 rounded-full bg-rose-600 text-white flex items-center justify-center shadow border border-white cursor-pointer"
+                  title="Delete Sticker"
+                >
+                  <X className="w-2.5 h-2.5" />
+                </button>
+              </>
+            )}
+          </div>
+        );
+      })}
+
+      {/* ON-SCREEN ROUND HANDLE GIZMOS: 2) Active Title Drag & Round Resize Box */}
+      {showTitleOverlay && movieTitle && selectedFeatureType === 'title' && (
+        <div
+          onPointerDown={(e) => {
+            e.stopPropagation();
+            setIsPlaying(false);
+            canvasDragStateRef.current = { mode: 'move_title' };
+            try {
+              canvasOverlayRef.current?.setPointerCapture(e.pointerId);
+            } catch {}
+          }}
+          onClick={(e) => e.stopPropagation()}
+          style={{
+            left: `${titleXPct}%`,
+            top: `${titleYPct}%`,
+            width: `${Math.max(76, 115 * titleScale)}px`,
+            height: `${Math.max(32, 42 * titleScale)}px`,
+          }}
+          className="absolute -translate-x-1/2 -translate-y-1/2 z-20 cursor-move rounded-full border-2 border-dashed border-amber-400 bg-amber-400/10 shadow-[0_0_12px_rgba(251,191,36,0.45)]"
+          title="Drag Title or pull round dot to resize"
+        >
+          <div
+            onPointerDown={(e) => {
+              e.stopPropagation();
+              const box = (e.currentTarget.parentElement as HTMLElement).getBoundingClientRect();
+              const cx = box.left + box.width / 2;
+              const cy = box.top + box.height / 2;
+              canvasDragStateRef.current = {
+                mode: 'resize_title',
+                initScale: titleScale,
+                originX: cx,
+                originY: cy,
+                initDist: Math.hypot(e.clientX - cx, e.clientY - cy),
+              };
+              try {
+                canvasOverlayRef.current?.setPointerCapture(e.pointerId);
+              } catch {}
+            }}
+            className="absolute -bottom-2 -right-2 w-4 h-4 rounded-full bg-white border-2 border-amber-400 shadow-lg cursor-nwse-resize"
+          />
+          <button
+            type="button"
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              setShowTitleOverlay(false);
+              setMovieTitle('');
+            }}
+            className="absolute -top-2.5 -right-2.5 w-4 h-4 rounded-full bg-rose-600 text-white flex items-center justify-center shadow border border-white cursor-pointer"
+            title="Delete Title"
+          >
+            <X className="w-2.5 h-2.5" />
+          </button>
+        </div>
+      )}
+
+      {/* ON-SCREEN ROUND HANDLE GIZMOS: 3) Selected VFX Motion Route */}
+      {(() => {
+        const activeVfxObj = vfxLayers.find((v) => v.id === selectedVfxLayerId);
+        if (!activeVfxObj) return null;
+        return (
+          <>
+            {activeVfxObj.vfx.hasMotionRoute && (
+              <svg className="absolute inset-0 w-full h-full pointer-events-none z-20">
+                <line
+                  x1={`${activeVfxObj.startXPct}%`}
+                  y1={`${activeVfxObj.startYPct}%`}
+                  x2={`${activeVfxObj.endXPct}%`}
+                  y2={`${activeVfxObj.endYPct}%`}
+                  stroke="#fbbf24"
+                  strokeWidth="2"
+                  strokeDasharray="5 4"
+                />
+              </svg>
+            )}
+            <div
+              onPointerDown={(e) => {
+                e.stopPropagation();
+                setIsPlaying(false);
+                canvasDragStateRef.current = { mode: 'vfx_start', id: activeVfxObj.id };
+                try {
+                  canvasOverlayRef.current?.setPointerCapture(e.pointerId);
+                } catch {}
+              }}
+              onClick={(e) => e.stopPropagation()}
+              style={{ left: `${activeVfxObj.startXPct}%`, top: `${activeVfxObj.startYPct}%` }}
+              className="absolute -translate-x-1/2 -translate-y-1/2 z-30 w-6 h-6 rounded-full bg-amber-400/90 border-2 border-white shadow flex items-center justify-center cursor-move text-[9px] font-black text-black"
+              title="Drag Start Point"
+            >
+              🔫
+            </div>
+            {activeVfxObj.vfx.hasMotionRoute && (
+              <div
+                onPointerDown={(e) => {
+                  e.stopPropagation();
+                  setIsPlaying(false);
+                  canvasDragStateRef.current = { mode: 'vfx_end', id: activeVfxObj.id };
+                  try {
+                    canvasOverlayRef.current?.setPointerCapture(e.pointerId);
+                  } catch {}
+                }}
+                onClick={(e) => e.stopPropagation()}
+                style={{ left: `${activeVfxObj.endXPct}%`, top: `${activeVfxObj.endYPct}%` }}
+                className="absolute -translate-x-1/2 -translate-y-1/2 z-30 w-6 h-6 rounded-full bg-rose-600/95 border-2 border-white shadow flex items-center justify-center cursor-move text-[9px] font-black text-white"
+                title="Drag Target Point"
+              >
+                🎯
+              </div>
+            )}
+          </>
+        );
+      })()}
+
+      {/* ON-SCREEN ROUND HANDLE GIZMOS: 4) Image-to-Trailer Card Drag & Resize Ring */}
+      {trailerCardLayers.map((cardLayer) => {
+        const isSelected = selectedFeatureType === 'trailer_card' && selectedTrailerCardId === cardLayer.id;
+        const isInTimeWindow =
+          totalDuration <= 0 ||
+          (currentTimeSec >= cardLayer.startTimeSec - 0.1 &&
+            currentTimeSec <= cardLayer.startTimeSec + cardLayer.durationSec + 0.1);
+        if (!isSelected && !isInTimeWindow) return null;
+        return (
+          <div
+            key={cardLayer.id}
+            onPointerDown={(e) => {
+              e.stopPropagation();
+              setIsPlaying(false);
+              setSelectedTrailerCardId(cardLayer.id);
+              setSelectedStickerLayerId(null);
+              setSelectedVfxLayerId(null);
+              setSelectedFeatureType('trailer_card');
+              setActiveInspectorTab('adjust');
+              setIsRightPanelOpen(true);
+              canvasDragStateRef.current = { mode: 'move_card', id: cardLayer.id };
+              try {
+                canvasOverlayRef.current?.setPointerCapture(e.pointerId);
+              } catch {}
+            }}
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              left: `${cardLayer.xPct}%`,
+              top: `${cardLayer.yPct}%`,
+              width: `${Math.max(80, 120 * cardLayer.scale)}px`,
+              height: `${Math.max(95, 138 * cardLayer.scale)}px`,
+            }}
+            className={`absolute -translate-x-1/2 -translate-y-1/2 z-20 cursor-move transition-shadow ${
+              isSelected
+                ? 'rounded-2xl border-2 border-dashed border-amber-400 bg-amber-400/5 shadow-[0_0_16px_rgba(251,191,36,0.45)]'
+                : 'rounded-2xl border border-transparent hover:border-amber-400/40'
+            }`}
+          >
+            {isSelected && (
+              <>
+                <div
+                  onPointerDown={(e) => {
+                    e.stopPropagation();
+                    const box = (e.currentTarget.parentElement as HTMLElement).getBoundingClientRect();
+                    const cx = box.left + box.width / 2;
+                    const cy = box.top + box.height / 2;
+                    canvasDragStateRef.current = {
+                      mode: 'resize_card',
+                      id: cardLayer.id,
+                      initScale: cardLayer.scale,
+                      originX: cx,
+                      originY: cy,
+                      initDist: Math.hypot(e.clientX - cx, e.clientY - cy),
+                    };
+                    try {
+                      canvasOverlayRef.current?.setPointerCapture(e.pointerId);
+                    } catch {}
+                  }}
+                  className="absolute -bottom-2 -right-2 w-4 h-4 rounded-full bg-white border-2 border-amber-400 shadow-lg cursor-nwse-resize"
+                />
+                <button
+                  type="button"
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setTrailerCardLayers((prev) => prev.filter((c) => c.id !== cardLayer.id));
+                    setSelectedTrailerCardId(null);
+                  }}
+                  className="absolute -top-2.5 -right-2.5 w-4 h-4 rounded-full bg-rose-600 text-white flex items-center justify-center shadow border border-white cursor-pointer"
+                  title="Delete Trailer Card"
+                >
+                  <X className="w-2.5 h-2.5" />
+                </button>
+              </>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+
   // =========================================================================
-  // VIEW 3: FULL 4K VIDEO STUDIO WORKSPACE (STAGE 3)
-  // Dynamic Collapsible Panels & Expandable Screen, Split Playhead, Color Grading
+  // VIEW 3: FULL 4K VIDEO STUDIO WORKSPACE (MOBILE-FIRST RADIAL WHEEL + 16:9 DUAL-SCREEN + 14 TRACKS)
   // =========================================================================
   return (
-    <div className="fixed inset-0 z-50 bg-[#080b10] text-zinc-100 flex flex-col font-sans select-none overflow-hidden">
+    <div className="fixed inset-0 z-50 bg-[#07090d] text-zinc-100 flex flex-col font-sans select-none overflow-hidden">
       {/* Hidden file input for adding to Media Gallery pool */}
       <input
         ref={multiFileInputRef}
         type="file"
         multiple
-        accept="video/*,image/*"
+        accept="video/*,image/*,audio/*"
         className="hidden"
         onChange={(e) => handleUserDeviceUpload(e, false)}
       />
@@ -5114,95 +5921,77 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
           e.target.value = '';
         }}
       />
+      <input
+        ref={userAudioInputRef}
+        type="file"
+        multiple
+        accept="audio/*"
+        className="hidden"
+        onChange={handleUserAudioUpload}
+      />
 
-      {/* TOP APPLICATION BAR */}
-      <div className="h-11 bg-[#10151d] border-b border-[#1f2937] flex items-center justify-between px-2.5 sm:px-3.5 shrink-0 text-zinc-300 overflow-x-auto no-scrollbar gap-2">
-        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-          <div
-            className="flex items-center gap-1.5 cursor-pointer hover:opacity-85"
-            onClick={() => {
-              saveCurrentProjectToStorage();
-              setStudioView('welcome');
-            }}
-            title="Return to Studio Home"
-          >
-            <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-teal-400 to-cyan-400 text-black flex items-center justify-center font-black text-xs shadow">
-              ▶
-            </div>
-            <span className="font-extrabold text-white text-xs sm:text-sm tracking-tight">CineStudio 4K</span>
-          </div>
-
+      {/* COMPACT TOP STUDIO HEADER BAR */}
+      <div className="h-10 bg-[#0d1118] border-b border-[#1c2330] flex items-center justify-between px-2 sm:px-3 shrink-0 text-zinc-300 overflow-x-auto no-scrollbar gap-2">
+        <div className="flex items-center gap-1.5 shrink-0">
           <button
             type="button"
             onClick={() => {
               saveCurrentProjectToStorage();
               setStudioView('welcome');
             }}
-            className="min-h-[32px] px-2.5 py-1 rounded-lg bg-[#18202c] hover:bg-[#222d3d] border border-[#2b3648] text-[11px] font-semibold text-zinc-200 flex items-center gap-1.5 cursor-pointer transition-colors"
-            title="Home"
+            className="min-h-[30px] px-2 py-1 rounded-lg bg-[#161c26] hover:bg-[#202836] border border-[#263040] text-[10.5px] font-bold text-zinc-200 flex items-center gap-1 cursor-pointer transition-colors whitespace-nowrap"
+            title="Saved Projects & Home"
           >
             <Home className="w-3.5 h-3.5 text-teal-400" />
-            <span>Home</span>
+            <span className="hidden sm:inline">Projects</span>
           </button>
 
           <button
             type="button"
             onClick={() => {
               saveCurrentProjectToStorage();
-              openNewProjectSetup(undefined, 'Project');
+              openNewProjectSetup('16:9', 'Project');
             }}
-            className="min-h-[32px] px-3 py-1 rounded-lg bg-gradient-to-r from-[#bef264] to-[#38bdf8] text-black font-extrabold text-[11px] flex items-center gap-1 shadow hover:opacity-95 cursor-pointer"
-            title="Create New Project"
+            className="min-h-[30px] px-2.5 py-1 rounded-lg bg-gradient-to-r from-[#bef264] to-[#38bdf8] text-black font-extrabold text-[10.5px] flex items-center gap-1 shadow cursor-pointer whitespace-nowrap"
+            title="New Project"
           >
             <Plus className="w-3.5 h-3.5 stroke-[3]" />
-            <span>New Project</span>
+            <span>New</span>
           </button>
 
-          {/* Format Badge */}
+          {/* Format Badge (16:9 Default) */}
           <button
             type="button"
             onClick={() => {
               saveCurrentProjectToStorage();
               setStudioView('new_project_setup');
             }}
-            className="min-h-[32px] flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#18202c] hover:bg-[#222d3d] border border-[#2b3648] text-teal-300 font-bold text-[11px] cursor-pointer transition-colors"
-            title="Click to change video format"
+            className="min-h-[30px] flex items-center gap-1 px-2 py-1 rounded-lg bg-[#161c26] hover:bg-[#202836] border border-[#263040] text-teal-300 font-bold text-[10.5px] cursor-pointer whitespace-nowrap"
+            title="Aspect Ratio & Resolution"
           >
             <Tv className="w-3.5 h-3.5 text-teal-400" />
             <span>{selectedAspectRatio}</span>
-            <span className="text-zinc-400 font-normal">({projectResolution})</span>
+            <span className="text-zinc-400 font-normal hidden sm:inline">({projectResolution})</span>
           </button>
 
-          {/* Quick Panel Toggle Buttons */}
-          <div className="h-5 w-px bg-[#1f2937] mx-0.5 hidden sm:block" />
-
+          {/* Quick Dual-Screen 16:9 Toggle */}
           <button
             type="button"
-            onClick={() => setIsLeftPanelOpen(!isLeftPanelOpen)}
-            className={`min-h-[32px] px-2.5 py-1 rounded-lg text-[11px] font-semibold flex items-center gap-1.5 cursor-pointer transition-colors ${
-              isLeftPanelOpen ? 'bg-teal-500/20 text-teal-300 border border-teal-500/40' : 'bg-[#18202c] border border-[#2b3648] text-zinc-300 hover:text-white'
+            onClick={() => setIsDualScreenPreview(!isDualScreenPreview)}
+            className={`min-h-[30px] px-2.5 py-1 rounded-lg text-[10.5px] font-bold flex items-center gap-1 cursor-pointer transition-all whitespace-nowrap ${
+              isDualScreenPreview
+                ? 'bg-teal-400 text-black font-black shadow'
+                : 'bg-[#161c26] border border-[#263040] text-teal-300 hover:text-white'
             }`}
-            title="Toggle Left Tools Panel (ഇടത് പാനൽ)"
+            title="Toggle Dual-Screen 16:9 Preview"
           >
-            <LayoutGrid className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">{isLeftPanelOpen ? 'Hide Tools' : 'Show Tools'}</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setIsRightPanelOpen(!isRightPanelOpen)}
-            className={`min-h-[32px] px-2.5 py-1 rounded-lg text-[11px] font-semibold flex items-center gap-1.5 cursor-pointer transition-colors ${
-              isRightPanelOpen ? 'bg-teal-500/20 text-teal-300 border border-teal-500/40' : 'bg-[#18202c] border border-[#2b3648] text-zinc-300 hover:text-white'
-            }`}
-            title="Toggle Right Inspector Panel (ഇൻസ്പെക്ടർ പാനൽ)"
-          >
-            <Sliders className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">{isRightPanelOpen ? 'Hide Inspector' : 'Inspector'}</span>
+            <Monitor className="w-3.5 h-3.5" />
+            <span>{isDualScreenPreview ? 'Dual 16:9 ON' : 'Single 16:9'}</span>
           </button>
         </div>
 
-        {/* Center: Editable Project Title with Auto-save */}
-        <div className="flex items-center gap-1.5 text-zinc-400 text-xs truncate max-w-xs">
+        {/* Center Editable Project Title */}
+        <div className="hidden md:flex items-center gap-1 text-zinc-400 text-xs truncate max-w-[180px]">
           <input
             type="text"
             value={projectName}
@@ -5211,14 +6000,44 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
               setProjectName(val);
               saveCurrentProjectToStorage(undefined, val);
             }}
-            className="bg-transparent hover:bg-[#18202c] focus:bg-[#0c1017] border border-transparent focus:border-[#2b3648] rounded-lg px-2 py-1 text-zinc-100 font-bold truncate text-xs outline-none transition-colors"
-            title="Click to rename project (പേര് മാറ്റുക)"
+            className="bg-transparent hover:bg-[#161c26] focus:bg-[#0c1017] border border-transparent focus:border-[#263040] rounded-lg px-2 py-0.5 text-zinc-100 font-bold truncate text-xs outline-none w-full"
           />
-          <Check className="w-3.5 h-3.5 text-teal-400 shrink-0" />
+          <Check className="w-3 h-3 text-teal-400 shrink-0" />
         </div>
 
-        {/* Right Tools & Vibrant Teal Export Button */}
-        <div className="flex items-center gap-2 shrink-0">
+        {/* Right Controls */}
+        <div className="flex items-center gap-1.5 shrink-0">
+          <button
+            type="button"
+            onClick={() => setIsLeftPanelOpen((v) => !v)}
+            className={`min-h-[30px] px-2 py-1 rounded-lg text-[10.5px] font-bold flex items-center gap-1 cursor-pointer transition-colors whitespace-nowrap ${
+              isLeftPanelOpen ? 'bg-teal-500/25 text-teal-300 border border-teal-500/50' : 'bg-[#161c26] border border-[#263040] text-zinc-300'
+            }`}
+          >
+            <LayoutGrid className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Tools</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setIsRightPanelOpen((v) => !v)}
+            className={`min-h-[30px] px-2 py-1 rounded-lg text-[10.5px] font-bold flex items-center gap-1 cursor-pointer transition-colors whitespace-nowrap ${
+              isRightPanelOpen ? 'bg-teal-500/25 text-teal-300 border border-teal-500/50' : 'bg-[#161c26] border border-[#263040] text-zinc-300'
+            }`}
+          >
+            <Sliders className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Inspector</span>
+          </button>
+          {onOpenTerms && (
+            <button
+              type="button"
+              onClick={onOpenTerms}
+              className="min-h-[30px] px-2 py-1 rounded-lg bg-[#161c26] hover:bg-[#202836] border border-[#263040] text-zinc-300 hover:text-teal-300 text-[10.5px] font-bold flex items-center gap-1 cursor-pointer transition-colors whitespace-nowrap"
+              title={isMl ? 'നിബന്ധനകൾ' : 'Terms & Privacy'}
+            >
+              <ShieldCheck className="w-3.5 h-3.5 text-teal-400" />
+              <span className="hidden md:inline">Terms</span>
+            </button>
+          )}
           <button
             type="button"
             onClick={() => {
@@ -5229,46 +6048,397 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
               setExportStatusText('');
               setShowExportModal(true);
             }}
-            className="min-h-[34px] px-4 py-1.5 bg-gradient-to-r from-teal-400 to-emerald-400 hover:from-teal-300 hover:to-emerald-300 text-zinc-950 font-black rounded-xl text-xs flex items-center gap-1.5 cursor-pointer shadow-md transition-all"
+            className="min-h-[30px] px-3 py-1 bg-gradient-to-r from-teal-400 to-emerald-400 hover:from-teal-300 hover:to-emerald-300 text-zinc-950 font-black rounded-lg text-[11px] flex items-center gap-1 cursor-pointer shadow whitespace-nowrap"
           >
             <Download className="w-3.5 h-3.5 stroke-[2.5]" />
-            <span>Export ({projectResolution})</span>
-            <ChevronDown className="w-3.5 h-3.5" />
+            <span>Export</span>
           </button>
-
           <button
             type="button"
             onClick={() => {
               saveCurrentProjectToStorage();
               onBackToStoryboard();
             }}
-            className="min-h-[34px] min-w-[34px] p-1.5 rounded-lg bg-[#18202c] hover:bg-rose-500/20 border border-[#2b3648] text-zinc-400 hover:text-rose-400 flex items-center justify-center cursor-pointer transition-colors"
-            title="Close and Return to Storyboard"
+            className="min-h-[30px] min-w-[30px] p-1 rounded-lg bg-[#161c26] hover:bg-rose-500/20 border border-[#263040] text-zinc-400 hover:text-rose-400 flex items-center justify-center cursor-pointer"
+            title="Close Editor"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
       </div>
 
-      {/* MAIN STUDIO WORKSPACE (RESPONSIVE MOBILE DOCK + DESKTOP 3-COL WORKSTATION) */}
+      {/* MAIN STUDIO WORKSPACE */}
       <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
-      {/* =========================================================================
-          2. UPPER SECTION: CENTER PLAYER TOP ON MOBILE | 3-COL HORIZONTAL ON DESKTOP
-          ========================================================================= */}
-      <div
-        className={`flex flex-col md:flex-row border-b border-[#1f2937] overflow-hidden relative ${
-          mobilePanel === 'timeline' ? 'shrink-0 md:flex-[54] md:min-h-0' : 'flex-1 min-h-0 md:flex-[54]'
-        }`}
-      >
-        {/* COLUMN 1: LEFT TOOLS & MEDIA BROWSER */}
-        {(isLeftPanelOpen || mobilePanel === 'tools') && (
-          <div
-            className={`${
-              mobilePanel === 'tools' ? 'flex order-3 flex-1 min-h-0 w-full' : 'hidden'
-            } ${
-              isLeftPanelOpen ? 'md:flex' : 'md:hidden'
-            } md:order-1 md:w-[35%] lg:w-[390px] xl:w-[440px] md:h-full bg-[#10151d] md:border-r border-[#1f2937] flex-col shrink-0 transition-all duration-300`}
-          >
+        {/* =========================================================================
+            1. UPPER STAGE: LEFT SLIM RAIL + LARGE TOP 16:9 DUAL-SCREEN PREVIEW + RIGHT CIRCULAR WHEEL
+            Mobile Portrait: Dual-Screen Preview Top Full Width + [Left Rail | Circular Wheel] below
+            Landscape / Tablet / Desktop: [Left Rail | Large 16:9 Dual-Screen Preview | Right Circular Wheel]
+            ========================================================================= */}
+        <div
+          className={`grid grid-cols-[44px_1fr] sm:grid-cols-[46px_minmax(0,1fr)_auto] grid-rows-[auto_auto] sm:grid-rows-1 items-stretch border-b border-[#1c2330] bg-[#080b10] shrink-0 transition-all duration-200 ${
+            isTimelineExpanded ? 'max-h-[42vh] overflow-y-auto no-scrollbar' : ''
+          }`}
+        >
+          {/* A. LEFT SLIM UTILITY CONTROL RAIL (Matches Reference Image 2) */}
+          <div className="col-start-1 row-start-2 sm:col-start-1 sm:row-start-1 bg-[#0b0f16] border-r border-t sm:border-t-0 border-[#1c2330] flex flex-col items-center justify-between py-1.5 px-1 gap-1 shrink-0">
+            <div className="flex flex-col items-center gap-1">
+              <button
+                type="button"
+                onClick={() => {
+                  saveCurrentProjectToStorage();
+                  onBackToStoryboard();
+                }}
+                className="w-9 h-9 rounded-xl hover:bg-[#1a2230] text-zinc-200 flex items-center justify-center cursor-pointer transition-colors"
+                title="Back"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                onClick={handleUndoAction}
+                disabled={undoStack.length === 0}
+                className="w-9 h-9 rounded-xl hover:bg-[#1a2230] disabled:opacity-30 text-zinc-200 flex items-center justify-center cursor-pointer transition-colors"
+                title="Undo"
+              >
+                <Undo2 className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                onClick={handleRedoAction}
+                disabled={redoStack.length === 0}
+                className="w-9 h-9 rounded-xl hover:bg-[#1a2230] disabled:opacity-30 text-zinc-200 flex items-center justify-center cursor-pointer transition-colors"
+                title="Redo"
+              >
+                <Redo2 className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const canvas = playerCanvasRef.current;
+                  if (!canvas) return;
+                  const link = document.createElement('a');
+                  link.download = `Snapshot_${Date.now()}.png`;
+                  link.href = canvas.toDataURL('image/png');
+                  link.click();
+                }}
+                className="w-9 h-9 rounded-xl hover:bg-[#1a2230] text-zinc-200 flex items-center justify-center cursor-pointer transition-colors"
+                title="Capture Frame Snapshot"
+              >
+                <Camera className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  saveCurrentProjectToStorage();
+                  setStudioView('new_project_setup');
+                }}
+                className="w-9 h-9 rounded-xl hover:bg-[#1a2230] text-zinc-200 flex items-center justify-center cursor-pointer transition-colors"
+                title="Format & Project Settings (16:9)"
+              >
+                <Settings className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="flex flex-col items-center gap-1 pt-1 border-t border-[#1c2330] w-full">
+              <button
+                type="button"
+                onClick={() => setIsTimelineExpanded((v) => !v)}
+                className={`w-9 h-9 rounded-xl flex items-center justify-center cursor-pointer transition-colors ${
+                  isTimelineExpanded ? 'bg-teal-400/20 text-teal-300' : 'hover:bg-[#1a2230] text-zinc-200'
+                }`}
+                title={isTimelineExpanded ? 'Restore Preview Height' : 'Expand Multi-Track Timeline'}
+              >
+                <ChevronsUpDown className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => seekToTime(0)}
+                className="w-9 h-9 rounded-xl hover:bg-[#1a2230] text-zinc-200 flex items-center justify-center cursor-pointer transition-colors"
+                title="Jump to Start"
+              >
+                <SkipBack className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => seekToTime(totalDuration)}
+                className="w-9 h-9 rounded-xl hover:bg-[#1a2230] text-zinc-200 flex items-center justify-center cursor-pointer transition-colors"
+                title="Jump to End"
+              >
+                <SkipForward className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+
+          {/* B. TOP LARGE DUAL-SCREEN 16:9 PREVIEW AREA */}
+          <div className="col-span-2 row-start-1 sm:col-span-1 sm:col-start-2 sm:row-start-1 min-w-0 bg-black flex flex-col justify-between overflow-hidden">
+            {/* Preview Header Strip */}
+            <div className="h-7 px-2.5 bg-[#0e131b] border-b border-[#1c2330] flex items-center justify-between text-[10px] text-zinc-400 shrink-0 gap-2">
+              <div className="flex items-center gap-1.5 min-w-0 truncate">
+                <span className="font-bold text-teal-300 bg-teal-950/60 border border-teal-500/40 px-1.5 py-0.5 rounded text-[9.5px] whitespace-nowrap">
+                  {selectedAspectRatio} 16:9
+                </span>
+                <span className="truncate text-zinc-300 font-semibold">
+                  {isDualScreenPreview ? 'Dual-Screen Preview (Filter + Combined)' : 'Combined 16:9 Player'}
+                </span>
+              </div>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => {
+                    seekToTime(0);
+                    setIsPlaying(true);
+                  }}
+                  className="px-2 py-0.5 rounded bg-cyan-500/15 hover:bg-cyan-400 hover:text-black border border-cyan-500/40 text-cyan-300 font-bold text-[9.5px] cursor-pointer whitespace-nowrap transition-colors"
+                  title="Replay Filter & Cumulative Preview from 0s"
+                >
+                  ↺ Replay
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsMuted(!isMuted)}
+                  className="p-1 rounded hover:bg-[#1a2230] text-zinc-300 cursor-pointer"
+                  title={isMuted ? 'Unmute Preview' : 'Mute Preview'}
+                >
+                  {isMuted || volume === 0 ? <VolumeX className="w-3.5 h-3.5 text-rose-400" /> : <Volume2 className="w-3.5 h-3.5" />}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    try {
+                      if (!document.fullscreenElement) {
+                        const reqFs = playerCanvasRef.current?.requestFullscreen;
+                        if (typeof reqFs === 'function') {
+                          void Promise.resolve(reqFs.call(playerCanvasRef.current)).catch(() => {
+                            setIsTimelineExpanded((v) => !v);
+                          });
+                        } else {
+                          setIsTimelineExpanded((v) => !v);
+                        }
+                      } else if (typeof document.exitFullscreen === 'function') {
+                        void Promise.resolve(document.exitFullscreen()).catch(() => {});
+                      }
+                    } catch {
+                      setIsTimelineExpanded((v) => !v);
+                    }
+                  }}
+                  className="p-1 rounded hover:bg-[#1a2230] text-zinc-300 cursor-pointer"
+                  title="Fullscreen"
+                >
+                  <Maximize className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+
+            {/* 16:9 Dual-Screen OR Single-Screen Viewports */}
+            {isDualScreenPreview ? (
+              <div className="w-full grid grid-cols-2 gap-1.5 sm:gap-2 p-1.5 sm:p-2 bg-black items-center">
+                {/* Screen 1: Active Filter / Effect Preview & Replay (Strict 16:9 Aspect) */}
+                <div className="flex flex-col rounded-lg border border-cyan-500/45 bg-[#0c1017] p-1 sm:p-1.5 overflow-hidden">
+                  <div className="flex items-center justify-between pb-1 text-[9px] sm:text-[10px] gap-1">
+                    <span className="font-bold text-cyan-300 truncate">1. Filter Preview</span>
+                    <span className="px-1 py-0.2 rounded bg-cyan-950 text-cyan-300 font-mono text-[8px] truncate max-w-[90px]">
+                      {activeFilter.name}
+                    </span>
+                  </div>
+                  <div
+                    onClick={() => {
+                      if (!canvasDragStateRef.current) handleTogglePlay();
+                    }}
+                    className={`w-full ${selectedAspectRatio === '16:9' ? 'aspect-video' : canvasDims.aspectClass} bg-black relative rounded overflow-hidden cursor-pointer flex items-center justify-center`}
+                  >
+                    <canvas
+                      ref={filterPreviewCanvasRef}
+                      width={canvasDims.width}
+                      height={canvasDims.height}
+                      className="block w-full h-full object-contain pointer-events-none"
+                    />
+                  </div>
+                </div>
+
+                {/* Screen 2: Combined Cumulative Edit + Filter Preview with Gizmos (Strict 16:9 Aspect) */}
+                <div className="flex flex-col rounded-lg border border-teal-500/45 bg-[#0c1017] p-1 sm:p-1.5 overflow-hidden">
+                  <div className="flex items-center justify-between pb-1 text-[9px] sm:text-[10px] gap-1">
+                    <span className="font-bold text-teal-300 truncate">2. Combined Edit</span>
+                    <span className="px-1 py-0.2 rounded bg-teal-950 text-teal-300 font-mono text-[8px] truncate">
+                      Merged Result
+                    </span>
+                  </div>
+                  <div
+                    onClick={() => {
+                      if (!canvasDragStateRef.current) handleTogglePlay();
+                    }}
+                    className={`w-full ${selectedAspectRatio === '16:9' ? 'aspect-video' : canvasDims.aspectClass} bg-black relative rounded overflow-hidden cursor-pointer flex items-center justify-center`}
+                  >
+                    {renderPlayerCanvasWithGizmos()}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div
+                onClick={() => {
+                  if (!canvasDragStateRef.current) handleTogglePlay();
+                }}
+                className="w-full p-1.5 sm:p-2 bg-black flex items-center justify-center cursor-pointer"
+              >
+                <div className={`w-full max-w-[640px] ${selectedAspectRatio === '16:9' ? 'aspect-video' : canvasDims.aspectClass} bg-black relative rounded-lg border border-zinc-800 overflow-hidden`}>
+                  {renderPlayerCanvasWithGizmos()}
+                </div>
+              </div>
+            )}
+
+            {/* Slim Scrubber + Split Bar directly under Preview */}
+            <div className="bg-[#0c1017] border-t border-[#1c2330] px-2.5 py-1 flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsPlaying(false);
+                  handleSplitClipAtPlayhead();
+                }}
+                className="min-h-[28px] px-2 py-0.5 rounded-lg bg-rose-500/20 text-rose-300 border border-rose-500/40 hover:bg-rose-500 hover:text-white text-[10px] font-bold flex items-center gap-1 cursor-pointer shrink-0 whitespace-nowrap"
+                title="Split Video at Playhead"
+              >
+                <Scissors className="w-3 h-3" />
+                <span>Split</span>
+              </button>
+              <input
+                ref={playerRangeRef}
+                type="range"
+                min="0"
+                max={Math.max(0.1, totalDuration)}
+                step="0.05"
+                value={Math.min(currentTimeSec, Math.max(0.1, totalDuration))}
+                disabled={totalDuration <= 0}
+                onChange={(e) => seekToTime(Number(e.target.value))}
+                className="flex-1 h-1.5 bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-teal-400 disabled:opacity-40"
+              />
+              <div className="font-mono text-[10px] text-zinc-300 shrink-0 whitespace-nowrap">
+                <span ref={playerTimecodeRef} className="text-teal-400 font-bold">{formatTimecode(currentTimeSec)}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* C. RIGHT-SIDE CIRCULAR TOOL WHEEL (Matches Reference Image 2 Radial Menu) */}
+          <div className="col-start-2 row-start-2 sm:col-start-3 sm:row-start-1 border-t sm:border-t-0 sm:border-l border-[#1c2330] bg-[#0b0e13] flex items-center justify-between sm:justify-center px-2 sm:px-0 min-w-0">
+            {/* Mobile Portrait Quick Active Category Info Left of Wheel */}
+            <div className="flex sm:hidden flex-col gap-1.5 min-w-0 pr-2 py-2 flex-1">
+              <span className="text-[9px] font-mono uppercase tracking-wider text-zinc-400">
+                Active Wheel Track
+              </span>
+              <span className="text-xs font-extrabold text-white truncate">
+                {activeWheelCategory.label}
+              </span>
+              <span className="text-[10px] text-teal-300 font-mono truncate">
+                {activeWheelCategory.trackNumber > 0
+                  ? `Track ${activeWheelCategory.trackNumber}: ${activeWheelCategory.trackName}`
+                  : 'ProFX 660 Engine'}
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsLeftPanelOpen((v) => !v);
+                  setMobilePanel('tools');
+                }}
+                className="mt-1 min-h-[36px] px-3 py-1.5 rounded-xl bg-teal-400 hover:bg-teal-300 text-black font-extrabold text-[11px] flex items-center justify-center gap-1.5 cursor-pointer shadow whitespace-nowrap w-fit"
+              >
+                <LayoutGrid className="w-3.5 h-3.5" />
+                <span>{isLeftPanelOpen ? 'Hide Tools' : 'Open Tools'}</span>
+              </button>
+            </div>
+
+            <CircularToolWheel
+              categories={WHEEL_CATEGORIES}
+              activeCategoryId={selectedWheelCategoryId}
+              onSelectCategory={(cat, openDrawer) => handleSelectWheelCategory(cat, openDrawer)}
+              isToolDrawerOpen={isLeftPanelOpen}
+              onToggleToolDrawer={() => {
+                setIsLeftPanelOpen((v) => !v);
+                setMobilePanel('tools');
+              }}
+              isInspectorOpen={isRightPanelOpen}
+              onToggleInspector={() => {
+                setIsRightPanelOpen((v) => !v);
+                setMobilePanel('inspector');
+              }}
+              isPlaying={isPlaying}
+              onTogglePlay={handleTogglePlay}
+              onExport={() => {
+                saveCurrentProjectToStorage();
+                clearExportedPreview();
+                setExportError(null);
+                setExportProgress(0);
+                setExportStatusText('');
+                setShowExportModal(true);
+              }}
+            />
+          </div>
+        </div>
+
+        {/* =========================================================================
+            2. WHEEL-SYNCED COLLAPSIBLE TOOLS & INSPECTOR DRAWER
+            ========================================================================= */}
+        {(isLeftPanelOpen || isRightPanelOpen) && (
+          <div className="shrink-0 max-h-[38vh] sm:max-h-[290px] bg-[#10151d] border-b border-[#1f2937] flex flex-col overflow-hidden">
+            {/* Shared Wheel-Synced Category Quick Strip + Drawer Controls */}
+            <div className="h-9 px-2 bg-[#0c1017] border-b border-[#1f2937] flex items-center justify-between gap-2 shrink-0">
+              <div className="flex items-center gap-1 overflow-x-auto no-scrollbar py-1 flex-1 min-w-0">
+                {WHEEL_CATEGORIES.map((cat) => {
+                  const IconC = cat.icon;
+                  const isSel = selectedWheelCategoryId === cat.id;
+                  return (
+                    <button
+                      key={cat.id}
+                      type="button"
+                      onClick={() => handleSelectWheelCategory(cat, true)}
+                      className={`min-h-[28px] px-2 py-1 rounded-lg flex items-center gap-1 text-[10px] font-bold cursor-pointer whitespace-nowrap transition-colors ${
+                        isSel
+                          ? 'bg-teal-400 text-black shadow'
+                          : 'bg-[#151b26] text-zinc-300 hover:text-white border border-[#242e3d]'
+                      }`}
+                    >
+                      <IconC className="w-3 h-3 shrink-0" style={!isSel ? { color: cat.accentHex } : undefined} />
+                      <span>{cat.shortLabel}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="flex items-center gap-1 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setIsLeftPanelOpen((v) => !v)}
+                  className={`px-2 py-1 rounded text-[10px] font-bold cursor-pointer ${
+                    isLeftPanelOpen ? 'bg-teal-500/20 text-teal-300' : 'text-zinc-400 hover:text-white'
+                  }`}
+                >
+                  Tools
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsRightPanelOpen((v) => !v)}
+                  className={`px-2 py-1 rounded text-[10px] font-bold cursor-pointer ${
+                    isRightPanelOpen ? 'bg-teal-500/20 text-teal-300' : 'text-zinc-400 hover:text-white'
+                  }`}
+                >
+                  Inspector
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsLeftPanelOpen(false);
+                    setIsRightPanelOpen(false);
+                  }}
+                  className="p-1 rounded hover:bg-[#1a2230] text-zinc-400 hover:text-white cursor-pointer"
+                  title="Close Panel"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Drawer Split Body: Tools Column & Inspector Column */}
+            <div className="flex-1 min-h-0 flex flex-col md:flex-row overflow-hidden">
+              {/* COLUMN 1: TOOLS & MEDIA BROWSER */}
+              {isLeftPanelOpen && (
+                <div className="flex-1 min-h-0 bg-[#10151d] md:border-r border-[#1f2937] flex flex-col overflow-hidden">
             {/* Top Category Tabs Bar */}
             <div className="flex items-center justify-between px-1.5 border-b border-[#1f2937] bg-[#0c1017] shrink-0 text-[10px] font-medium text-zinc-400">
               <div className="flex items-center gap-1 overflow-x-auto no-scrollbar py-1">
@@ -5357,7 +6527,7 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                       : activeTab === 'ProFX'
                       ? ['All', ...PRO_FEATURE_CATEGORIES]
                       : activeTab === 'Audio'
-                      ? ['All', 'Funny & Meme SFX', 'Comedy Tracks', 'Cinematic Score', 'Background Music', 'Trailer Hits', 'Upbeat Beat', 'Lo-Fi Chill', 'Electronic', 'Sound Effects']
+                      ? ['All', 'Dialogues', 'Funny & Meme SFX', 'Comedy Tracks', 'Cinematic Score', 'Background Music', 'Trailer Hits', 'Upbeat Beat', 'Lo-Fi Chill', 'Electronic', 'Sound Effects']
                       : activeTab === 'Transitions'
                       ? ['All', 'Dissolve', 'Dynamic Zoom', 'Flash & Light', 'Glitch & Warp', 'Slide & Push', '3D & Cube', 'Wipe & Shapes', 'Whip Pan']
                       : activeTab === 'Effects'
@@ -5609,9 +6779,93 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                   </div>
                 )}
 
-                {/* SECTION 2: AUDIO TAB */}
+                {/* SECTION 2: AUDIO, MUSIC & DIALOGUES TAB */}
                 {activeTab === 'Audio' && (
-                  <div className="space-y-2">
+                  <div className="space-y-2.5">
+                    {/* Local Device Audio / Music Upload Card (100% Private Local Storage) */}
+                    <div className="p-2.5 rounded-xl bg-emerald-950/25 border border-emerald-500/40 flex items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <span className="text-[10.5px] font-extrabold text-emerald-300 block truncate">
+                          {isMl ? 'ഫോണിൽ നിന്ന് ഓഡിയോ / മ്യൂസിക് ചേർക്കുക' : 'Pick Audio / Music from Device'}
+                        </span>
+                        <span className="text-[9px] text-zinc-400 block truncate">
+                          MP3, WAV, M4A, AAC · {isMl ? 'ലോക്കൽ പ്രോസസ്സിംഗ് മാത്രം' : 'Stays 100% private on device'}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => userAudioInputRef.current?.click()}
+                        className="min-h-[34px] px-3 py-1.5 rounded-lg bg-emerald-400 hover:bg-emerald-300 text-zinc-950 font-extrabold text-[10.5px] flex items-center gap-1.5 cursor-pointer shrink-0 shadow"
+                      >
+                        <Upload className="w-3.5 h-3.5" />
+                        <span>{isMl ? 'ഓഡിയോ' : 'Pick Audio'}</span>
+                      </button>
+                    </div>
+
+                    {/* Dedicated Dialogue / REC Track Builder Card */}
+                    {(activeSubCategory === 'Dialogues' || activeSubCategory === 'All') && (
+                      <div className="p-2.5 rounded-xl bg-amber-950/25 border border-amber-500/40 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10.5px] font-extrabold text-amber-300 flex items-center gap-1.5">
+                            <Mic className="w-3.5 h-3.5" />
+                            <span>Dialogue &amp; Voiceover (Track 6)</span>
+                          </span>
+                          {activeDialogue && (
+                            <button
+                              type="button"
+                              onClick={() => setActiveDialogue(null)}
+                              className="text-[9.5px] text-rose-400 hover:text-rose-300 underline cursor-pointer"
+                            >
+                              Delete Dialogue
+                            </button>
+                          )}
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                          <input
+                            type="text"
+                            value={dialogueSpeakerInput}
+                            onChange={(e) => setDialogueSpeakerInput(e.target.value)}
+                            placeholder="Speaker (e.g. Hero)"
+                            className="bg-[#0c1017] border border-[#2a3444] rounded-lg px-2 py-1 text-[10.5px] text-white font-semibold"
+                          />
+                          <div className="flex items-center gap-1.5 bg-[#0c1017] border border-[#2a3444] rounded-lg px-2 py-1">
+                            <span className="text-[9.5px] text-zinc-400 shrink-0">Dur:</span>
+                            <input
+                              type="number"
+                              min={1}
+                              max={60}
+                              value={dialogueDurInput}
+                              onChange={(e) => setDialogueDurInput(Math.max(1, Number(e.target.value) || 4))}
+                              className="w-full bg-transparent text-[10.5px] text-amber-300 font-mono outline-none"
+                            />
+                            <span className="text-[9px] text-zinc-500">s</span>
+                          </div>
+                        </div>
+                        <input
+                          type="text"
+                          value={dialogueTextInput}
+                          onChange={(e) => setDialogueTextInput(e.target.value)}
+                          placeholder="Enter dialogue / voiceover script..."
+                          className="w-full bg-[#0c1017] border border-[#2a3444] rounded-lg px-2.5 py-1.5 text-[10.5px] text-zinc-100"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setActiveDialogue({
+                              id: `dlg_${Date.now()}`,
+                              speaker: dialogueSpeakerInput || 'Speaker',
+                              text: dialogueTextInput || 'Dialogue Line',
+                              durationSec: dialogueDurInput || 6,
+                            });
+                            syncWheelToTrack('dialogues', false);
+                          }}
+                          className="w-full min-h-[34px] py-1.5 rounded-lg bg-amber-400 hover:bg-amber-300 text-black font-extrabold text-[10.5px] cursor-pointer"
+                        >
+                          + Apply Dialogue to Track 6
+                        </button>
+                      </div>
+                    )}
+
                     <div className="flex items-center justify-between text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
                       <span>Background Music &amp; Meme SFX</span>
                     </div>
@@ -7127,600 +8381,9 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
           </div>
         )}
 
-        {/* Floating Reopen Button for Left Panel (Desktop) */}
-        {!isLeftPanelOpen && (
-          <button
-            type="button"
-            onClick={() => setIsLeftPanelOpen(true)}
-            className="hidden md:flex absolute left-1 top-1/2 -translate-y-1/2 z-30 min-h-[42px] p-2 rounded-r-xl bg-[#18202c]/95 hover:bg-teal-400 hover:text-black border border-l-0 border-[#2b3648] text-teal-300 shadow-xl backdrop-blur cursor-pointer transition-all"
-            title="Open Tools Panel (ടൂളുകൾ തുറക്കുക)"
-          >
-            <ChevronRight className="w-4 h-4" />
-          </button>
-        )}
-
-        {/* -----------------------------------------------------------------
-            COLUMN 2: EXACT CENTER VIDEO PLAYER (TOP FULL WIDTH ON MOBILE | CENTER ON DESKTOP)
-            ----------------------------------------------------------------- */}
-        <div className="order-1 md:order-2 w-full md:w-auto h-[34vh] min-h-[205px] md:h-full md:flex-1 md:min-w-[26%] bg-[#0b0e12] flex flex-col justify-between overflow-hidden relative shrink-0 md:shrink transition-all duration-300">
-          {/* Top Status Bar */}
-          <div className="h-6 sm:h-7 px-2 sm:px-3 bg-[#101417] border-b border-[#21262d] flex items-center justify-between text-[9px] sm:text-[11px] text-zinc-400 shrink-0">
-            <div className="flex items-center gap-1 sm:gap-2 truncate">
-              <span className="font-semibold text-zinc-200">Player</span>
-              <span className="text-zinc-400">{projectResolution}</span>
-            </div>
-            <div className="flex items-center gap-1 sm:gap-2 truncate">
-              <span className="text-[8px] sm:text-[10px] font-bold text-teal-400 bg-teal-950/60 border border-teal-500/40 px-1 py-0.2 rounded">
-                {selectedAspectRatio}
-              </span>
-              <span className="text-[8px] sm:text-[10px] font-mono text-zinc-400 truncate hidden sm:inline">{activeFilter.name}</span>
-              {playbackSpeed !== 1.0 && (
-                <span className="text-[8px] sm:text-[10px] font-mono text-amber-300 bg-amber-950/60 border border-amber-500/40 px-1 rounded">
-                  {playbackSpeed}x
-                </span>
-              )}
-            </div>
-          </div>
-
-          {/* Centered Canvas Screen WITH On-Screen Interactive Round Transform & VFX Route Handles */}
-          <div
-            onClick={() => {
-              if (!canvasDragStateRef.current) handleTogglePlay();
-            }}
-            className="flex-1 min-h-0 flex items-center justify-center p-1 sm:p-2 relative overflow-hidden bg-black cursor-pointer group"
-            title="Click to Play / Pause Video (ക്ലിക്ക് ചെയ്ത് പ്ലേ / പോസ് ചെയ്യുക)"
-          >
-            <div
-              ref={canvasOverlayRef}
-              onPointerMove={(e) => {
-                const drag = canvasDragStateRef.current;
-                const overlay = canvasOverlayRef.current;
-                if (!drag || !overlay) return;
-                e.stopPropagation();
-                const rect = overlay.getBoundingClientRect();
-                const px = Math.max(2, Math.min(98, ((e.clientX - rect.left) / Math.max(1, rect.width)) * 100));
-                const py = Math.max(2, Math.min(98, ((e.clientY - rect.top) / Math.max(1, rect.height)) * 100));
-                if (drag.mode === 'move_sticker' && drag.id) {
-                  setActiveStickers((prev) => prev.map((s) => (s.id === drag.id ? { ...s, xPct: px, yPct: py } : s)));
-                } else if (drag.mode === 'resize_sticker' && drag.id && drag.originX !== undefined && drag.originY !== undefined) {
-                  const dist = Math.hypot(e.clientX - drag.originX, e.clientY - drag.originY);
-                  const ratio = dist / Math.max(12, drag.initDist || 40);
-                  const nextScale = Number(Math.max(0.3, Math.min(3.2, (drag.initScale || 1) * ratio)).toFixed(2));
-                  setActiveStickers((prev) => prev.map((s) => (s.id === drag.id ? { ...s, scale: nextScale } : s)));
-                } else if (drag.mode === 'move_title') {
-                  setTitleXPct(px);
-                  setTitleYPct(py);
-                } else if (drag.mode === 'resize_title' && drag.originX !== undefined && drag.originY !== undefined) {
-                  const dist = Math.hypot(e.clientX - drag.originX, e.clientY - drag.originY);
-                  const ratio = dist / Math.max(12, drag.initDist || 40);
-                  setTitleScale(Number(Math.max(0.35, Math.min(2.8, (drag.initScale || 1) * ratio)).toFixed(2)));
-                } else if (drag.mode === 'vfx_start' && drag.id) {
-                  setVfxLayers((prev) => prev.map((v) => (v.id === drag.id ? { ...v, startXPct: px, startYPct: py } : v)));
-                } else if (drag.mode === 'vfx_end' && drag.id) {
-                  setVfxLayers((prev) => prev.map((v) => (v.id === drag.id ? { ...v, endXPct: px, endYPct: py } : v)));
-                } else if (drag.mode === 'vfx_scale' && drag.id && drag.originX !== undefined && drag.originY !== undefined) {
-                  const dist = Math.hypot(e.clientX - drag.originX, e.clientY - drag.originY);
-                  const ratio = dist / Math.max(12, drag.initDist || 40);
-                  const nextScale = Number(Math.max(0.3, Math.min(3.5, (drag.initScale || 1) * ratio)).toFixed(2));
-                  setVfxLayers((prev) => prev.map((v) => (v.id === drag.id ? { ...v, scale: nextScale } : v)));
-                } else if (drag.mode === 'move_card' && drag.id) {
-                  setTrailerCardLayers((prev) => prev.map((c) => (c.id === drag.id ? { ...c, xPct: px, yPct: py } : c)));
-                } else if (drag.mode === 'resize_card' && drag.id && drag.originX !== undefined && drag.originY !== undefined) {
-                  const dist = Math.hypot(e.clientX - drag.originX, e.clientY - drag.originY);
-                  const ratio = dist / Math.max(12, drag.initDist || 40);
-                  const nextScale = Number(Math.max(0.35, Math.min(2.2, (drag.initScale || 1) * ratio)).toFixed(2));
-                  setTrailerCardLayers((prev) => prev.map((c) => (c.id === drag.id ? { ...c, scale: nextScale } : c)));
-                }
-              }}
-              onPointerUp={(e) => {
-                if (canvasDragStateRef.current) {
-                  e.stopPropagation();
-                  canvasDragStateRef.current = null;
-                }
-              }}
-              onPointerCancel={() => {
-                canvasDragStateRef.current = null;
-              }}
-              className="relative inline-flex items-center justify-center max-w-full max-h-full touch-none select-none"
-            >
-              <canvas
-                ref={playerCanvasRef}
-                width={canvasDims.width}
-                height={canvasDims.height}
-                className="block max-w-full max-h-full w-auto h-auto object-contain rounded border border-zinc-800 shadow-2xl pointer-events-none"
-              />
-
-              {/* ON-SCREEN ROUND HANDLE GIZMOS: 1) Active Sticker / Emoji Transform Ring */}
-              {activeStickers.map((stkLayer) => {
-                const isSelected = selectedFeatureType === 'sticker' && selectedStickerLayerId === stkLayer.id;
-                const isInTimeWindow =
-                  totalDuration <= 0 ||
-                  (currentTimeSec >= stkLayer.startTimeSec - 0.1 &&
-                    currentTimeSec <= stkLayer.startTimeSec + stkLayer.durationSec + 0.1);
-                if (!isSelected && !isInTimeWindow) return null;
-                return (
-                  <div
-                    key={stkLayer.id}
-                    onPointerDown={(e) => {
-                      e.stopPropagation();
-                      setIsPlaying(false);
-                      setSelectedStickerLayerId(stkLayer.id);
-                      setSelectedVfxLayerId(null);
-                      setSelectedFeatureType('sticker');
-                      setActiveInspectorTab('adjust');
-                      setIsRightPanelOpen(true);
-                      canvasDragStateRef.current = { mode: 'move_sticker', id: stkLayer.id };
-                      try {
-                        canvasOverlayRef.current?.setPointerCapture(e.pointerId);
-                      } catch {}
-                    }}
-                    onClick={(e) => e.stopPropagation()}
-                    style={{ left: `${stkLayer.xPct}%`, top: `${stkLayer.yPct}%`, width: `${Math.max(54, 72 * stkLayer.scale)}px`, height: `${Math.max(30, 34 * stkLayer.scale)}px` }}
-                    className={`absolute -translate-x-1/2 -translate-y-1/2 z-20 cursor-move transition-shadow ${
-                      isSelected
-                        ? 'rounded-full border-2 border-dashed border-teal-400 bg-teal-400/10 shadow-[0_0_12px_rgba(45,212,191,0.55)]'
-                        : 'rounded-full border border-transparent hover:border-teal-400/50'
-                    }`}
-                    title="Drag to move or pull round corner dots to resize (വലിപ്പം കൂട്ടാനും നീക്കാനും)"
-                  >
-                    {isSelected && (
-                      <>
-                        {/* Round Corner Resize Handle (Bottom-Right & Top-Left) */}
-                        <div
-                          onPointerDown={(e) => {
-                            e.stopPropagation();
-                            const box = (e.currentTarget.parentElement as HTMLElement).getBoundingClientRect();
-                            const cx = box.left + box.width / 2;
-                            const cy = box.top + box.height / 2;
-                            canvasDragStateRef.current = {
-                              mode: 'resize_sticker',
-                              id: stkLayer.id,
-                              initScale: stkLayer.scale,
-                              originX: cx,
-                              originY: cy,
-                              initDist: Math.hypot(e.clientX - cx, e.clientY - cy),
-                            };
-                            try {
-                              canvasOverlayRef.current?.setPointerCapture(e.pointerId);
-                            } catch {}
-                          }}
-                          className="absolute -bottom-2 -right-2 w-4 h-4 rounded-full bg-white border-2 border-teal-400 shadow-lg cursor-nwse-resize"
-                          title="Drag circle to resize"
-                        />
-                        <div
-                          onPointerDown={(e) => {
-                            e.stopPropagation();
-                            const box = (e.currentTarget.parentElement as HTMLElement).getBoundingClientRect();
-                            const cx = box.left + box.width / 2;
-                            const cy = box.top + box.height / 2;
-                            canvasDragStateRef.current = {
-                              mode: 'resize_sticker',
-                              id: stkLayer.id,
-                              initScale: stkLayer.scale,
-                              originX: cx,
-                              originY: cy,
-                              initDist: Math.hypot(e.clientX - cx, e.clientY - cy),
-                            };
-                            try {
-                              canvasOverlayRef.current?.setPointerCapture(e.pointerId);
-                            } catch {}
-                          }}
-                          className="absolute -top-2 -left-2 w-4 h-4 rounded-full bg-white border-2 border-teal-400 shadow-lg cursor-nwse-resize"
-                        />
-                        <button
-                          type="button"
-                          onPointerDown={(e) => e.stopPropagation()}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setActiveStickers((prev) => prev.filter((s) => s.id !== stkLayer.id));
-                            setSelectedStickerLayerId(null);
-                          }}
-                          className="absolute -top-2.5 -right-2.5 w-4 h-4 rounded-full bg-rose-600 text-white flex items-center justify-center shadow border border-white cursor-pointer"
-                          title="Delete Sticker"
-                        >
-                          <X className="w-2.5 h-2.5" />
-                        </button>
-                      </>
-                    )}
-                  </div>
-                );
-              })}
-
-              {/* ON-SCREEN ROUND HANDLE GIZMOS: 2) Active Title Drag & Round Resize Box */}
-              {showTitleOverlay && movieTitle && selectedFeatureType === 'title' && (
-                <div
-                  onPointerDown={(e) => {
-                    e.stopPropagation();
-                    setIsPlaying(false);
-                    canvasDragStateRef.current = { mode: 'move_title' };
-                    try {
-                      canvasOverlayRef.current?.setPointerCapture(e.pointerId);
-                    } catch {}
-                  }}
-                  onClick={(e) => e.stopPropagation()}
-                  style={{ left: `${titleXPct}%`, top: `${titleYPct}%`, width: `${Math.max(85, 130 * titleScale)}px`, height: `${Math.max(36, 48 * titleScale)}px` }}
-                  className="absolute -translate-x-1/2 -translate-y-1/2 z-20 cursor-move rounded-full border-2 border-dashed border-amber-400 bg-amber-400/10 shadow-[0_0_12px_rgba(251,191,36,0.45)]"
-                  title="Drag Title or pull round dot to resize"
-                >
-                  <div
-                    onPointerDown={(e) => {
-                      e.stopPropagation();
-                      const box = (e.currentTarget.parentElement as HTMLElement).getBoundingClientRect();
-                      const cx = box.left + box.width / 2;
-                      const cy = box.top + box.height / 2;
-                      canvasDragStateRef.current = {
-                        mode: 'resize_title',
-                        initScale: titleScale,
-                        originX: cx,
-                        originY: cy,
-                        initDist: Math.hypot(e.clientX - cx, e.clientY - cy),
-                      };
-                      try {
-                        canvasOverlayRef.current?.setPointerCapture(e.pointerId);
-                      } catch {}
-                    }}
-                    className="absolute -bottom-2 -right-2 w-4 h-4 rounded-full bg-white border-2 border-amber-400 shadow-lg cursor-nwse-resize"
-                  />
-                  <button
-                    type="button"
-                    onPointerDown={(e) => e.stopPropagation()}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setShowTitleOverlay(false);
-                      setMovieTitle('');
-                    }}
-                    className="absolute -top-2.5 -right-2.5 w-4 h-4 rounded-full bg-rose-600 text-white flex items-center justify-center shadow border border-white cursor-pointer"
-                    title="Delete Title"
-                  >
-                    <X className="w-2.5 h-2.5" />
-                  </button>
-                </div>
-              )}
-
-              {/* ON-SCREEN ROUND HANDLE GIZMOS: 3) Selected VFX Motion Route (🔫 Gun Start -> 🩸 Hit Target) + Size Ring */}
-              {(() => {
-                const activeVfxObj = vfxLayers.find((v) => v.id === selectedVfxLayerId);
-                if (!activeVfxObj) return null;
-                return (
-                  <>
-                    {/* Flight trajectory SVG dashed arrow */}
-                    {activeVfxObj.vfx.hasMotionRoute && (
-                      <svg className="absolute inset-0 w-full h-full pointer-events-none z-20">
-                        <line
-                          x1={`${activeVfxObj.startXPct}%`}
-                          y1={`${activeVfxObj.startYPct}%`}
-                          x2={`${activeVfxObj.endXPct}%`}
-                          y2={`${activeVfxObj.endYPct}%`}
-                          stroke="#fbbf24"
-                          strokeWidth="2"
-                          strokeDasharray="5 4"
-                        />
-                      </svg>
-                    )}
-
-                    {/* Start Round Handle (Gun / Source Point) */}
-                    <div
-                      onPointerDown={(e) => {
-                        e.stopPropagation();
-                        setIsPlaying(false);
-                        canvasDragStateRef.current = { mode: 'vfx_start', id: activeVfxObj.id };
-                        try {
-                          canvasOverlayRef.current?.setPointerCapture(e.pointerId);
-                        } catch {}
-                      }}
-                      onClick={(e) => e.stopPropagation()}
-                      style={{ left: `${activeVfxObj.startXPct}%`, top: `${activeVfxObj.startYPct}%` }}
-                      className="absolute -translate-x-1/2 -translate-y-1/2 z-30 w-7 h-7 rounded-full bg-amber-400/90 border-2 border-white shadow-[0_0_12px_rgba(251,191,36,0.9)] flex items-center justify-center cursor-move text-[10px] font-black text-black"
-                      title="Drag Start Point onto Gun Barrel (തോക്കിന്റെ ഭാഗത്ത് വെക്കുക)"
-                    >
-                      🔫
-                    </div>
-
-                    {/* End Target Round Handle (Body Hit / Impact Target) */}
-                    {activeVfxObj.vfx.hasMotionRoute && (
-                      <div
-                        onPointerDown={(e) => {
-                          e.stopPropagation();
-                          setIsPlaying(false);
-                          canvasDragStateRef.current = { mode: 'vfx_end', id: activeVfxObj.id };
-                          try {
-                            canvasOverlayRef.current?.setPointerCapture(e.pointerId);
-                          } catch {}
-                        }}
-                        onClick={(e) => e.stopPropagation()}
-                        style={{ left: `${activeVfxObj.endXPct}%`, top: `${activeVfxObj.endYPct}%` }}
-                        className="absolute -translate-x-1/2 -translate-y-1/2 z-30 w-7 h-7 rounded-full bg-rose-600/95 border-2 border-white shadow-[0_0_12px_rgba(225,29,72,0.95)] flex items-center justify-center cursor-move text-[10px] font-black text-white"
-                        title="Drag Target Point onto Character Body (ഉണ്ട കയറേണ്ട ശരീര ഭാഗത്ത് വെക്കുക)"
-                      >
-                        🎯
-                      </div>
-                    )}
-
-                    {/* Outer Round Size Handle */}
-                    <div
-                      onPointerDown={(e) => {
-                        e.stopPropagation();
-                        setIsPlaying(false);
-                        const overlay = canvasOverlayRef.current?.getBoundingClientRect();
-                        if (!overlay) return;
-                        const ox = overlay.left + (activeVfxObj.startXPct / 100) * overlay.width;
-                        const oy = overlay.top + (activeVfxObj.startYPct / 100) * overlay.height;
-                        canvasDragStateRef.current = {
-                          mode: 'vfx_scale',
-                          id: activeVfxObj.id,
-                          initScale: activeVfxObj.scale,
-                          originX: ox,
-                          originY: oy,
-                          initDist: Math.hypot(e.clientX - ox, e.clientY - oy),
-                        };
-                        try {
-                          canvasOverlayRef.current?.setPointerCapture(e.pointerId);
-                        } catch {}
-                      }}
-                      onClick={(e) => e.stopPropagation()}
-                      style={{
-                        left: `${Math.min(96, activeVfxObj.startXPct + 8 * activeVfxObj.scale)}%`,
-                        top: `${Math.min(96, activeVfxObj.startYPct + 8 * activeVfxObj.scale)}%`,
-                      }}
-                      className="absolute -translate-x-1/2 -translate-y-1/2 z-30 w-4 h-4 rounded-full bg-teal-400 border-2 border-white shadow cursor-nwse-resize"
-                      title="Drag circle to resize VFX (വലിപ്പം കൂട്ടാൻ/കുറയ്ക്കാൻ)"
-                    />
-                  </>
-                );
-              })()}
-
-              {/* ON-SCREEN ROUND HANDLE GIZMOS: 4) Image-to-Trailer Card Drag & Resize Ring */}
-              {trailerCardLayers.map((cardLayer) => {
-                const isSelected = selectedFeatureType === 'trailer_card' && selectedTrailerCardId === cardLayer.id;
-                const isInTimeWindow =
-                  totalDuration <= 0 ||
-                  (currentTimeSec >= cardLayer.startTimeSec - 0.1 &&
-                    currentTimeSec <= cardLayer.startTimeSec + cardLayer.durationSec + 0.1);
-                if (!isSelected && !isInTimeWindow) return null;
-                return (
-                  <div
-                    key={cardLayer.id}
-                    onPointerDown={(e) => {
-                      e.stopPropagation();
-                      setIsPlaying(false);
-                      setSelectedTrailerCardId(cardLayer.id);
-                      setSelectedStickerLayerId(null);
-                      setSelectedVfxLayerId(null);
-                      setSelectedFeatureType('trailer_card');
-                      setActiveInspectorTab('adjust');
-                      setIsRightPanelOpen(true);
-                      canvasDragStateRef.current = { mode: 'move_card', id: cardLayer.id };
-                      try {
-                        canvasOverlayRef.current?.setPointerCapture(e.pointerId);
-                      } catch {}
-                    }}
-                    onClick={(e) => e.stopPropagation()}
-                    style={{
-                      left: `${cardLayer.xPct}%`,
-                      top: `${cardLayer.yPct}%`,
-                      width: `${Math.max(90, 140 * cardLayer.scale)}px`,
-                      height: `${Math.max(105, 160 * cardLayer.scale)}px`,
-                    }}
-                    className={`absolute -translate-x-1/2 -translate-y-1/2 z-20 cursor-move transition-shadow ${
-                      isSelected
-                        ? 'rounded-2xl border-2 border-dashed border-amber-400 bg-amber-400/5 shadow-[0_0_16px_rgba(251,191,36,0.45)]'
-                        : 'rounded-2xl border border-transparent hover:border-amber-400/40'
-                    }`}
-                    title="Drag Trailer Card or pull corner circle to resize"
-                  >
-                    {isSelected && (
-                      <>
-                        <div
-                          onPointerDown={(e) => {
-                            e.stopPropagation();
-                            const box = (e.currentTarget.parentElement as HTMLElement).getBoundingClientRect();
-                            const cx = box.left + box.width / 2;
-                            const cy = box.top + box.height / 2;
-                            canvasDragStateRef.current = {
-                              mode: 'resize_card',
-                              id: cardLayer.id,
-                              initScale: cardLayer.scale,
-                              originX: cx,
-                              originY: cy,
-                              initDist: Math.hypot(e.clientX - cx, e.clientY - cy),
-                            };
-                            try {
-                              canvasOverlayRef.current?.setPointerCapture(e.pointerId);
-                            } catch {}
-                          }}
-                          className="absolute -bottom-2 -right-2 w-4 h-4 rounded-full bg-white border-2 border-amber-400 shadow-lg cursor-nwse-resize"
-                        />
-                        <button
-                          type="button"
-                          onPointerDown={(e) => e.stopPropagation()}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setTrailerCardLayers((prev) => prev.filter((c) => c.id !== cardLayer.id));
-                            setSelectedTrailerCardId(null);
-                          }}
-                          className="absolute -top-2.5 -right-2.5 w-4 h-4 rounded-full bg-rose-600 text-white flex items-center justify-center shadow border border-white cursor-pointer"
-                          title="Delete Trailer Card"
-                        >
-                          <X className="w-2.5 h-2.5" />
-                        </button>
-                      </>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Bottom Player Controls */}
-          <div className="bg-[#0c1017] border-t border-[#1f2937] px-2 sm:px-3.5 py-1.5 flex flex-col gap-1 shrink-0">
-            {/* Scrubber Progress Bar */}
-            <div className="relative w-full flex items-center cursor-pointer group">
-              <input
-                ref={playerRangeRef}
-                type="range"
-                min="0"
-                max={Math.max(0.1, totalDuration)}
-                step="0.05"
-                value={Math.min(currentTimeSec, Math.max(0.1, totalDuration))}
-                disabled={totalDuration <= 0}
-                onChange={(e) => seekToTime(Number(e.target.value))}
-                className="w-full h-1.5 bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-teal-400 group-hover:h-2 transition-all disabled:opacity-40"
-              />
-            </div>
-
-            {/* Transport Bar */}
-            <div className="flex items-center justify-between text-[11px] sm:text-xs text-zinc-300 gap-1.5">
-              <div className="flex items-center gap-1.5 sm:gap-2.5 min-w-0">
-                <button
-                  type="button"
-                  onClick={() => seekToTime(0)}
-                  className="min-h-[38px] min-w-[38px] sm:min-h-[34px] sm:min-w-[34px] rounded-xl hover:bg-[#18202c] hover:text-teal-400 flex items-center justify-center cursor-pointer shrink-0 transition-colors"
-                  title="Jump to Start"
-                >
-                  <SkipBack className="w-4 h-4" />
-                </button>
-                <button
-                  type="button"
-                  onClick={handleTogglePlay}
-                  className="w-10 h-10 sm:w-9 sm:h-9 rounded-full bg-teal-400 text-black hover:bg-teal-300 flex items-center justify-center cursor-pointer shadow-lg shrink-0 transition-transform active:scale-95"
-                >
-                  {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 fill-black ml-0.5" />}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => seekToTime(totalDuration)}
-                  className="min-h-[38px] min-w-[38px] sm:min-h-[34px] sm:min-w-[34px] rounded-xl hover:bg-[#18202c] hover:text-teal-400 flex items-center justify-center cursor-pointer shrink-0 transition-colors"
-                  title="Jump to End"
-                >
-                  <SkipForward className="w-4 h-4" />
-                </button>
-
-                <div className="font-mono text-[10.5px] sm:text-[11px] text-zinc-300 truncate">
-                  <span ref={playerTimecodeRef} className="text-teal-400 font-bold">{formatTimecode(currentTimeSec)}</span>
-                  <span className="text-zinc-500 hidden sm:inline"> / {formatTimecode(totalDuration)}</span>
-                </div>
-              </div>
-
-              {/* Right Player Tools */}
-              <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsPlaying(false);
-                    handleSplitClipAtPlayhead();
-                  }}
-                  className="min-h-[38px] sm:min-h-[34px] px-3 py-1.5 rounded-xl bg-rose-500/20 text-rose-300 border border-rose-500/40 hover:bg-rose-500 hover:text-white text-[11px] font-bold flex items-center gap-1.5 cursor-pointer transition-colors whitespace-nowrap"
-                  title="Split Video at Playhead (കത്രിക ചിഹ്നം - വീഡിയോ രണ്ടാക്കുക)"
-                >
-                  <Scissors className="w-3.5 h-3.5 stroke-[2.5]" />
-                  <span>Split</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    const canvas = playerCanvasRef.current;
-                    if (!canvas) return;
-                    const link = document.createElement('a');
-                    link.download = `Snapshot_${Date.now()}.png`;
-                    link.href = canvas.toDataURL('image/png');
-                    link.click();
-                  }}
-                  className="min-h-[34px] min-w-[34px] rounded-xl hover:bg-[#18202c] hover:text-teal-400 items-center justify-center cursor-pointer hidden sm:inline-flex"
-                  title="Snapshot Camera"
-                >
-                  <Camera className="w-4 h-4" />
-                </button>
-
-                <div className="flex items-center gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => setIsMuted(!isMuted)}
-                    className="min-h-[38px] min-w-[38px] sm:min-h-[34px] sm:min-w-[34px] rounded-xl hover:bg-[#18202c] flex items-center justify-center hover:text-white cursor-pointer"
-                  >
-                    {isMuted || volume === 0 ? <VolumeX className="w-4 h-4 text-rose-400" /> : <Volume2 className="w-4 h-4" />}
-                  </button>
-                  <input
-                    type="range"
-                    min="0"
-                    max="100"
-                    value={isMuted ? 0 : volume}
-                    onChange={(e) => setVolume(Number(e.target.value))}
-                    className="w-10 sm:w-14 h-1 accent-teal-400 cursor-pointer hidden sm:block"
-                  />
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (!document.fullscreenElement) {
-                      playerCanvasRef.current?.requestFullscreen();
-                    } else {
-                      document.exitFullscreen();
-                    }
-                  }}
-                  className="min-h-[38px] min-w-[38px] sm:min-h-[34px] sm:min-w-[34px] rounded-xl hover:bg-[#18202c] flex items-center justify-center hover:text-white cursor-pointer"
-                  title="Fullscreen"
-                >
-                  <Maximize className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* MOBILE PANEL SWITCHER BAR (< md screens: Tools | Timeline | Inspector) */}
-        <div className="order-2 md:hidden grid grid-cols-3 gap-1.5 px-2 py-1.5 bg-[#0c1017] border-y border-[#1f2937] shrink-0">
-          {(
-            [
-              { id: 'tools', label: 'Tools', icon: LayoutGrid },
-              { id: 'timeline', label: 'Timeline', icon: Layers },
-              { id: 'inspector', label: 'Inspector', icon: Sliders },
-            ] as const
-          ).map((mTab) => {
-            const IconM = mTab.icon;
-            const activeM = mobilePanel === mTab.id;
-            return (
-              <button
-                key={mTab.id}
-                type="button"
-                onClick={() => setMobilePanel(mTab.id)}
-                className={`min-h-[42px] px-2.5 py-1.5 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer transition-all whitespace-nowrap ${
-                  activeM
-                    ? 'bg-teal-400 text-black shadow-md'
-                    : 'bg-[#141a24] text-zinc-300 border border-[#242e3d] hover:text-white'
-                }`}
-              >
-                <IconM className="w-4 h-4 shrink-0" />
-                <span>{mTab.label}</span>
-              </button>
-            );
-          })}
-        </div>
-
-        {/* Floating Reopen Button for Right Panel (Desktop) */}
-        {!isRightPanelOpen && (
-          <button
-            type="button"
-            onClick={() => setIsRightPanelOpen(true)}
-            className="hidden md:flex absolute right-1 top-1/2 -translate-y-1/2 z-30 min-h-[42px] p-2 rounded-l-xl bg-[#18202c]/95 hover:bg-teal-400 hover:text-black border border-r-0 border-[#2b3648] text-teal-300 shadow-xl backdrop-blur cursor-pointer transition-all"
-            title="Open Inspector / Color Panel (ഇൻസ്പെക്ടർ തുറക്കുക)"
-          >
-            <ChevronLeft className="w-4 h-4" />
-          </button>
-        )}
-
-        {/* -----------------------------------------------------------------
-            COLUMN 3: RIGHT PROPERTIES & CONTEXTUAL LIVE INSPECTOR (ALWAYS RIGHT OF VIDEO ON DESKTOP)
-            ----------------------------------------------------------------- */}
-        {(isRightPanelOpen || mobilePanel === 'inspector') && (
-          <div
-            className={`${
-              mobilePanel === 'inspector' ? 'flex order-3 flex-1 min-h-0 w-full' : 'hidden'
-            } ${
-              isRightPanelOpen ? 'md:flex' : 'md:hidden'
-            } md:order-3 md:w-[27%] lg:w-[320px] xl:w-[350px] md:h-full bg-[#10151d] md:border-l border-[#1f2937] flex-col shrink-0 transition-all duration-300`}
-          >
+        {/* COLUMN 3: RIGHT PROPERTIES & CONTEXTUAL LIVE INSPECTOR INSIDE DRAWER */}
+        {isRightPanelOpen && (
+          <div className="flex-1 md:flex-none md:w-[320px] lg:w-[360px] min-h-0 bg-[#10151d] border-t md:border-t-0 border-[#1f2937] flex flex-col shrink-0 overflow-hidden">
             {/* Header Tabs with Collapse Button */}
             <div className="flex items-center justify-between border-b border-[#1f2937] bg-[#0c1017] shrink-0">
               <div className="flex-1 grid grid-cols-6 text-[8px] sm:text-[10px] font-semibold text-center text-zinc-400">
@@ -9505,12 +10168,41 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
             </div>
           </div>
         )}
-      </div>
+            </div>
+          </div>
+        )}
 
       {/* =========================================================================
-          3. LOWER TIMELINE & MULTI-TRACK CONTROLS
+          3. LOWER TIMELINE & MULTI-TRACK CONTROLS (CAPCUT CLEAN TRACKS + RED TIMECODE)
           ========================================================================= */}
-      <div className="flex-[46] min-h-0 bg-[#0c1017] flex flex-col overflow-hidden">
+      <div className="flex-1 min-h-0 bg-[#090c11] flex flex-col overflow-hidden">
+        {/* Centered Red Capsule Timecode Strip (Matches Reference Images) */}
+        <div className="h-7 px-2.5 sm:px-3.5 bg-[#0a0e14] border-b border-[#1c2330] grid grid-cols-3 items-center shrink-0 select-none">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <span
+              className="px-1.5 py-0.5 rounded bg-[#151c26] border border-[#263244] font-mono font-bold text-[9.5px] truncate"
+              style={{ color: activeWheelCategory.accentHex }}
+            >
+              {activeWheelCategory.trackNumber > 0
+                ? `T${activeWheelCategory.trackNumber} · ${activeWheelCategory.trackName}`
+                : activeWheelCategory.shortLabel}
+            </span>
+          </div>
+          <div className="flex justify-center">
+            <span
+              ref={redBadgeTimeRef}
+              className="px-3 py-0.5 rounded-full bg-rose-500 text-white font-mono font-black text-[11px] shadow-[0_0_12px_rgba(244,63,94,0.6)] tracking-tight"
+            >
+              {formatMsTimecode(currentTimeSec)}
+            </span>
+          </div>
+          <div className="flex justify-end">
+            <span className="px-2 py-0.5 rounded-full bg-[#151b26] border border-[#253042] text-zinc-200 font-mono font-bold text-[10px]">
+              {formatMsTimecode(totalDuration)}
+            </span>
+          </div>
+        </div>
+
         {/* Timeline Action Toolbar */}
         <div className="h-11 border-b border-[#1f2937] px-2.5 sm:px-3.5 flex items-center justify-between bg-[#10151d] text-zinc-400 shrink-0 overflow-x-auto no-scrollbar gap-2">
           <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
@@ -9647,14 +10339,10 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
             <button
               type="button"
               onClick={() => {
-                const cur = timelineClips[activeClipIndex];
-                if (!cur) return;
-                const copy = [...timelineClips, { ...cur, id: `clip_dup_${Date.now()}` }];
-                setTimelineClips(copy);
-                saveCurrentProjectToStorage(copy);
+                handleDuplicateClipAt(activeClipIndex);
               }}
               className="min-h-[32px] min-w-[32px] p-1.5 rounded-lg hover:bg-[#18202c] hover:text-white flex items-center justify-center cursor-pointer transition-colors"
-              title="Duplicate Clip"
+              title="Duplicate Clip (ക്ലിപ്പ് കോപ്പി ചെയ്യുക)"
             >
               <Copy className="w-3.5 h-3.5" />
             </button>
@@ -9673,14 +10361,29 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
 
             <button
               type="button"
-              onClick={() => {
-                setActiveTab('Media');
-                setIsLeftPanelOpen(true);
-              }}
-              className="min-h-[32px] px-2.5 py-1 rounded-lg bg-[#18202c] hover:bg-teal-400 hover:text-black border border-[#2b3648] text-teal-300 font-bold text-[10.5px] flex items-center gap-1.5 cursor-pointer transition-colors"
+              onClick={() => syncWheelToTrack('video', true)}
+              className="min-h-[32px] px-2.5 py-1 rounded-lg bg-[#18202c] hover:bg-teal-400 hover:text-black border border-[#2b3648] text-teal-300 font-bold text-[10.5px] flex items-center gap-1.5 cursor-pointer transition-colors whitespace-nowrap"
             >
               <Upload className="w-3.5 h-3.5" />
-              <span>+ Add Media from Pool</span>
+              <span>+ Add Clip</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => syncWheelToTrack('music', true)}
+              className="min-h-[32px] px-2.5 py-1 rounded-lg bg-[#18202c] hover:bg-emerald-400 hover:text-black border border-[#2b3648] text-emerald-300 font-bold text-[10.5px] flex items-center gap-1 cursor-pointer transition-colors whitespace-nowrap"
+            >
+              <Music className="w-3.5 h-3.5" />
+              <span>+ Music</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => syncWheelToTrack('titles', true)}
+              className="min-h-[32px] px-2.5 py-1 rounded-lg bg-[#18202c] hover:bg-amber-400 hover:text-black border border-[#2b3648] text-amber-300 font-bold text-[10.5px] flex items-center gap-1 cursor-pointer transition-colors whitespace-nowrap"
+            >
+              <Type className="w-3.5 h-3.5" />
+              <span>+ Text</span>
             </button>
           </div>
 
@@ -9700,87 +10403,400 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
 
         {/* Multi-Track Canvas & Clips View */}
         <div className="flex-1 flex overflow-hidden">
-          {/* Track Headers (Left) — Stacked Separate Tracks below Video 1 */}
-          <div className="w-[78px] sm:w-28 bg-[#0a0e14] border-r border-[#1f2937] flex flex-col shrink-0 text-[9px] sm:text-[10px] font-mono text-zinc-400 overflow-y-auto no-scrollbar">
-            <div className="h-6 border-b border-[#1f2937] px-2 flex items-center justify-between bg-[#10151d] shrink-0">
-              <span>Tracks</span>
-              <Layers className="w-3 h-3 text-zinc-500" />
+          {/* Track Headers (Left) — 14 Professional Dedicated Category Tracks */}
+          <div
+            ref={trackHeadersRef}
+            className="w-[96px] sm:w-36 bg-[#0a0e14] border-r border-[#1f2937] flex flex-col shrink-0 text-[9.5px] sm:text-[10px] font-mono text-zinc-400 overflow-y-auto no-scrollbar select-none"
+          >
+            {/* 14 Tracks Master Header */}
+            <div className="h-7 border-b border-[#1f2937] px-2 flex items-center justify-between bg-[#10151d] shrink-0">
+              <span className="font-black text-teal-400 tracking-wider">14 TRACKS</span>
+              <Layers className="w-3.5 h-3.5 text-teal-400" />
             </div>
 
-            {/* Track 1: Title Header */}
-            <div className="h-9 border-b border-[#1f2937] px-2 flex items-center justify-between bg-[#0e131b] shrink-0">
-              <div className="flex items-center gap-1 truncate">
+            {/* 1. Title Track */}
+            <div
+              onClick={() => syncWheelToTrack('titles', false)}
+              className={`h-11 border-b border-[#1f2937] px-2 flex items-center justify-between shrink-0 cursor-pointer transition-colors ${
+                activeWheelCategory.trackNumber === 1 ? 'bg-teal-950/35 border-l-2 border-l-teal-400' : 'bg-[#0e131b] hover:bg-[#131924]'
+              }`}
+            >
+              <div className="flex items-center gap-1 truncate font-bold text-amber-300">
                 <Type className="w-3 h-3 text-amber-400 shrink-0" />
-                <span>Title</span>
+                <span className="truncate">1. Title</span>
               </div>
-              <button
-                type="button"
-                onClick={() => setShowTitleOverlay(!showTitleOverlay)}
-                className="cursor-pointer hover:text-white"
-                title={showTitleOverlay ? 'Hide Titles' : 'Show Titles'}
-              >
-                {showTitleOverlay ? <Eye className="w-3 h-3 text-amber-400" /> : <EyeOff className="w-3 h-3 text-zinc-600" />}
-              </button>
-            </div>
-
-            {/* Track 2: Video Header */}
-            <div className="h-14 border-b border-[#1f2937] px-2 flex items-center justify-between bg-[#0e131b] shrink-0">
-              <div className="flex items-center gap-1 truncate">
-                <Video className="w-3 h-3 text-teal-400 shrink-0" />
-                <span>Video 1</span>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsVideoTrackVisible(!isVideoTrackVisible)}
-                className="cursor-pointer hover:text-white"
-                title="Toggle Video Visibility"
-              >
-                {isVideoTrackVisible ? <Eye className="w-3 h-3 text-teal-400" /> : <EyeOff className="w-3 h-3 text-zinc-600" />}
-              </button>
-            </div>
-
-            {/* Track 3: Stickers / Emoji Header (Below Video 1) */}
-            <div className="h-9 border-b border-[#1f2937] px-2 flex items-center justify-between bg-[#0e131b] shrink-0">
-              <div className="flex items-center gap-1 truncate">
-                <Smile className="w-3 h-3 text-cyan-400 shrink-0" />
-                <span className="truncate">Emoji</span>
-              </div>
-            </div>
-
-            {/* Track 4: VFX Action Header (Below Video 1) */}
-            <div className="h-9 border-b border-[#1f2937] px-2 flex items-center justify-between bg-[#0e131b] shrink-0">
-              <div className="flex items-center gap-1 truncate">
-                <Crosshair className="w-3 h-3 text-rose-400 shrink-0" />
-                <span className="truncate">VFX</span>
-              </div>
-            </div>
-
-            {/* Track 4B: Trailer Poster Card Header */}
-            <div className="h-9 border-b border-[#1f2937] px-2 flex items-center justify-between bg-[#0e131b] shrink-0">
-              <div className="flex items-center gap-1 truncate">
-                <Clapperboard className="w-3 h-3 text-amber-400 shrink-0" />
-                <span className="truncate">Card</span>
-              </div>
-            </div>
-
-            {/* Track 5: Audio Header with Mute */}
-            <div className="h-9 border-b border-[#21262d] px-2 flex items-center justify-between bg-[#101418] shrink-0">
-              <div className="flex items-center gap-1 truncate">
-                <Music className="w-3 h-3 text-emerald-400 shrink-0" />
-                <span>Audio 1</span>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsAudioTrackMuted(!isAudioTrackMuted)}
-                className="cursor-pointer hover:text-white"
-                title="Mute Audio Track"
-              >
-                {isAudioTrackMuted ? (
-                  <VolumeX className="w-3.5 h-3.5 text-rose-400" />
-                ) : (
-                  <Volume2 className="w-3.5 h-3.5 text-emerald-400" />
+              <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                <button type="button" onClick={() => setShowTitleOverlay(!showTitleOverlay)} className="cursor-pointer hover:text-white" title="Toggle Title">
+                  {showTitleOverlay ? <Eye className="w-3 h-3 text-amber-400" /> : <EyeOff className="w-3 h-3 text-zinc-600" />}
+                </button>
+                {showTitleOverlay && movieTitle && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowTitleOverlay(false);
+                      setMovieTitle('');
+                      setSubtitle('');
+                    }}
+                    className="p-0.5 rounded hover:bg-rose-600 text-rose-400 hover:text-white cursor-pointer"
+                    title="Delete Title (ടൈറ്റിൽ ഒഴിവാക്കുക)"
+                  >
+                    <Trash2 className="w-2.5 h-2.5" />
+                  </button>
                 )}
+              </div>
+            </div>
+
+            {/* 2. Video 1 Track */}
+            <div
+              onClick={() => syncWheelToTrack('video', false)}
+              className={`h-16 border-b border-[#1f2937] px-2 flex items-center justify-between shrink-0 cursor-pointer transition-colors ${
+                activeWheelCategory.trackNumber === 2 ? 'bg-teal-950/35 border-l-2 border-l-teal-400' : 'bg-[#0e131b] hover:bg-[#131924]'
+              }`}
+            >
+              <div className="flex items-center gap-1 truncate">
+                <Video className="w-3.5 h-3.5 text-teal-400 shrink-0" />
+                <div className="truncate">
+                  <span className="truncate font-black text-teal-300 block">2. Video 1</span>
+                  <span className="text-[8px] text-zinc-500 font-mono">{timelineClips.length} Clips</span>
+                </div>
+              </div>
+              <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                <button
+                  type="button"
+                  onClick={() => setIsVideoTrackVisible(!isVideoTrackVisible)}
+                  className="cursor-pointer hover:text-white"
+                  title="Toggle Video Visibility"
+                >
+                  {isVideoTrackVisible ? <Eye className="w-3 h-3 text-teal-400" /> : <EyeOff className="w-3 h-3 text-zinc-600" />}
+                </button>
+                {timelineClips.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTimelineClips([]);
+                      setActiveClipIndex(0);
+                      saveCurrentProjectToStorage([]);
+                    }}
+                    className="p-0.5 rounded hover:bg-rose-600 text-rose-400 hover:text-white cursor-pointer"
+                    title="Clear All Clips (വീഡിയോ ക്ലിപ്പുകൾ ഒഴിവാക്കുക)"
+                  >
+                    <Trash2 className="w-2.5 h-2.5" />
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* 3. Audio 1 Track (Separate Extracted Video Audio) */}
+            <div
+              onClick={() => syncWheelToTrack('audio', false)}
+              className={`h-11 border-b border-[#1f2937] px-2 flex items-center justify-between shrink-0 cursor-pointer transition-colors ${
+                activeWheelCategory.trackNumber === 3 ? 'bg-teal-950/35 border-l-2 border-l-teal-400' : 'bg-[#0e131b] hover:bg-[#131924]'
+              }`}
+            >
+              <div className="flex items-center gap-1 truncate font-bold text-emerald-300">
+                <Volume2 className="w-3 h-3 text-emerald-400 shrink-0" />
+                <span className="truncate">3. Audio 1</span>
+              </div>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsAudioTrackMuted(!isAudioTrackMuted);
+                }}
+                className={`p-1 rounded cursor-pointer transition-colors ${
+                  isAudioTrackMuted ? 'bg-rose-950/80 text-rose-400 border border-rose-500/50' : 'text-emerald-400 hover:text-white'
+                }`}
+                title={isAudioTrackMuted ? 'Unmute Audio Track' : 'Isolate / Mute Audio (ശബ്ദം ഒഴിവാക്കുക)'}
+              >
+                {isAudioTrackMuted ? <VolumeX className="w-3 h-3" /> : <Volume2 className="w-3 h-3" />}
               </button>
+            </div>
+
+            {/* 4. Filters Track */}
+            <div
+              onClick={() => syncWheelToTrack('filters', false)}
+              className={`h-11 border-b border-[#1f2937] px-2 flex items-center justify-between shrink-0 cursor-pointer transition-colors ${
+                activeWheelCategory.trackNumber === 4 ? 'bg-teal-950/35 border-l-2 border-l-teal-400' : 'bg-[#0e131b] hover:bg-[#131924]'
+              }`}
+            >
+              <div className="flex items-center gap-1 truncate font-bold text-cyan-300">
+                <Palette className="w-3 h-3 text-cyan-400 shrink-0" />
+                <span className="truncate">4. Filters</span>
+              </div>
+              {activeFilter && activeFilter.id !== 'f_raw' && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setActiveFilter(FILTERS_LIST[0]);
+                  }}
+                  className="p-0.5 rounded hover:bg-rose-600 text-rose-400 hover:text-white cursor-pointer"
+                  title="Remove Filter (ഫിൽട്ടർ ഒഴിവാക്കുക)"
+                >
+                  <Trash2 className="w-2.5 h-2.5" />
+                </button>
+              )}
+            </div>
+
+            {/* 5. Music Track */}
+            <div
+              onClick={() => syncWheelToTrack('music', false)}
+              className={`h-11 border-b border-[#1f2937] px-2 flex items-center justify-between shrink-0 cursor-pointer transition-colors ${
+                activeWheelCategory.trackNumber === 5 ? 'bg-teal-950/35 border-l-2 border-l-teal-400' : 'bg-[#0e131b] hover:bg-[#131924]'
+              }`}
+            >
+              <div className="flex items-center gap-1 truncate font-bold text-teal-300">
+                <Music className="w-3 h-3 text-teal-300 shrink-0" />
+                <span className="truncate">5. Music</span>
+              </div>
+              {activeAudio && activeAudio.id !== 'aud_none' && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setActiveAudio(AUDIO_LIST[0]);
+                  }}
+                  className="p-0.5 rounded hover:bg-rose-600 text-rose-400 hover:text-white cursor-pointer"
+                  title="Remove Music (സംഗീതം ഒഴിവാക്കുക)"
+                >
+                  <Trash2 className="w-2.5 h-2.5" />
+                </button>
+              )}
+            </div>
+
+            {/* 6. Dialogues Track */}
+            <div
+              onClick={() => syncWheelToTrack('dialogues', false)}
+              className={`h-11 border-b border-[#1f2937] px-2 flex items-center justify-between shrink-0 cursor-pointer transition-colors ${
+                activeWheelCategory.trackNumber === 6 ? 'bg-teal-950/35 border-l-2 border-l-teal-400' : 'bg-[#0e131b] hover:bg-[#131924]'
+              }`}
+            >
+              <div className="flex items-center gap-1 truncate font-bold text-amber-300">
+                <Mic className="w-3 h-3 text-amber-300 shrink-0" />
+                <span className="truncate">6. Dialogues</span>
+              </div>
+              {activeDialogue && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setActiveDialogue(null);
+                  }}
+                  className="p-0.5 rounded hover:bg-rose-600 text-rose-400 hover:text-white cursor-pointer"
+                  title="Remove Dialogue (ഡയലോഗ് ഒഴിവാക്കുക)"
+                >
+                  <Trash2 className="w-2.5 h-2.5" />
+                </button>
+              )}
+            </div>
+
+            {/* 7. Emoji Track */}
+            <div
+              onClick={() => syncWheelToTrack('stickers', false)}
+              className={`h-11 border-b border-[#1f2937] px-2 flex items-center justify-between shrink-0 cursor-pointer transition-colors ${
+                activeWheelCategory.trackNumber === 7 ? 'bg-teal-950/35 border-l-2 border-l-teal-400' : 'bg-[#0e131b] hover:bg-[#131924]'
+              }`}
+            >
+              <div className="flex items-center gap-1 truncate font-bold text-cyan-400">
+                <Smile className="w-3 h-3 text-cyan-400 shrink-0" />
+                <span className="truncate">7. Emoji</span>
+              </div>
+              {activeStickers.length > 0 && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setActiveStickers([]);
+                  }}
+                  className="p-0.5 rounded hover:bg-rose-600 text-rose-400 hover:text-white cursor-pointer"
+                  title="Clear All Stickers (സ്റ്റിക്കറുകൾ ഒഴിവാക്കുക)"
+                >
+                  <Trash2 className="w-2.5 h-2.5" />
+                </button>
+              )}
+            </div>
+
+            {/* 8. VFX Track */}
+            <div
+              onClick={() => syncWheelToTrack('vfx', false)}
+              className={`h-11 border-b border-[#1f2937] px-2 flex items-center justify-between shrink-0 cursor-pointer transition-colors ${
+                activeWheelCategory.trackNumber === 8 ? 'bg-teal-950/35 border-l-2 border-l-teal-400' : 'bg-[#0e131b] hover:bg-[#131924]'
+              }`}
+            >
+              <div className="flex items-center gap-1 truncate font-bold text-rose-400">
+                <Flame className="w-3 h-3 text-rose-400 shrink-0" />
+                <span className="truncate">8. VFX</span>
+              </div>
+              {vfxLayers.length > 0 && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setVfxLayers([]);
+                  }}
+                  className="p-0.5 rounded hover:bg-rose-600 text-rose-400 hover:text-white cursor-pointer"
+                  title="Clear All VFX (വിഎഫ്എക്സ് ഒഴിവാക്കുക)"
+                >
+                  <Trash2 className="w-2.5 h-2.5" />
+                </button>
+              )}
+            </div>
+
+            {/* 9. Card Track */}
+            <div
+              onClick={() => syncWheelToTrack('card', false)}
+              className={`h-11 border-b border-[#1f2937] px-2 flex items-center justify-between shrink-0 cursor-pointer transition-colors ${
+                activeWheelCategory.trackNumber === 9 ? 'bg-teal-950/35 border-l-2 border-l-teal-400' : 'bg-[#0e131b] hover:bg-[#131924]'
+              }`}
+            >
+              <div className="flex items-center gap-1 truncate font-bold text-amber-400">
+                <Clapperboard className="w-3 h-3 text-amber-400 shrink-0" />
+                <span className="truncate">9. Card</span>
+              </div>
+              {trailerCardLayers.length > 0 && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setTrailerCardLayers([]);
+                  }}
+                  className="p-0.5 rounded hover:bg-rose-600 text-rose-400 hover:text-white cursor-pointer"
+                  title="Clear Cards (ട്രെയിലർ കാർഡുകൾ ഒഴിവാക്കുക)"
+                >
+                  <Trash2 className="w-2.5 h-2.5" />
+                </button>
+              )}
+            </div>
+
+            {/* 10. Chroma Track */}
+            <div
+              onClick={() => syncWheelToTrack('chroma', false)}
+              className={`h-11 border-b border-[#1f2937] px-2 flex items-center justify-between shrink-0 cursor-pointer transition-colors ${
+                activeWheelCategory.trackNumber === 10 ? 'bg-teal-950/35 border-l-2 border-l-teal-400' : 'bg-[#0e131b] hover:bg-[#131924]'
+              }`}
+            >
+              <div className="flex items-center gap-1 truncate font-bold text-emerald-400">
+                <Scissors className="w-3 h-3 text-emerald-400 shrink-0" />
+                <span className="truncate">10. Chroma</span>
+              </div>
+              {chromaConfig.enabled && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setChromaConfig(DEFAULT_CHROMA_KEY_CONFIG);
+                  }}
+                  className="p-0.5 rounded hover:bg-rose-600 text-rose-400 hover:text-white cursor-pointer"
+                  title="Disable Chroma (ക്രോമ ഒഴിവാക്കുക)"
+                >
+                  <Trash2 className="w-2.5 h-2.5" />
+                </button>
+              )}
+            </div>
+
+            {/* 11. Split Track */}
+            <div
+              onClick={() => syncWheelToTrack('split', false)}
+              className={`h-11 border-b border-[#1f2937] px-2 flex items-center justify-between shrink-0 cursor-pointer transition-colors ${
+                activeWheelCategory.trackNumber === 11 ? 'bg-teal-950/35 border-l-2 border-l-teal-400' : 'bg-[#0e131b] hover:bg-[#131924]'
+              }`}
+            >
+              <div className="flex items-center gap-1 truncate font-bold text-cyan-300">
+                <Split className="w-3 h-3 text-cyan-300 shrink-0" />
+                <span className="truncate">11. Split</span>
+              </div>
+              {splitScreenConfig.enabled && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSplitScreenConfig(DEFAULT_SPLIT_SCREEN_CONFIG);
+                  }}
+                  className="p-0.5 rounded hover:bg-rose-600 text-rose-400 hover:text-white cursor-pointer"
+                  title="Reset Split (സ്പ്ലിറ്റ് സ്ക്രീൻ ഒഴിവാക്കുക)"
+                >
+                  <Trash2 className="w-2.5 h-2.5" />
+                </button>
+              )}
+            </div>
+
+            {/* 12. Transitions Track */}
+            <div
+              onClick={() => syncWheelToTrack('transitions', false)}
+              className={`h-11 border-b border-[#1f2937] px-2 flex items-center justify-between shrink-0 cursor-pointer transition-colors ${
+                activeWheelCategory.trackNumber === 12 ? 'bg-teal-950/35 border-l-2 border-l-teal-400' : 'bg-[#0e131b] hover:bg-[#131924]'
+              }`}
+            >
+              <div className="flex items-center gap-1 truncate font-bold text-amber-300">
+                <SlidersHorizontal className="w-3 h-3 text-amber-300 shrink-0" />
+                <span className="truncate">12. Transitions</span>
+              </div>
+              {Object.keys(clipTransitions).length > 0 && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setClipTransitions({});
+                    setClipTransitionObjects({});
+                  }}
+                  className="p-0.5 rounded hover:bg-rose-600 text-rose-400 hover:text-white cursor-pointer"
+                  title="Clear Transitions (ട്രാൻസിഷനുകൾ ഒഴിവാക്കുക)"
+                >
+                  <Trash2 className="w-2.5 h-2.5" />
+                </button>
+              )}
+            </div>
+
+            {/* 13. Effects Track */}
+            <div
+              onClick={() => syncWheelToTrack('effects', false)}
+              className={`h-11 border-b border-[#1f2937] px-2 flex items-center justify-between shrink-0 cursor-pointer transition-colors ${
+                activeWheelCategory.trackNumber === 13 ? 'bg-teal-950/35 border-l-2 border-l-teal-400' : 'bg-[#0e131b] hover:bg-[#131924]'
+              }`}
+            >
+              <div className="flex items-center gap-1 truncate font-bold text-purple-400">
+                <Sparkles className="w-3 h-3 text-purple-400 shrink-0" />
+                <span className="truncate">13. Effects</span>
+              </div>
+              {activeEffect && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setActiveEffect(null);
+                  }}
+                  className="p-0.5 rounded hover:bg-rose-600 text-rose-400 hover:text-white cursor-pointer"
+                  title="Remove Effect (ഇഫക്ട് ഒഴിവാക്കുക)"
+                >
+                  <Trash2 className="w-2.5 h-2.5" />
+                </button>
+              )}
+            </div>
+
+            {/* 14. Templates Track */}
+            <div
+              onClick={() => syncWheelToTrack('templates', false)}
+              className={`h-11 border-b border-[#21262d] px-2 flex items-center justify-between shrink-0 cursor-pointer transition-colors ${
+                activeWheelCategory.trackNumber === 14 ? 'bg-teal-950/35 border-l-2 border-l-teal-400' : 'bg-[#101418] hover:bg-[#131924]'
+              }`}
+            >
+              <div className="flex items-center gap-1 truncate font-bold text-teal-400">
+                <Layers className="w-3 h-3 text-teal-400 shrink-0" />
+                <span className="truncate">14. Templates</span>
+              </div>
+              {activeTemplate && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setActiveTemplate(null);
+                  }}
+                  className="p-0.5 rounded hover:bg-rose-600 text-rose-400 hover:text-white cursor-pointer"
+                  title="Reset Template (ടെംപ്ലേറ്റ് ഒഴിവാക്കുക)"
+                >
+                  <Trash2 className="w-2.5 h-2.5" />
+                </button>
+              )}
             </div>
           </div>
 
@@ -9815,10 +10831,15 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
               isScrubbingRef.current = false;
               setIsScrubbingTimeline(false);
             }}
-            className="flex-1 flex flex-col overflow-x-auto no-scrollbar relative bg-[#090b0e] cursor-pointer"
+            onScroll={(e) => {
+              if (trackHeadersRef.current) {
+                trackHeadersRef.current.scrollTop = (e.currentTarget as HTMLElement).scrollTop;
+              }
+            }}
+            className="flex-1 flex flex-col overflow-x-auto overflow-y-auto no-scrollbar relative bg-[#090b0e] cursor-pointer"
           >
             {/* Time Ruler (Drag left/right with finger/mouse to scrub video live) */}
-            <div className="h-6 border-b border-[#21262d] flex items-center px-2 text-[9px] font-mono text-zinc-500 bg-[#0d1014] select-none shrink-0 min-w-max touch-none cursor-ew-resize">
+            <div className="h-7 border-b border-[#21262d] flex items-center px-2 text-[9px] font-mono text-zinc-500 bg-[#0d1014] select-none shrink-0 min-w-max touch-none cursor-ew-resize">
               {Array.from({ length: Math.max(12, Math.ceil(((totalDuration || 10) + 10) / 5)) }, (_, i) => {
                 const sec = i * 5;
                 const mm = String(Math.floor(sec / 60)).padStart(2, '0');
@@ -9920,10 +10941,17 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
               </div>
             </div>
 
-            {/* Tracks Container — Separate Dedicated Timelines for Title, Video 1, Emoji/Stickers, VFX, and Audio 1 */}
+            {/* Tracks Container — 14 Dedicated Categories Exactly Matched to Left Headers */}
             <div className="flex-1 flex flex-col min-w-max">
-              {/* Track 1: Titles Bar (Positioned at titleStartSec, selectable + deletable) */}
-              <div className="h-9 border-b border-[#181c22] relative px-2 flex items-center">
+              {/* Lane 1: Title Track */}
+              <div
+                ref={(el) => {
+                  trackRowRefs.current[1] = el;
+                }}
+                className={`h-11 border-b border-[#181c22] relative px-2 flex items-center transition-colors ${
+                  activeWheelCategory.trackNumber === 1 ? 'bg-teal-950/20 ring-1 ring-inset ring-teal-400/35' : ''
+                }`}
+              >
                 {showTitleOverlay && movieTitle ? (
                   <div
                     onClick={(e) => {
@@ -9931,19 +10959,20 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                       setSelectedFeatureType('title');
                       setActiveInspectorTab('adjust');
                       setIsRightPanelOpen(true);
+                      syncWheelToTrack('titles', false);
                     }}
-                    className={`h-7 rounded px-2 flex items-center justify-between text-[10px] font-bold cursor-pointer truncate absolute ${
+                    className={`h-8 rounded-lg px-2 flex items-center justify-between text-[10px] font-bold cursor-pointer truncate absolute transition-all ${
                       selectedFeatureType === 'title'
                         ? 'bg-amber-500/35 border-2 border-amber-400 text-amber-200 ring-1 ring-amber-400/50'
                         : 'bg-amber-500/20 border border-amber-400/70 text-amber-300 hover:bg-amber-500/30'
                     }`}
                     style={{
                       left: `${8 + titleStartSec * pxPerSec}px`,
-                      width: `${Math.max(58, titleDurationSec * pxPerSec)}px`,
+                      width: `${Math.max(68, titleDurationSec * pxPerSec)}px`,
                     }}
                   >
-                    <div className="flex items-center gap-1 truncate">
-                      <Type className="w-3 h-3 shrink-0" />
+                    <div className="flex items-center gap-1.5 truncate">
+                      <Type className="w-3.5 h-3.5 text-amber-400 shrink-0" />
                       <span className="truncate">{movieTitle}</span>
                     </div>
                     <button
@@ -9954,10 +10983,10 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                         setMovieTitle('');
                         setSubtitle('');
                       }}
-                      className="p-0.5 rounded hover:bg-rose-600 text-rose-300 hover:text-white ml-1 shrink-0 cursor-pointer"
+                      className="p-1 rounded hover:bg-rose-600 text-rose-300 hover:text-white ml-1.5 shrink-0 cursor-pointer"
                       title="Delete Title"
                     >
-                      <Trash2 className="w-2.5 h-2.5" />
+                      <Trash2 className="w-3 h-3" />
                     </button>
                   </div>
                 ) : (
@@ -9965,38 +10994,61 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                     type="button"
                     onClick={(e) => {
                       e.stopPropagation();
-                      setActiveTab('Titles');
-                      setIsLeftPanelOpen(true);
+                      syncWheelToTrack('titles', true);
                     }}
-                    className="h-6 px-2.5 rounded border border-dashed border-zinc-700/80 text-[9px] text-zinc-500 hover:text-amber-300 hover:border-amber-400/50 cursor-pointer flex items-center gap-1"
+                    className="h-7 px-3 rounded-lg border border-dashed border-zinc-700/80 text-[10px] text-zinc-400 hover:text-amber-300 hover:border-amber-400/50 cursor-pointer flex items-center gap-1.5 transition-colors"
                   >
-                    <Type className="w-2.5 h-2.5" />
+                    <Type className="w-3 h-3 text-amber-400" />
                     <span>+ Add Title</span>
                   </button>
                 )}
               </div>
 
-              {/* Track 2: Video & Photo Clips in Continuous Sequence */}
-              <div className="h-14 border-b border-[#181c22] relative px-2 flex items-center">
+              {/* Lane 2: Video 1 Track (Clips with Drag/Drop Reorder, ◀ ▶ 1-Tap Reorder, and Duplicate) */}
+              <div
+                ref={(el) => {
+                  trackRowRefs.current[2] = el;
+                }}
+                className={`h-16 border-b border-[#181c22] relative px-2 flex items-center transition-colors ${
+                  activeWheelCategory.trackNumber === 2 ? 'bg-teal-950/20 ring-1 ring-inset ring-teal-400/35' : ''
+                }`}
+              >
                 {timelineClips.length === 0 ? (
                   <div
                     onClick={(e) => {
                       e.stopPropagation();
-                      setActiveTab('Media');
-                      setIsLeftPanelOpen(true);
+                      syncWheelToTrack('video', true);
                     }}
-                    className="h-11 px-4 rounded border border-dashed border-zinc-700 bg-zinc-900/60 flex items-center gap-2 text-zinc-400 hover:text-white cursor-pointer"
+                    className="h-12 px-4 rounded-xl border border-dashed border-teal-500/50 bg-teal-950/20 flex items-center gap-2 text-teal-300 hover:text-white cursor-pointer"
                   >
                     <Upload className="w-4 h-4 text-teal-400" />
-                    <span>+ ഗാലറി മീഡിയ പൂളിൽ നിന്ന് ക്ലിപ്പ് ചേർക്കുക</span>
+                    <span className="font-semibold text-xs">+ ഗാലറി മീഡിയ പൂളിൽ നിന്ന് ക്ലിപ്പ് ചേർക്കുക</span>
                   </div>
                 ) : (
                   timelineClips.map((clip, idx) => {
+                    const isCardActive = activeClipIndex === idx && selectedFeatureType === 'clip';
+                    const isDragOver = dragOverClipIndex === idx;
                     return (
                       <React.Fragment key={clip.id}>
-                        {/* Clip Card */}
+                        {/* Clip Card with Reorder Handles, Duplicate, and Delete */}
                         <div
                           data-clip-card="true"
+                          draggable={true}
+                          onDragStart={(e) => {
+                            e.dataTransfer.setData('text/plain', String(idx));
+                            setDraggedClipIndex(idx);
+                          }}
+                          onDragOver={(e) => {
+                            e.preventDefault();
+                            setDragOverClipIndex(idx);
+                          }}
+                          onDragLeave={() => {
+                            if (dragOverClipIndex === idx) setDragOverClipIndex(null);
+                          }}
+                          onDrop={(e) => {
+                            e.preventDefault();
+                            handleDropClipReorder(idx, e);
+                          }}
                           onPointerDown={(e) => {
                             if ((e.target as HTMLElement).closest('button')) return;
                             e.stopPropagation();
@@ -10028,48 +11080,88 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                             isScrubbingRef.current = false;
                             setIsScrubbingTimeline(false);
                           }}
-                          className={`h-11 rounded border flex items-center p-1.5 gap-2 cursor-pointer transition-all relative overflow-hidden group shrink-0 touch-none ${
-                            activeClipIndex === idx && selectedFeatureType === 'clip'
-                              ? 'bg-teal-950/70 border-teal-400 ring-2 ring-teal-400/50 shadow-md z-10'
-                              : 'bg-zinc-900 border-zinc-700 hover:border-zinc-500'
+                          className={`h-13 rounded-xl border flex items-center p-1.5 gap-2 cursor-pointer transition-all relative overflow-hidden group shrink-0 touch-none ${
+                            isDragOver
+                              ? 'border-cyan-400 ring-2 ring-cyan-400 bg-cyan-950/80 scale-105 z-20'
+                              : isCardActive
+                              ? 'bg-teal-950/80 border-teal-400 ring-2 ring-teal-400/60 shadow-lg z-10'
+                              : 'bg-zinc-900/90 border-zinc-700/80 hover:border-zinc-500'
                           }`}
-                          style={{ width: `${Math.max(24, clip.durationSec * pxPerSec)}px` }}
+                          style={{ width: `${Math.max(68, clip.durationSec * pxPerSec)}px` }}
+                          title="Drag to reorder, or tap ◀ ▶ to move left/right"
                         >
-                          <div className="w-9 h-8 rounded bg-black shrink-0 overflow-hidden">
+                          {/* Thumbnail */}
+                          <div className="w-10 h-10 rounded-lg bg-black shrink-0 overflow-hidden relative border border-white/10">
                             {clip.type === 'video' && !clip.thumbnailUrl ? (
                               <video src={clip.url} className="w-full h-full object-cover" muted playsInline />
                             ) : clip.thumbnailUrl || clip.url ? (
                               <img src={clip.thumbnailUrl || clip.url} alt={clip.title} className="w-full h-full object-cover" />
                             ) : (
                               <div className="w-full h-full bg-zinc-800 flex items-center justify-center">
-                                <Film className="w-3 h-3 text-zinc-500" />
+                                <Film className="w-3.5 h-3.5 text-zinc-500" />
                               </div>
                             )}
                           </div>
-                          <div className="truncate text-left">
-                            <span className="font-bold text-[10px] text-zinc-200 block truncate">{clip.title}</span>
-                            <span className="text-[8px] font-mono text-zinc-400">
-                              {clip.type === 'video' ? '🎬' : '📷'} {clip.durationSec}s
-                            </span>
+
+                          {/* Info */}
+                          <div className="truncate text-left flex-1 min-w-0">
+                            <span className="font-bold text-[10px] text-zinc-100 block truncate">{clip.title}</span>
+                            <div className="flex items-center gap-1 text-[8.5px] font-mono text-zinc-400">
+                              <span>{clip.type === 'video' ? '🎬' : '📷'}</span>
+                              <span>{clip.durationSec}s</span>
+                            </div>
                           </div>
 
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              const next = timelineClips.filter((_, cIdx) => cIdx !== idx);
-                              setTimelineClips(next);
-                              setActiveClipIndex(Math.max(0, idx - 1));
-                              saveCurrentProjectToStorage(next);
-                            }}
-                            className="absolute top-1 right-1 p-0.5 rounded bg-black/70 hover:bg-rose-600 text-zinc-400 hover:text-white opacity-0 group-hover:opacity-100 transition-opacity"
-                            title="Delete this clip"
-                          >
-                            <Trash2 className="w-2.5 h-2.5" />
-                          </button>
+                          {/* 1-Tap Reorder Buttons (Move Left & Move Right) */}
+                          <div className="flex flex-col gap-0.5 shrink-0 opacity-80 group-hover:opacity-100">
+                            <button
+                              type="button"
+                              disabled={idx === 0}
+                              onClick={(e) => handleMoveClip(idx, 'left', e)}
+                              className="w-4 h-4 rounded bg-[#18202c] hover:bg-teal-400 hover:text-black disabled:opacity-30 disabled:hover:bg-[#18202c] disabled:hover:text-inherit flex items-center justify-center text-[9px] text-zinc-300 cursor-pointer"
+                              title="Move Clip Left (ഇടത്തോട്ട് മാറ്റുക)"
+                            >
+                              ◀
+                            </button>
+                            <button
+                              type="button"
+                              disabled={idx === timelineClips.length - 1}
+                              onClick={(e) => handleMoveClip(idx, 'right', e)}
+                              className="w-4 h-4 rounded bg-[#18202c] hover:bg-teal-400 hover:text-black disabled:opacity-30 disabled:hover:bg-[#18202c] disabled:hover:text-inherit flex items-center justify-center text-[9px] text-zinc-300 cursor-pointer"
+                              title="Move Clip Right (വലത്തോട്ട് മാറ്റുക)"
+                            >
+                              ▶
+                            </button>
+                          </div>
+
+                          {/* Action Overlay: Duplicate & Delete */}
+                          <div className="absolute top-1 right-1 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button
+                              type="button"
+                              onClick={(e) => handleDuplicateClipAt(idx, e)}
+                              className="p-1 rounded bg-black/80 hover:bg-teal-400 hover:text-black text-teal-300 cursor-pointer shadow"
+                              title="Duplicate Clip (ക്ലിപ്പ് കോപ്പി ചെയ്യുക)"
+                            >
+                              <Copy className="w-2.5 h-2.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const next = timelineClips.filter((_, cIdx) => cIdx !== idx);
+                                setTimelineClips(next);
+                                setActiveClipIndex(Math.max(0, idx - 1));
+                                saveCurrentProjectToStorage(next);
+                              }}
+                              className="p-1 rounded bg-black/80 hover:bg-rose-600 text-zinc-400 hover:text-white cursor-pointer shadow"
+                              title="Delete Clip"
+                            >
+                              <Trash2 className="w-2.5 h-2.5" />
+                            </button>
+                          </div>
                         </div>
 
-                        {/* Zero-width Transition Connector */}
+                        {/* Transition Connector Button */}
                         {idx < timelineClips.length - 1 && (
                           <div className="relative w-0 flex items-center justify-center z-20 overflow-visible">
                             <button
@@ -10080,7 +11172,7 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                                 setIsLeftPanelOpen(true);
                                 setActiveTransitionBetween(idx);
                               }}
-                              className={`px-1.5 py-1 rounded border flex items-center gap-0.5 text-[8px] font-mono cursor-pointer transition-all shadow-lg ${
+                              className={`px-1.5 py-1 rounded-lg border flex items-center gap-0.5 text-[8px] font-mono cursor-pointer transition-all shadow-lg ${
                                 clipTransitions[idx]
                                   ? 'bg-amber-500/90 border-amber-300 text-black font-bold'
                                   : 'bg-zinc-800/95 hover:bg-teal-400 hover:text-black border-zinc-500 text-zinc-200'
@@ -10100,30 +11192,246 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();
-                    setActiveTab('Media');
-                    setIsLeftPanelOpen(true);
+                    syncWheelToTrack('video', true);
                   }}
-                  className="h-11 ml-2 px-3 rounded bg-zinc-800 hover:bg-zinc-700 border border-dashed border-zinc-600 text-teal-400 font-bold flex items-center gap-1 cursor-pointer shrink-0"
+                  className="h-13 ml-2 px-3 rounded-xl bg-zinc-800/80 hover:bg-zinc-700 border border-dashed border-zinc-600 text-teal-400 font-bold text-xs flex items-center gap-1.5 cursor-pointer shrink-0 transition-colors"
                 >
-                  <Plus className="w-3.5 h-3.5" />
+                  <Plus className="w-4 h-4" />
                   <span>Add Clip</span>
                 </button>
               </div>
 
-              {/* Track 3: Separate Emoji / Stickers Timeline Track BELOW Video 1 */}
-              <div className="h-9 border-b border-[#181c22] relative px-2 flex items-center">
+              {/* Lane 3: Audio 1 Track (Separate Dedicated Video Audio Waveforms & Isolate Support) */}
+              <div
+                ref={(el) => {
+                  trackRowRefs.current[3] = el;
+                }}
+                className={`h-11 border-b border-[#181c22] relative px-2 flex items-center gap-2 transition-colors ${
+                  activeWheelCategory.trackNumber === 3 ? 'bg-teal-950/20 ring-1 ring-inset ring-teal-400/35' : ''
+                }`}
+              >
+                {timelineClips.length === 0 ? (
+                  <span className="text-[10px] text-zinc-500 font-mono">No video audio clips yet</span>
+                ) : (
+                  timelineClips.map((clip, idx) => (
+                    <div
+                      key={`aud_clip_${clip.id}_${idx}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        syncWheelToTrack('audio', false);
+                        setSelectedFeatureType('audio');
+                        setActiveInspectorTab('audio');
+                        setIsRightPanelOpen(true);
+                      }}
+                      className={`h-8 rounded-lg border px-2 flex items-center justify-between cursor-pointer transition-colors shrink-0 ${
+                        isAudioTrackMuted
+                          ? 'bg-zinc-900 border-zinc-700 text-zinc-500 line-through'
+                          : 'bg-emerald-950/70 border-emerald-500/60 text-emerald-300 hover:border-emerald-300'
+                      }`}
+                      style={{ width: `${Math.max(68, clip.durationSec * pxPerSec)}px` }}
+                      title={`${clip.title} (Audio Layer) — ${isAudioTrackMuted ? 'Muted / Isolated' : 'Active'}`}
+                    >
+                      <div className="flex items-center gap-1.5 truncate">
+                        <Volume2 className="w-3 h-3 text-emerald-400 shrink-0" />
+                        <span className="text-[9.5px] font-semibold truncate">
+                          {clip.title} {isAudioTrackMuted && '(Muted)'}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        {/* Audio Waveform Bars Simulation */}
+                        <div className="flex items-center gap-0.5 opacity-60">
+                          <span className="w-0.5 h-2 bg-emerald-400 rounded-full" />
+                          <span className="w-0.5 h-3.5 bg-emerald-400 rounded-full" />
+                          <span className="w-0.5 h-1.5 bg-emerald-400 rounded-full" />
+                        </div>
+                        <span className="text-[8px] font-mono text-zinc-400">{clip.durationSec}s</span>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              {/* Lane 4: Filters Track */}
+              <div
+                ref={(el) => {
+                  trackRowRefs.current[4] = el;
+                }}
+                className={`h-11 border-b border-[#181c22] relative px-2 flex items-center transition-colors ${
+                  activeWheelCategory.trackNumber === 4 ? 'bg-teal-950/20 ring-1 ring-inset ring-teal-400/35' : ''
+                }`}
+              >
+                {activeFilter && activeFilter.id !== 'f_raw' ? (
+                  <div
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      syncWheelToTrack('filters', true);
+                    }}
+                    className="h-8 rounded-lg border border-cyan-400/80 bg-cyan-950/70 text-cyan-200 px-3 flex items-center justify-between cursor-pointer hover:border-cyan-300 shadow-md"
+                    style={{ width: `${Math.max(90, totalDuration * pxPerSec)}px` }}
+                  >
+                    <div className="flex items-center gap-2 truncate">
+                      <Palette className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                      <span className="text-[10px] font-bold truncate">Filter: {activeFilter.name}</span>
+                      <span className="text-[8px] font-mono bg-cyan-900/80 text-cyan-300 px-1.5 py-0.2 rounded shrink-0">
+                        {activeFilter.category}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setActiveFilter(FILTERS_LIST[0]);
+                      }}
+                      className="p-1 rounded hover:bg-rose-600 text-rose-300 hover:text-white ml-2 shrink-0 cursor-pointer"
+                      title="Remove Filter"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      syncWheelToTrack('filters', true);
+                    }}
+                    className="h-7 px-3 rounded-lg border border-dashed border-zinc-700 text-[10px] text-zinc-400 hover:text-cyan-300 hover:border-cyan-400/50 cursor-pointer flex items-center gap-1.5 transition-colors"
+                  >
+                    <Palette className="w-3 h-3 text-cyan-400" />
+                    <span>+ Add Cinematic Filter (1200+ Presets)</span>
+                  </button>
+                )}
+              </div>
+
+              {/* Lane 5: Music Track (Dedicated Background Score & Music) */}
+              <div
+                ref={(el) => {
+                  trackRowRefs.current[5] = el;
+                }}
+                className={`h-11 border-b border-[#181c22] relative px-2 flex items-center transition-colors ${
+                  activeWheelCategory.trackNumber === 5 ? 'bg-teal-950/20 ring-1 ring-inset ring-teal-400/35' : ''
+                }`}
+              >
+                {activeAudio && activeAudio.id !== 'aud_none' ? (
+                  <div
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      syncWheelToTrack('music', false);
+                      setSelectedFeatureType('audio');
+                      setActiveInspectorTab('audio');
+                      setIsRightPanelOpen(true);
+                    }}
+                    className="h-8 rounded-lg border border-teal-500/70 bg-teal-950/70 text-teal-200 px-3 flex items-center justify-between cursor-pointer hover:border-teal-300 shadow-md"
+                    style={{ width: `${Math.max(90, totalDuration * pxPerSec)}px` }}
+                  >
+                    <div className="flex items-center gap-2 truncate">
+                      <Music className="w-3.5 h-3.5 text-teal-300 shrink-0" />
+                      <span className="text-[10px] font-bold truncate">Music: {activeAudio.title}</span>
+                      <span className="text-[8px] font-mono text-zinc-400 shrink-0">{activeAudio.duration}</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setActiveAudio(AUDIO_LIST[0]);
+                      }}
+                      className="p-1 rounded hover:bg-rose-600 text-rose-300 hover:text-white ml-2 shrink-0 cursor-pointer"
+                      title="Remove Music"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      syncWheelToTrack('music', true);
+                    }}
+                    className="h-7 px-3 rounded-lg border border-dashed border-zinc-700 text-[10px] text-zinc-400 hover:text-teal-300 hover:border-teal-400/50 cursor-pointer flex items-center gap-1.5 transition-colors"
+                  >
+                    <Music className="w-3 h-3 text-teal-300" />
+                    <span>+ Add Background Music Track</span>
+                  </button>
+                )}
+              </div>
+
+              {/* Lane 6: Dialogues Track (Dedicated Voiceover & Dialogue Track) */}
+              <div
+                ref={(el) => {
+                  trackRowRefs.current[6] = el;
+                }}
+                className={`h-11 border-b border-[#181c22] relative px-2 flex items-center transition-colors ${
+                  activeWheelCategory.trackNumber === 6 ? 'bg-teal-950/20 ring-1 ring-inset ring-teal-400/35' : ''
+                }`}
+              >
+                {activeDialogue ? (
+                  <div
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      syncWheelToTrack('dialogues', true);
+                    }}
+                    className="h-8 rounded-lg border border-amber-500/70 bg-amber-950/70 text-amber-200 px-3 flex items-center justify-between cursor-pointer hover:border-amber-300 shadow-md"
+                    style={{ width: `${Math.max(80, (activeDialogue.durationSec || 5) * pxPerSec)}px` }}
+                  >
+                    <div className="flex items-center gap-1.5 truncate">
+                      <Mic className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                      <span className="text-[10px] font-bold truncate">
+                        {activeDialogue.speaker}: {activeDialogue.text}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setActiveDialogue(null);
+                      }}
+                      className="p-1 rounded hover:bg-rose-600 text-rose-300 hover:text-white ml-2 shrink-0 cursor-pointer"
+                      title="Remove Dialogue"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setActiveDialogue({
+                        id: `dlg_${Date.now()}`,
+                        speaker: 'Hero',
+                        text: 'Mass Cinema Dialogue Line',
+                        durationSec: 6,
+                      });
+                    }}
+                    className="h-7 px-3 rounded-lg border border-dashed border-zinc-700 text-[10px] text-zinc-400 hover:text-amber-300 hover:border-amber-400/50 cursor-pointer flex items-center gap-1.5 transition-colors"
+                  >
+                    <Mic className="w-3 h-3 text-amber-300" />
+                    <span>+ Add Dialogue / Voiceover</span>
+                  </button>
+                )}
+              </div>
+
+              {/* Lane 7: Emoji / Stickers Track */}
+              <div
+                ref={(el) => {
+                  trackRowRefs.current[7] = el;
+                }}
+                className={`h-11 border-b border-[#181c22] relative px-2 flex items-center transition-colors ${
+                  activeWheelCategory.trackNumber === 7 ? 'bg-teal-950/20 ring-1 ring-inset ring-teal-400/35' : ''
+                }`}
+              >
                 {activeStickers.length === 0 ? (
                   <button
                     type="button"
                     onClick={(e) => {
                       e.stopPropagation();
-                      setActiveTab('Stickers');
-                      setIsLeftPanelOpen(true);
+                      syncWheelToTrack('stickers', true);
                     }}
-                    className="h-6 px-2.5 rounded border border-dashed border-zinc-700/80 text-[9px] text-zinc-500 hover:text-cyan-300 hover:border-cyan-400/50 cursor-pointer flex items-center gap-1"
+                    className="h-7 px-3 rounded-lg border border-dashed border-zinc-700/80 text-[10px] text-zinc-400 hover:text-cyan-300 hover:border-cyan-400/50 cursor-pointer flex items-center gap-1.5 transition-colors"
                   >
-                    <Smile className="w-2.5 h-2.5" />
-                    <span>+ Add Emoji / Stickers Track</span>
+                    <Smile className="w-3 h-3 text-cyan-400" />
+                    <span>+ Add Emoji / Stickers</span>
                   </button>
                 ) : (
                   activeStickers.map((stkLayer) => {
@@ -10139,13 +11447,14 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                           setSelectedFeatureType('sticker');
                           setActiveInspectorTab('adjust');
                           setIsRightPanelOpen(true);
+                          syncWheelToTrack('stickers', false);
                           seekToTime(stkLayer.startTimeSec + stkLayer.durationSec * 0.25);
                         }}
                         style={{
                           left: `${8 + stkLayer.startTimeSec * pxPerSec}px`,
-                          width: `${Math.max(54, stkLayer.durationSec * pxPerSec)}px`,
+                          width: `${Math.max(60, stkLayer.durationSec * pxPerSec)}px`,
                         }}
-                        className={`h-7 rounded px-1.5 flex items-center justify-between text-[9.5px] font-bold cursor-pointer absolute truncate ${
+                        className={`h-8 rounded-lg px-2 flex items-center justify-between text-[9.5px] font-bold cursor-pointer absolute truncate transition-all ${
                           isSel
                             ? 'bg-cyan-500/35 border-2 border-cyan-400 text-cyan-100 ring-1 ring-cyan-400/50 z-10'
                             : 'bg-cyan-950/70 border border-cyan-500/60 text-cyan-200 hover:border-cyan-300'
@@ -10161,10 +11470,10 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                             setActiveStickers((prev) => prev.filter((s) => s.id !== stkLayer.id));
                             if (selectedStickerLayerId === stkLayer.id) setSelectedStickerLayerId(null);
                           }}
-                          className="p-0.5 rounded hover:bg-rose-600 text-rose-300 hover:text-white ml-1 shrink-0 cursor-pointer"
+                          className="p-1 rounded hover:bg-rose-600 text-rose-300 hover:text-white ml-1 shrink-0 cursor-pointer"
                           title="Delete Sticker"
                         >
-                          <Trash2 className="w-2.5 h-2.5" />
+                          <Trash2 className="w-3 h-3" />
                         </button>
                       </div>
                     );
@@ -10172,20 +11481,26 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                 )}
               </div>
 
-              {/* Track 4: Separate Cinema Action VFX Timeline Track BELOW Video 1 */}
-              <div className="h-9 border-b border-[#181c22] relative px-2 flex items-center">
+              {/* Lane 8: VFX Track */}
+              <div
+                ref={(el) => {
+                  trackRowRefs.current[8] = el;
+                }}
+                className={`h-11 border-b border-[#181c22] relative px-2 flex items-center transition-colors ${
+                  activeWheelCategory.trackNumber === 8 ? 'bg-teal-950/20 ring-1 ring-inset ring-teal-400/35' : ''
+                }`}
+              >
                 {vfxLayers.length === 0 ? (
                   <button
                     type="button"
                     onClick={(e) => {
                       e.stopPropagation();
-                      setActiveTab('VFX');
-                      setIsLeftPanelOpen(true);
+                      syncWheelToTrack('vfx', true);
                     }}
-                    className="h-6 px-2.5 rounded border border-dashed border-rose-500/40 text-[9px] text-rose-300/80 hover:text-rose-300 hover:border-rose-400 cursor-pointer flex items-center gap-1"
+                    className="h-7 px-3 rounded-lg border border-dashed border-rose-500/40 text-[10px] text-rose-300/80 hover:text-rose-300 hover:border-rose-400 cursor-pointer flex items-center gap-1.5 transition-colors"
                   >
-                    <Crosshair className="w-2.5 h-2.5" />
-                    <span>+ Add VFX Layer (Gun, Bullet, Blood, Fire)</span>
+                    <Flame className="w-3 h-3 text-rose-400" />
+                    <span>+ Add VFX Layer (Gun, Fire, Bullet, Blood)</span>
                   </button>
                 ) : (
                   vfxLayers.map((vLayer) => {
@@ -10201,13 +11516,14 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                           setSelectedFeatureType('vfx');
                           setActiveInspectorTab('adjust');
                           setIsRightPanelOpen(true);
+                          syncWheelToTrack('vfx', false);
                           seekToTime(vLayer.startTimeSec + vLayer.durationSec * 0.55);
                         }}
                         style={{
                           left: `${8 + vLayer.startTimeSec * pxPerSec}px`,
-                          width: `${Math.max(60, vLayer.durationSec * pxPerSec)}px`,
+                          width: `${Math.max(66, vLayer.durationSec * pxPerSec)}px`,
                         }}
-                        className={`h-7 rounded px-1.5 flex items-center justify-between text-[9.5px] font-bold cursor-pointer absolute truncate ${
+                        className={`h-8 rounded-lg px-2 flex items-center justify-between text-[9.5px] font-bold cursor-pointer absolute truncate transition-all ${
                           isSel
                             ? 'bg-rose-600/45 border-2 border-rose-400 text-white ring-1 ring-rose-400/60 z-10'
                             : 'bg-rose-950/75 border border-rose-500/60 text-rose-200 hover:border-rose-300'
@@ -10223,10 +11539,10 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                             setVfxLayers((prev) => prev.filter((v) => v.id !== vLayer.id));
                             if (selectedVfxLayerId === vLayer.id) setSelectedVfxLayerId(null);
                           }}
-                          className="p-0.5 rounded hover:bg-rose-600 text-rose-200 hover:text-white ml-1 shrink-0 cursor-pointer"
+                          className="p-1 rounded hover:bg-rose-600 text-rose-200 hover:text-white ml-1 shrink-0 cursor-pointer"
                           title="Delete VFX"
                         >
-                          <Trash2 className="w-2.5 h-2.5" />
+                          <Trash2 className="w-3 h-3" />
                         </button>
                       </div>
                     );
@@ -10234,19 +11550,25 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                 )}
               </div>
 
-              {/* Track 4B: Trailer Animated Cards Track + Quick Chroma/Split Status Chips */}
-              <div className="h-9 border-b border-[#181c22] relative px-2 flex items-center gap-1.5">
+              {/* Lane 9: Card Track (Trailer Cards) */}
+              <div
+                ref={(el) => {
+                  trackRowRefs.current[9] = el;
+                }}
+                className={`h-11 border-b border-[#181c22] relative px-2 flex items-center transition-colors ${
+                  activeWheelCategory.trackNumber === 9 ? 'bg-teal-950/20 ring-1 ring-inset ring-teal-400/35' : ''
+                }`}
+              >
                 {trailerCardLayers.length === 0 ? (
                   <button
                     type="button"
                     onClick={(e) => {
                       e.stopPropagation();
-                      setActiveTab('Trailer');
-                      setIsLeftPanelOpen(true);
+                      syncWheelToTrack('card', true);
                     }}
-                    className="h-6 px-2.5 rounded border border-dashed border-amber-500/40 text-[9px] text-amber-300/80 hover:text-amber-200 hover:border-amber-400 cursor-pointer flex items-center gap-1"
+                    className="h-7 px-3 rounded-lg border border-dashed border-amber-500/40 text-[10px] text-amber-300/80 hover:text-amber-200 hover:border-amber-400 cursor-pointer flex items-center gap-1.5 transition-colors"
                   >
-                    <Clapperboard className="w-2.5 h-2.5" />
+                    <Clapperboard className="w-3 h-3 text-amber-400" />
                     <span>+ Add Trailer Poster Card</span>
                   </button>
                 ) : (
@@ -10264,13 +11586,14 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                           setSelectedFeatureType('trailer_card');
                           setActiveInspectorTab('adjust');
                           setIsRightPanelOpen(true);
+                          syncWheelToTrack('card', false);
                           seekToTime(cLayer.startTimeSec + cLayer.durationSec * 0.35);
                         }}
                         style={{
                           left: `${8 + cLayer.startTimeSec * pxPerSec}px`,
-                          width: `${Math.max(66, cLayer.durationSec * pxPerSec)}px`,
+                          width: `${Math.max(72, cLayer.durationSec * pxPerSec)}px`,
                         }}
-                        className={`h-7 rounded px-1.5 flex items-center justify-between text-[9.5px] font-bold cursor-pointer absolute truncate ${
+                        className={`h-8 rounded-lg px-2 flex items-center justify-between text-[9.5px] font-bold cursor-pointer absolute truncate transition-all ${
                           isSel
                             ? 'bg-amber-500/35 border-2 border-amber-400 text-amber-100 ring-1 ring-amber-400/50 z-10'
                             : 'bg-amber-950/70 border border-amber-500/60 text-amber-200 hover:border-amber-300'
@@ -10284,10 +11607,10 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                             setTrailerCardLayers((prev) => prev.filter((c) => c.id !== cLayer.id));
                             if (selectedTrailerCardId === cLayer.id) setSelectedTrailerCardId(null);
                           }}
-                          className="p-0.5 rounded hover:bg-rose-600 text-rose-200 hover:text-white ml-1 shrink-0 cursor-pointer"
+                          className="p-1 rounded hover:bg-rose-600 text-rose-200 hover:text-white ml-1 shrink-0 cursor-pointer"
                           title="Delete Trailer Card"
                         >
-                          <Trash2 className="w-2.5 h-2.5" />
+                          <Trash2 className="w-3 h-3" />
                         </button>
                       </div>
                     );
@@ -10295,31 +11618,260 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                 )}
               </div>
 
-              {/* Track 5: Audio Score Waveform Clip BELOW Video 1 */}
-              <div className="h-9 relative px-2 flex items-center">
-                <div
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setActiveTab('Audio');
-                    setSelectedFeatureType('audio');
-                    setActiveInspectorTab('audio');
-                    setIsRightPanelOpen(true);
-                  }}
-                  className={`h-7 rounded border px-2 flex items-center justify-between cursor-pointer transition-colors ${
-                    isAudioTrackMuted
-                      ? 'bg-zinc-900 border-zinc-700 text-zinc-500 line-through'
-                      : 'bg-emerald-950/80 border-emerald-500/60 text-emerald-300 hover:border-emerald-300'
-                  }`}
-                  style={{ width: `${timelineClips.length > 0 ? Math.max(40, totalDuration * pxPerSec) : 220}px` }}
-                >
-                  <div className="flex items-center gap-1.5 truncate">
-                    <Music className="w-3 h-3 shrink-0" />
-                    <span className="text-[10px] font-semibold truncate">
-                      {activeAudio.title} {isAudioTrackMuted && '(Muted)'}
-                    </span>
+              {/* Lane 10: Chroma Track */}
+              <div
+                ref={(el) => {
+                  trackRowRefs.current[10] = el;
+                }}
+                className={`h-11 border-b border-[#181c22] relative px-2 flex items-center transition-colors ${
+                  activeWheelCategory.trackNumber === 10 ? 'bg-teal-950/20 ring-1 ring-inset ring-teal-400/35' : ''
+                }`}
+              >
+                {chromaConfig.enabled ? (
+                  <div
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      syncWheelToTrack('chroma', true);
+                    }}
+                    className="h-8 rounded-lg border border-emerald-500/70 bg-emerald-950/70 text-emerald-200 px-3 flex items-center justify-between cursor-pointer hover:border-emerald-300 shadow-md"
+                    style={{ width: `${Math.max(90, totalDuration * pxPerSec)}px` }}
+                  >
+                    <div className="flex items-center gap-2 truncate">
+                      <Scissors className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                      <div
+                        className="w-3.5 h-3.5 rounded-full border border-white/60 shrink-0"
+                        style={{ backgroundColor: chromaConfig.customHex || '#00b140' }}
+                      />
+                      <span className="text-[10px] font-bold truncate">Chroma Key Active ({chromaConfig.colorPreset})</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setChromaConfig(DEFAULT_CHROMA_KEY_CONFIG);
+                      }}
+                      className="p-1 rounded hover:bg-rose-600 text-rose-300 hover:text-white ml-2 shrink-0 cursor-pointer"
+                      title="Disable Chroma"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </button>
                   </div>
-                  <span className="text-[8.5px] font-mono shrink-0">{activeAudio.duration}</span>
-                </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      syncWheelToTrack('chroma', true);
+                    }}
+                    className="h-7 px-3 rounded-lg border border-dashed border-zinc-700 text-[10px] text-zinc-400 hover:text-emerald-300 hover:border-emerald-400/50 cursor-pointer flex items-center gap-1.5 transition-colors"
+                  >
+                    <Scissors className="w-3 h-3 text-emerald-400" />
+                    <span>+ Add Green Screen Chroma Key</span>
+                  </button>
+                )}
+              </div>
+
+              {/* Lane 11: Split Track */}
+              <div
+                ref={(el) => {
+                  trackRowRefs.current[11] = el;
+                }}
+                className={`h-11 border-b border-[#181c22] relative px-2 flex items-center transition-colors ${
+                  activeWheelCategory.trackNumber === 11 ? 'bg-teal-950/20 ring-1 ring-inset ring-teal-400/35' : ''
+                }`}
+              >
+                {splitScreenConfig.enabled ? (
+                  <div
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      syncWheelToTrack('split', true);
+                    }}
+                    className="h-8 rounded-lg border border-cyan-400/70 bg-cyan-950/70 text-cyan-200 px-3 flex items-center justify-between cursor-pointer hover:border-cyan-300 shadow-md"
+                    style={{ width: `${Math.max(90, totalDuration * pxPerSec)}px` }}
+                  >
+                    <div className="flex items-center gap-2 truncate">
+                      <Split className="w-3.5 h-3.5 text-cyan-300 shrink-0" />
+                      <span className="text-[10px] font-bold truncate">Dual Split: {splitScreenConfig.layout}</span>
+                      <span className="text-[8px] font-mono text-zinc-400 shrink-0">
+                        {splitScreenConfig.leftLabel} | {splitScreenConfig.rightLabel}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSplitScreenConfig(DEFAULT_SPLIT_SCREEN_CONFIG);
+                      }}
+                      className="p-1 rounded hover:bg-rose-600 text-rose-300 hover:text-white ml-2 shrink-0 cursor-pointer"
+                      title="Reset Split Screen"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      syncWheelToTrack('split', true);
+                    }}
+                    className="h-7 px-3 rounded-lg border border-dashed border-zinc-700 text-[10px] text-zinc-400 hover:text-cyan-300 hover:border-cyan-400/50 cursor-pointer flex items-center gap-1.5 transition-colors"
+                  >
+                    <Split className="w-3 h-3 text-cyan-300" />
+                    <span>+ Add Dual Split Screen (Side-by-Side)</span>
+                  </button>
+                )}
+              </div>
+
+              {/* Lane 12: Transitions Track */}
+              <div
+                ref={(el) => {
+                  trackRowRefs.current[12] = el;
+                }}
+                className={`h-11 border-b border-[#181c22] relative px-2 flex items-center transition-colors ${
+                  activeWheelCategory.trackNumber === 12 ? 'bg-teal-950/20 ring-1 ring-inset ring-teal-400/35' : ''
+                }`}
+              >
+                {Object.keys(clipTransitions).length > 0 ? (
+                  <div
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      syncWheelToTrack('transitions', true);
+                    }}
+                    className="h-8 rounded-lg border border-amber-500/70 bg-amber-950/70 text-amber-200 px-3 flex items-center justify-between cursor-pointer hover:border-amber-300 shadow-md"
+                    style={{ width: `${Math.max(90, totalDuration * pxPerSec)}px` }}
+                  >
+                    <div className="flex items-center gap-2 truncate">
+                      <SlidersHorizontal className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+                      <span className="text-[10px] font-bold truncate">
+                        Transitions Active ({Object.keys(clipTransitions).length})
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setClipTransitions({});
+                        setClipTransitionObjects({});
+                      }}
+                      className="p-1 rounded hover:bg-rose-600 text-rose-300 hover:text-white ml-2 shrink-0 cursor-pointer"
+                      title="Clear Transitions"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      syncWheelToTrack('transitions', true);
+                    }}
+                    className="h-7 px-3 rounded-lg border border-dashed border-zinc-700 text-[10px] text-zinc-400 hover:text-amber-300 hover:border-amber-400/50 cursor-pointer flex items-center gap-1.5 transition-colors"
+                  >
+                    <SlidersHorizontal className="w-3 h-3 text-amber-300" />
+                    <span>+ Add Transitions</span>
+                  </button>
+                )}
+              </div>
+
+              {/* Lane 13: Effects Track */}
+              <div
+                ref={(el) => {
+                  trackRowRefs.current[13] = el;
+                }}
+                className={`h-11 border-b border-[#181c22] relative px-2 flex items-center transition-colors ${
+                  activeWheelCategory.trackNumber === 13 ? 'bg-teal-950/20 ring-1 ring-inset ring-teal-400/35' : ''
+                }`}
+              >
+                {activeEffect ? (
+                  <div
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      syncWheelToTrack('effects', true);
+                    }}
+                    className="h-8 rounded-lg border border-purple-500/70 bg-purple-950/70 text-purple-200 px-3 flex items-center justify-between cursor-pointer hover:border-purple-300 shadow-md"
+                    style={{ width: `${Math.max(90, totalDuration * pxPerSec)}px` }}
+                  >
+                    <div className="flex items-center gap-2 truncate">
+                      <Sparkles className="w-3.5 h-3.5 text-purple-400 shrink-0" />
+                      <span className="text-[10px] font-bold truncate">Effect: {activeEffect.name}</span>
+                      <span className="text-[8px] font-mono text-purple-300 shrink-0">{activeEffect.category}</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setActiveEffect(null);
+                      }}
+                      className="p-1 rounded hover:bg-rose-600 text-rose-300 hover:text-white ml-2 shrink-0 cursor-pointer"
+                      title="Remove Effect"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      syncWheelToTrack('effects', true);
+                    }}
+                    className="h-7 px-3 rounded-lg border border-dashed border-zinc-700 text-[10px] text-zinc-400 hover:text-purple-300 hover:border-purple-400/50 cursor-pointer flex items-center gap-1.5 transition-colors"
+                  >
+                    <Sparkles className="w-3 h-3 text-purple-400" />
+                    <span>+ Add Pro Visual Effect</span>
+                  </button>
+                )}
+              </div>
+
+              {/* Lane 14: Templates Track */}
+              <div
+                ref={(el) => {
+                  trackRowRefs.current[14] = el;
+                }}
+                className={`h-11 border-b border-[#181c22] relative px-2 flex items-center transition-colors ${
+                  activeWheelCategory.trackNumber === 14 ? 'bg-teal-950/20 ring-1 ring-inset ring-teal-400/35' : ''
+                }`}
+              >
+                {activeTemplate ? (
+                  <div
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      syncWheelToTrack('templates', true);
+                    }}
+                    className="h-8 rounded-lg border border-teal-400/70 bg-teal-950/70 text-teal-200 px-3 flex items-center justify-between cursor-pointer hover:border-teal-300 shadow-md"
+                    style={{ width: `${Math.max(90, totalDuration * pxPerSec)}px` }}
+                  >
+                    <div className="flex items-center gap-2 truncate">
+                      <Layers className="w-3.5 h-3.5 text-teal-400 shrink-0" />
+                      <span className="text-[10px] font-bold truncate">Template: {activeTemplate.name}</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setActiveTemplate(null);
+                      }}
+                      className="p-1 rounded hover:bg-rose-600 text-rose-300 hover:text-white ml-2 shrink-0 cursor-pointer"
+                      title="Reset Template"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      syncWheelToTrack('templates', true);
+                    }}
+                    className="h-7 px-3 rounded-lg border border-dashed border-zinc-700 text-[10px] text-zinc-400 hover:text-teal-300 hover:border-teal-400/50 cursor-pointer flex items-center gap-1.5 transition-colors"
+                  >
+                    <Layers className="w-3 h-3 text-teal-400" />
+                    <span>+ Apply Cinema Template</span>
+                  </button>
+                )}
               </div>
 
               {/* Dedicated Lower Touch Scrub Zone (Drag anywhere left/right to watch & cut) */}
@@ -10351,7 +11903,7 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                   isScrubbingRef.current = false;
                   setIsScrubbingTimeline(false);
                 }}
-                className="flex-1 min-h-[32px] w-full touch-none cursor-ew-resize flex items-center px-3 text-[9px] text-zinc-500/80 select-none border-t border-zinc-800/40 bg-[#080a0d]"
+                className="min-h-[34px] w-full touch-none cursor-ew-resize flex items-center px-3 text-[9.5px] text-zinc-400 select-none border-t border-zinc-800/80 bg-[#080a0d] shrink-0"
               >
                 <span>◀ ചുവന്ന ലൈൻ കൈകൊണ്ട് അങ്ങോട്ടും ഇങ്ങോട്ടും നീക്കി വീഡിയോ കണ്ട് ✂ കട്ട് ചെയ്യാം ▶</span>
               </div>
@@ -10469,20 +12021,26 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                     className="w-full max-h-60 rounded-xl bg-black border border-[#242e3d] object-contain"
                   />
                   <div className="text-[10px] text-zinc-400 truncate px-1">{exportedVideoFilename}</div>
+                  {exportShareNotice && (
+                    <div className="px-2.5 py-1.5 rounded-lg bg-teal-950/60 border border-teal-500/40 text-teal-200 text-[10.5px] font-semibold">
+                      {exportShareNotice}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
-            <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-[#1f2937]">
+            <div className="flex flex-wrap items-center justify-end gap-2 pt-3 border-t border-[#1f2937]">
               {exportedVideoUrl && !isExporting ? (
                 <>
                   <button
                     type="button"
                     onClick={() => {
                       clearExportedPreview();
+                      setExportShareNotice(null);
                       setExportError(null);
                       setShowExportModal(false);
                     }}
-                    className="min-h-[38px] px-4 py-2 bg-[#18202c] hover:bg-[#222d3d] border border-[#2b3648] rounded-xl text-zinc-300 font-bold cursor-pointer text-xs"
+                    className="min-h-[38px] px-3.5 py-2 bg-[#18202c] hover:bg-[#222d3d] border border-[#2b3648] rounded-xl text-zinc-300 font-bold cursor-pointer text-xs"
                   >
                     Close
                   </button>
@@ -10490,21 +12048,54 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                     type="button"
                     onClick={() => {
                       clearExportedPreview();
+                      setExportShareNotice(null);
                       setExportProgress(0);
                       setExportStatusText('');
                     }}
-                    className="min-h-[38px] px-4 py-2 bg-[#18202c] hover:bg-[#222d3d] border border-[#2b3648] rounded-xl text-teal-300 font-bold cursor-pointer text-xs"
+                    className="min-h-[38px] px-3.5 py-2 bg-[#18202c] hover:bg-[#222d3d] border border-[#2b3648] rounded-xl text-teal-300 font-bold cursor-pointer text-xs"
                   >
                     Re-Export
                   </button>
-                  <a
-                    href={exportedVideoUrl}
-                    download={exportedVideoFilename}
+                  {canShareMediaFile(exportedVideoFilename, 'video/mp4') && (
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const res = await shareMediaBlobToDevice(exportedVideoUrl, exportedVideoFilename, 'video/mp4');
+                        setExportShareNotice(
+                          res === 'shared'
+                            ? isMl
+                              ? 'വീഡിയോ ഷെയർ / ഗാലറിയിലേക്ക് അയച്ചു!'
+                              : 'Shared / saved to your device!'
+                            : isMl
+                            ? 'വീഡിയോ ഡൗൺലോഡ് ആരംഭിച്ചു!'
+                            : 'Direct device download started!'
+                        );
+                      }}
+                      className="min-h-[38px] px-4 py-2 bg-[#1a2433] hover:bg-[#243247] border border-teal-400/50 rounded-xl text-teal-200 font-bold cursor-pointer text-xs flex items-center gap-1.5"
+                    >
+                      <Share2 className="w-3.5 h-3.5" />
+                      <span>{isMl ? 'ഷെയർ / സേവ്' : 'Share / Save'}</span>
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const ok = triggerLocalBlobDownload(exportedVideoUrl, exportedVideoFilename);
+                      setExportShareNotice(
+                        ok
+                          ? isMl
+                            ? 'വീഡിയോ ഉപകരണത്തിലേക്ക് സേവ് ചെയ്യുന്നു...'
+                            : 'Saving video to your device Downloads...'
+                          : isMl
+                          ? 'ദയവായി മുകളിലെ വീഡിയോ പ്ലെയറിലെ മെനു വഴി ഡൗൺലോഡ് ചെയ്യുക.'
+                          : 'Use the Share / Save button or player download option.'
+                      );
+                    }}
                     className="min-h-[38px] px-5 py-2 bg-gradient-to-r from-teal-400 to-emerald-400 hover:from-teal-300 hover:to-emerald-300 text-black font-extrabold rounded-xl cursor-pointer text-xs flex items-center gap-1.5 shadow-lg"
                   >
                     <Download className="w-4 h-4" />
                     <span>{isMl ? 'ഗാലറിയിലേക്ക് സേവ്' : 'Save Video'}</span>
-                  </a>
+                  </button>
                 </>
               ) : (
                 <>

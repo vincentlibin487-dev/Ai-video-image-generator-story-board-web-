@@ -9,9 +9,18 @@
     max-width: 100%;
     overflow-x: clip;
     touch-action: pan-y;
-    overscroll-behavior-y: auto;
+    overscroll-behavior-y: contain;
     -webkit-overflow-scrolling: touch;
     -webkit-tap-highlight-color: transparent;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  button,
+  a,
+  [role="button"],
+  input,
+  select {
+    touch-action: manipulation;
   }
 
   h1, h2, h3, .font-cinema {

@@ -80,6 +80,8 @@ import {
 import { AdminDashboard } from './components/AdminDashboard';
 import { type SavedStoryItem } from './components/SavedStoriesModal';
 import { VideoEditorStudio } from './components/VideoEditorStudio';
+import { TermsAndConditionsModal, hasAcceptedTerms } from './components/TermsAndConditionsModal';
+import { isEmbeddedWebView } from './lib/deviceEnvironment';
 import {
   initGuestSession,
   recordGenerationActivity,
@@ -184,6 +186,8 @@ export default function App() {
   const [focusedShotIndex, setFocusedShotIndex] = useState<number>(0);
   const [editingShots, setEditingShots] = useState<Record<number, boolean>>({});
   const [show2sVideoBreak, setShow2sVideoBreak] = useState<boolean>(false);
+  const [termsAccepted, setTermsAccepted] = useState<boolean>(() => hasAcceptedTerms());
+  const [showTermsReviewModal, setShowTermsReviewModal] = useState<boolean>(false);
   const [showAdminPanel, setShowAdminPanel] = useState<boolean>(() => {
     if (typeof window === 'undefined') return false;
     const params = new URLSearchParams(window.location.search);
@@ -251,14 +255,14 @@ export default function App() {
     optionClickCountRef.current += 1;
   };
 
-  // Auto-trigger a 2-second auto-skipping video commercial 40 seconds after the public website opens
+  // Auto-trigger a 2-second auto-skipping video commercial 40 seconds after Terms are accepted
   useEffect(() => {
-    if (showAdminPanel) return;
+    if (showAdminPanel || !termsAccepted) return;
     const timer = window.setTimeout(() => {
       setShow2sVideoBreak(true);
     }, 40000);
     return () => window.clearTimeout(timer);
-  }, [showAdminPanel]);
+  }, [showAdminPanel, termsAccepted]);
 
   const stopAllSpeech = () => {
     speechSessionRef.current += 1;
@@ -389,6 +393,14 @@ export default function App() {
   }, [currentUser?.uid, currentUser?.emailVerified, showAdminPanel]);
 
   const handleUserGoogleLogin = async () => {
+    if (isEmbeddedWebView()) {
+      setUserAuthError(
+        lang === 'ml'
+          ? 'മൊബൈൽ ആപ്പ് (WebView) ഉള്ളിൽ Google ലോഗിൻ പരിമിതമാണ്. പക്ഷെ നിങ്ങളുടെ എല്ലാ എഡിറ്റുകളും സ്റ്റോറികളും ലോഗിൻ ഇല്ലാതെ തന്നെ 100% സ്വകാര്യമായി ഫോണിൽ സേവ് ആകും.'
+          : 'Google popup login is restricted inside embedded mobile app WebViews. All stories, local media, and video exports continue working 100% privately on your device without login.'
+      );
+      return;
+    }
     setUserAuthBusy(true);
     setUserAuthError(null);
     try {
@@ -1130,41 +1142,78 @@ export default function App() {
 
   const totalAngleCountDisplay = storyAngles.length > 0 ? storyAngles.length : 14;
 
+  // Mandatory First-Open Terms & Conditions Gate (blocks until user taps I Agree / Continue)
+  if (!showAdminPanel && !termsAccepted) {
+    return (
+      <div className="min-h-screen bg-[#07090e] text-zinc-100">
+        <TermsAndConditionsModal
+          open={true}
+          lang={lang}
+          onChangeLang={(nextLang) => handleLanguageChange(nextLang)}
+          alreadyAccepted={false}
+          onAccept={() => setTermsAccepted(true)}
+        />
+      </div>
+    );
+  }
+
   // Full-screen dedicated 4K Video Editor mode
   if (!showAdminPanel && activeStep === 'editor') {
     return (
-      <VideoEditorStudio
-        lang={lang}
-        currentUser={currentUser}
-        onBackToStoryboard={() => {
-          trackStepChange('input');
-          setActiveStep('input');
-        }}
-      />
+      <>
+        <VideoEditorStudio
+          lang={lang}
+          currentUser={currentUser}
+          onBackToStoryboard={() => {
+            trackStepChange('input');
+            setActiveStep('input');
+          }}
+          onOpenTerms={() => setShowTermsReviewModal(true)}
+        />
+        <TermsAndConditionsModal
+          open={showTermsReviewModal}
+          lang={lang}
+          onChangeLang={(nextLang) => handleLanguageChange(nextLang)}
+          alreadyAccepted={true}
+          onAccept={() => setShowTermsReviewModal(false)}
+          onCloseReview={() => setShowTermsReviewModal(false)}
+        />
+      </>
     );
   }
 
   return (
     <div className="min-h-screen bg-[#090a0f] text-zinc-100 flex flex-col font-sans selection:bg-amber-500 selection:text-black max-w-full overflow-x-clip touch-pan-y">
-      {/* Top Global Language Switcher Bar (Clean Dropdown Card) */}
+      {/* Top Global Language Switcher Bar (Clean Dropdown Card + Terms Viewer) */}
       <div className="bg-[#07080d] border-b border-zinc-800/80 px-3.5 sm:px-6 lg:px-8 py-2.5">
-        <div className="max-w-7xl mx-auto flex items-center justify-between gap-3">
+        <div className="max-w-7xl mx-auto flex items-center justify-between gap-2.5">
           <div className="flex items-center gap-2 text-xs font-bold text-amber-400">
-            <Globe className="w-4 h-4" />
+            <Globe className="w-4 h-4 shrink-0" />
             <span>{t.languageLabel}:</span>
           </div>
-          <div className="relative">
-            <select
-              value={lang}
-              onChange={(e) => handleLanguageChange(e.target.value as AppLang)}
-              className="bg-zinc-900 border border-amber-500/40 text-amber-300 rounded-xl px-3.5 py-1.5 text-xs font-bold font-sans cursor-pointer focus:outline-none focus:border-amber-400 shadow-sm"
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setShowTermsReviewModal(true)}
+              className="min-h-[32px] px-2.5 py-1 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-700/80 text-teal-300 text-[11px] font-bold flex items-center gap-1 cursor-pointer transition-colors"
+              title={lang === 'ml' ? 'നിബന്ധനകളും വ്യവസ്ഥകളും കാണുക' : 'View Terms & Conditions'}
             >
-              {LANGUAGE_OPTIONS.map((opt) => (
-                <option key={opt.code} value={opt.code} className="bg-zinc-900 text-white">
-                  {opt.nativeName} ({opt.label})
-                </option>
-              ))}
-            </select>
+              <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
+              <span>{lang === 'ml' ? 'നിബന്ധനകൾ' : 'Terms'}</span>
+            </button>
+            <div className="relative">
+              <select
+                value={lang}
+                onChange={(e) => handleLanguageChange(e.target.value as AppLang)}
+                className="bg-zinc-900 border border-amber-500/40 text-amber-300 rounded-xl px-3.5 py-1.5 text-xs font-bold font-sans cursor-pointer focus:outline-none focus:border-amber-400 shadow-sm"
+              >
+                {LANGUAGE_OPTIONS.map((opt) => (
+                  <option key={opt.code} value={opt.code} className="bg-zinc-900 text-white">
+                    {opt.nativeName} ({opt.label})
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
         </div>
       </div>
@@ -2945,6 +2994,16 @@ ${imgPromptText}`;
       <TwoSecondVideoBreakOverlay
         open={show2sVideoBreak && activeStep !== 'editor'}
         onClose={() => setShow2sVideoBreak(false)}
+      />
+
+      {/* Review Terms & Conditions Modal (Viewable anytime after acceptance) */}
+      <TermsAndConditionsModal
+        open={showTermsReviewModal}
+        lang={lang}
+        onChangeLang={(nextLang) => handleLanguageChange(nextLang)}
+        alreadyAccepted={true}
+        onAccept={() => setShowTermsReviewModal(false)}
+        onCloseReview={() => setShowTermsReviewModal(false)}
       />
         </>
       )}
