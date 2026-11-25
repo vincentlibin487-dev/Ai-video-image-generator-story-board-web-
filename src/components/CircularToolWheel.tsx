@@ -20,8 +20,6 @@ import {
   LayoutGrid,
   Sliders,
   RefreshCw,
-  ChevronLeft,
-  ChevronRight,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -209,7 +207,7 @@ export const WHEEL_CATEGORIES: WheelCategoryItem[] = [...WHEEL_GROUP_1, ...WHEEL
 interface CircularToolWheelProps {
   categories?: WheelCategoryItem[];
   activeCategoryId: string;
-  onSelectCategory: (category: WheelCategoryItem, openDrawer?: boolean) => void;
+  onSelectCategory: (category: WheelCategoryItem, openDrawer?: boolean, fromWheelTap?: boolean) => void;
   isToolDrawerOpen: boolean;
   onToggleToolDrawer: () => void;
   isInspectorOpen: boolean;
@@ -280,7 +278,7 @@ export const CircularToolWheel: React.FC<CircularToolWheelProps> = ({
     const nextIdx = (activeIndex + delta + count) % count;
     const target = categories[nextIdx];
     if (target) {
-      onSelectCategory(target, openDrawer);
+      onSelectCategory(target, openDrawer, false);
     }
   };
 
@@ -345,18 +343,19 @@ export const CircularToolWheel: React.FC<CircularToolWheelProps> = ({
     } catch {}
   };
 
+  // Enlarged KineMaster-scale wheel sizes (safe against landscape media-query inflation in compact mode)
   const outerSizeClass = compact
-    ? 'w-[162px] h-[162px] sm:w-[196px] sm:h-[196px] md:w-[228px] md:h-[228px]'
-    : 'w-[198px] h-[198px] sm:w-[224px] sm:h-[224px] md:w-[244px] md:h-[244px]';
+    ? 'w-[190px] h-[190px]'
+    : 'w-[228px] h-[228px] sm:w-[254px] sm:h-[254px]';
 
   const wheelSizeClass = compact
-    ? 'w-[148px] h-[148px] sm:w-[178px] sm:h-[178px] md:w-[206px] md:h-[206px]'
-    : 'w-[178px] h-[178px] sm:w-[202px] sm:h-[202px] md:w-[220px] md:h-[220px]';
+    ? 'w-[178px] h-[178px]'
+    : 'w-[214px] h-[214px] sm:w-[238px] sm:h-[238px]';
 
-  const cornerBtnClass = compact ? 'w-7 h-7 sm:w-8 sm:h-8' : 'w-8 h-8 sm:w-9 sm:h-9';
+  const cornerBtnClass = compact ? 'w-8 h-8' : 'w-9 h-9';
 
   return (
-    <div className="relative flex flex-col items-center justify-center select-none shrink-0 px-1.5 py-0.5 bg-[#0b0e13]">
+    <div className="relative flex flex-col items-center justify-center select-none shrink-0 px-1.5 py-1 bg-[#0b0e13]">
       {/* Radial Assembly Container */}
       <div className={`relative ${outerSizeClass} flex items-center justify-center`}>
         {/* TOP-LEFT CORNER: Inspector Toggle Button */}
@@ -366,33 +365,33 @@ export const CircularToolWheel: React.FC<CircularToolWheelProps> = ({
           className={`absolute top-0 left-0 z-20 ${cornerBtnClass} rounded-full border flex items-center justify-center cursor-pointer transition-all shadow-lg ${
             isInspectorOpen
               ? 'bg-teal-400 text-black border-teal-200 shadow-teal-500/30'
-              : 'bg-[#1c222d]/95 text-zinc-200 border-[#2f3848] hover:border-teal-400/70 hover:text-white'
+              : 'bg-[#1a202b]/90 text-zinc-200 border-white/15 hover:border-teal-400/70 hover:text-white'
           }`}
-          title="Inspector / Color / Speed Controls"
+          title="Inspector Controls"
         >
           <Sliders className="w-3.5 h-3.5" />
         </button>
 
-        {/* TOP-RIGHT CORNER: Export Button */}
+        {/* TOP-RIGHT CORNER: Single Clean Export Icon Button */}
         <button
           type="button"
           onClick={onExport}
-          className={`absolute top-0 right-0 z-20 ${cornerBtnClass} rounded-full bg-teal-400/20 hover:bg-teal-400 text-teal-300 hover:text-black border border-teal-400/55 flex items-center justify-center cursor-pointer transition-all shadow-lg`}
+          className={`absolute top-0 right-0 z-20 ${cornerBtnClass} rounded-full bg-[#242c3a]/90 hover:bg-teal-400 text-teal-300 hover:text-black border border-teal-400/50 flex items-center justify-center cursor-pointer transition-all shadow-lg`}
           title={`Export Video (${aspectRatio})`}
         >
-          <Upload className="w-3.5 h-3.5" />
+          <Upload className="w-4 h-4" />
         </button>
 
-        {/* BOTTOM-LEFT CORNER: Search / Sub-Filter Popover Toggle */}
+        {/* BOTTOM-LEFT CORNER: Category Search / Filter Popover */}
         <button
           type="button"
           onClick={onToggleToolDrawer}
           className={`absolute bottom-0 left-0 z-20 ${cornerBtnClass} rounded-full border flex items-center justify-center cursor-pointer transition-all shadow-lg ${
             isToolDrawerOpen
               ? 'bg-teal-400 text-black border-teal-200 shadow-teal-500/30'
-              : 'bg-[#1c222d]/95 text-zinc-200 border-[#2f3848] hover:border-teal-400/70 hover:text-white'
+              : 'bg-[#1a202b]/90 text-zinc-200 border-white/15 hover:border-teal-400/70 hover:text-white'
           }`}
-          title="Search & Filter Category Tools"
+          title="Filter / Search Tools"
         >
           <LayoutGrid className="w-3.5 h-3.5" />
         </button>
@@ -404,14 +403,14 @@ export const CircularToolWheel: React.FC<CircularToolWheelProps> = ({
           className={`absolute bottom-0 right-0 z-20 ${cornerBtnClass} rounded-full border flex items-center justify-center cursor-pointer transition-all shadow-lg ${
             isPlaying
               ? 'bg-teal-400 text-black border-teal-200 shadow-teal-500/40'
-              : 'bg-[#242b37]/95 hover:bg-teal-400 hover:text-black border-[#364152] text-white'
+              : 'bg-[#242b37]/95 hover:bg-teal-400 hover:text-black border-white/15 text-white'
           }`}
           title={isPlaying ? 'Pause Video' : 'Play Video'}
         >
           {isPlaying ? (
-            <Pause className="w-3.5 h-3.5 fill-current" />
+            <Pause className="w-4 h-4 fill-current" />
           ) : (
-            <Play className="w-3.5 h-3.5 fill-current ml-0.5" />
+            <Play className="w-4 h-4 fill-current ml-0.5" />
           )}
         </button>
 
@@ -422,7 +421,7 @@ export const CircularToolWheel: React.FC<CircularToolWheelProps> = ({
           onPointerMove={handleWheelPointerMove}
           onPointerUp={handleWheelPointerUp}
           onPointerCancel={handleWheelPointerUp}
-          className={`relative ${wheelSizeClass} rounded-full bg-[#151a22] border border-[#2c3545] shadow-[inset_0_2px_14px_rgba(0,0,0,0.8),0_10px_28px_rgba(0,0,0,0.65)] touch-none select-none flex items-center justify-center`}
+          className={`relative ${wheelSizeClass} rounded-full bg-[#161b24] border border-[#2c3545] shadow-[inset_0_2px_16px_rgba(0,0,0,0.85),0_10px_30px_rgba(0,0,0,0.7)] touch-none select-none flex items-center justify-center`}
         >
           {/* Decorative Rotating Outer Tick Ring */}
           <div
@@ -468,7 +467,7 @@ export const CircularToolWheel: React.FC<CircularToolWheelProps> = ({
                   key={cat.id}
                   type="button"
                   onPointerDown={(e) => e.stopPropagation()}
-                  onClick={() => onSelectCategory(cat, false)}
+                  onClick={() => onSelectCategory(cat, false, true)}
                   style={{
                     left: `${leftPct}%`,
                     top: `${topPct}%`,
@@ -478,8 +477,8 @@ export const CircularToolWheel: React.FC<CircularToolWheelProps> = ({
                   }}
                   className={`absolute z-10 ${
                     compact
-                      ? 'w-[36px] h-[36px] sm:w-[44px] sm:h-[44px] rounded-xl'
-                      : 'w-[42px] h-[42px] sm:w-[46px] sm:h-[46px] rounded-2xl'
+                      ? 'w-[42px] h-[42px] rounded-xl'
+                      : 'w-[48px] h-[48px] sm:w-[52px] sm:h-[52px] rounded-2xl'
                   } flex flex-col items-center justify-center cursor-pointer transition-all active:scale-95 ${
                     isAct
                       ? 'bg-[#222b3a] border-2 text-white scale-105'
@@ -493,10 +492,10 @@ export const CircularToolWheel: React.FC<CircularToolWheelProps> = ({
                     style={{ transform: `rotate(${-flipSpinDeg}deg)` }}
                   >
                     <IconComp
-                      className={compact ? 'w-3.5 h-3.5 sm:w-4 sm:h-4' : 'w-4 h-4'}
+                      className={compact ? 'w-4 h-4' : 'w-4 h-4 sm:w-[18px] sm:h-[18px]'}
                       style={{ color: cat.accentHex }}
                     />
-                    <span className={`${compact ? 'text-[7.5px] sm:text-[8.5px]' : 'text-[8.5px] sm:text-[9.5px]'} font-bold leading-none whitespace-nowrap`}>
+                    <span className={`${compact ? 'text-[8px]' : 'text-[9px] sm:text-[10px]'} font-bold leading-none whitespace-nowrap`}>
                       {cat.shortLabel}
                     </span>
                   </div>
@@ -511,8 +510,8 @@ export const CircularToolWheel: React.FC<CircularToolWheelProps> = ({
             onPointerDown={(e) => e.stopPropagation()}
             onClick={handleToggleWheelGroup}
             className={`z-20 ${
-              compact ? 'w-[44px] h-[44px] sm:w-[54px] sm:h-[54px]' : 'w-[52px] h-[52px] sm:w-[58px] sm:h-[58px]'
-            } rounded-full bg-gradient-to-b from-[#2e3848] to-[#1d2430] hover:from-teal-400 hover:to-cyan-400 hover:text-black border-2 border-teal-400/70 text-white shadow-[0_6px_20px_rgba(0,0,0,0.75)] flex flex-col items-center justify-center gap-0.5 cursor-pointer transition-all active:scale-90`}
+              compact ? 'w-[52px] h-[52px]' : 'w-[60px] h-[60px] sm:w-[66px] sm:h-[66px]'
+            } rounded-full bg-gradient-to-b from-[#333d4f] to-[#1e2532] hover:from-teal-400 hover:to-cyan-400 hover:text-black border-2 border-teal-400/75 text-white shadow-[0_6px_22px_rgba(0,0,0,0.8)] flex flex-col items-center justify-center gap-0.5 cursor-pointer transition-all active:scale-90`}
             title={
               wheelGroup === 0
                 ? 'Switch wheel to Categories 8–14'
@@ -520,54 +519,14 @@ export const CircularToolWheel: React.FC<CircularToolWheelProps> = ({
             }
           >
             <RefreshCw
-              className={`${compact ? 'w-3.5 h-3.5' : 'w-4 h-4'} transition-transform duration-500`}
+              className={`${compact ? 'w-4 h-4' : 'w-4 h-4 sm:w-5 sm:h-5'} transition-transform duration-500`}
               style={{ transform: `rotate(${flipSpinDeg}deg)` }}
             />
-            <span className={`${compact ? 'text-[7.5px]' : 'text-[8.5px]'} font-black uppercase tracking-tight leading-none tabular-nums`}>
+            <span className={`${compact ? 'text-[8.5px]' : 'text-[9.5px]'} font-black uppercase tracking-tight leading-none tabular-nums`}>
               {wheelGroup === 0 ? '1–7 ↻' : '8–14 ↻'}
             </span>
           </button>
         </div>
-      </div>
-
-      {/* Compact Stepper + Clean 16:9 Badge + Export Pill right below the Wheel */}
-      <div className="mt-0.5 flex items-center gap-1 max-w-[214px] w-full">
-        <button
-          type="button"
-          onClick={() => stepBy(-1, false)}
-          className="w-6 h-6 rounded-md bg-[#161c26] hover:bg-teal-400 hover:text-black border border-[#283242] text-zinc-300 flex items-center justify-center cursor-pointer shrink-0 transition-colors"
-          title="Previous Category"
-        >
-          <ChevronLeft className="w-3.5 h-3.5" />
-        </button>
-        <div className="flex-1 min-w-0 h-6 px-1.5 rounded-md bg-[#161c26] border border-[#283242] text-[9.5px] font-bold text-teal-300 flex items-center justify-center gap-1 truncate">
-          <span className="truncate">{activeCat.shortLabel}</span>
-          <span className="text-[8px] font-mono text-zinc-400 shrink-0 tabular-nums">
-            {activeIndex + 1}/{count}
-          </span>
-        </div>
-        <button
-          type="button"
-          onClick={() => stepBy(1, false)}
-          className="w-6 h-6 rounded-md bg-[#161c26] hover:bg-teal-400 hover:text-black border border-[#283242] text-zinc-300 flex items-center justify-center cursor-pointer shrink-0 transition-colors"
-          title="Next Category"
-        >
-          <ChevronRight className="w-3.5 h-3.5" />
-        </button>
-        <span
-          className="h-6 px-1.5 rounded-md bg-teal-500/15 border border-teal-500/40 text-teal-300 font-mono font-black text-[9px] flex items-center justify-center shrink-0 whitespace-nowrap"
-          title="Active Aspect Ratio"
-        >
-          {aspectRatio}
-        </span>
-        <button
-          type="button"
-          onClick={onExport}
-          className="h-6 px-1.5 rounded-md bg-gradient-to-r from-teal-400 to-emerald-400 hover:brightness-105 text-zinc-950 font-black text-[9px] flex items-center justify-center shrink-0 cursor-pointer whitespace-nowrap shadow"
-          title={`Export ${aspectRatio} Video`}
-        >
-          Export
-        </button>
       </div>
     </div>
   );
