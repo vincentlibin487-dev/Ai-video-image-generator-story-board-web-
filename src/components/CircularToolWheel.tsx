@@ -9,7 +9,7 @@ import {
   Smile,
   Flame,
   Clapperboard,
-  Scissors,
+  Wand2,
   Split,
   SlidersHorizontal,
   Sparkles,
@@ -157,7 +157,7 @@ export const WHEEL_GROUP_2: WheelCategoryItem[] = [
     trackNumber: 10,
     trackName: 'Chroma',
     accentHex: '#10b981',
-    icon: Scissors,
+    icon: Wand2,
   },
   {
     id: 'split',

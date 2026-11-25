@@ -195,48 +195,108 @@ const FILTER_THUMBS = [
 ];
 
 // -------------------------------------------------------------------------
-// 1. FILTERS & LUTS LIBRARY (600 Cinematic Color Filters)
+// 1. FILTERS & LUTS LIBRARY (300 Curated Cinematic Filters Across 11 Categories)
 // -------------------------------------------------------------------------
-const FILTER_CATEGORIES = [
+export const FILTER_CATEGORIES = [
   'Cinematic',
-  'Retro',
-  'Portrait',
-  'Nature',
-  'Black & White',
-  'Sci-Fi',
-  'Moody',
+  'Teal & Orange',
+  'Vintage',
+  'Warm',
+  'Cool',
   'Vivid',
-  'Anime & Pastel',
-  'Sunset Gold',
+  'Contrast',
+  'Fade',
+  'Monochrome',
+  'Portrait',
+  'Retro',
+] as const;
+
+const RAW_FILTER_DEFINITIONS: Array<{
+  name: string;
+  cat: (typeof FILTER_CATEGORIES)[number];
+  css: string;
+  desc: string;
+  thumbIdx: number;
+}> = [
+  // Cinematic
+  { name: 'Blockbuster 70mm IMAX', cat: 'Cinematic', css: 'contrast(128%) saturate(122%) brightness(98%)', desc: 'High-clarity theatrical 70mm film density and balanced midtones', thumbIdx: 0 },
+  { name: 'Cyberpunk Tokyo Neon', cat: 'Cinematic', css: 'contrast(136%) saturate(170%) hue-rotate(42deg)', desc: 'Electric cyan & magenta night neon contrast boost', thumbIdx: 1 },
+  { name: 'Dune Arrakis Gold', cat: 'Cinematic', css: 'sepia(55%) contrast(118%) saturate(138%) brightness(103%)', desc: 'Golden sand warmth with sun-bleached desert highlights', thumbIdx: 2 },
+  { name: 'Gotham Shadow Noir', cat: 'Cinematic', css: 'contrast(152%) brightness(84%) saturate(74%)', desc: 'Dark moody shadows and muted thriller grit', thumbIdx: 3 },
+  { name: 'Pandora Forest Glow', cat: 'Cinematic', css: 'hue-rotate(115deg) saturate(165%) contrast(125%)', desc: 'Lush glowing emerald & cyan forest tone', thumbIdx: 4 },
+
+  // Teal & Orange
+  { name: 'Teal & Orange Hollywood', cat: 'Teal & Orange', css: 'contrast(126%) saturate(145%) hue-rotate(-14deg)', desc: 'Cool teal shadows paired with warm golden skin highlights', thumbIdx: 0 },
+  { name: 'Teal & Orange Harbor', cat: 'Teal & Orange', css: 'contrast(132%) saturate(152%) sepia(18%) hue-rotate(-18deg)', desc: 'Punchy coastal orange sunsets against deep cyan shadows', thumbIdx: 0 },
+  { name: 'Teal & Orange Thriller', cat: 'Teal & Orange', css: 'contrast(142%) brightness(94%) saturate(135%) hue-rotate(-12deg)', desc: 'Dramatic teal low-key shadows with amber street highlights', thumbIdx: 8 },
+  { name: 'Teal & Orange Action', cat: 'Teal & Orange', css: 'contrast(138%) saturate(160%) sepia(14%) hue-rotate(-16deg)', desc: 'High-energy blockbuster teal & fire contrast curve', thumbIdx: 5 },
+  { name: 'Teal & Orange Clean Vlog', cat: 'Teal & Orange', css: 'contrast(118%) brightness(104%) saturate(132%) hue-rotate(-10deg)', desc: 'Crisp natural skin warmth with subtle teal shadow tint', thumbIdx: 0 },
+
+  // Vintage
+  { name: 'Vintage Kodachrome 64', cat: 'Vintage', css: 'contrast(126%) saturate(134%) sepia(22%)', desc: 'Classic 1960s slide film richness with warm reds', thumbIdx: 2 },
+  { name: 'Super 8mm Amber Wash', cat: 'Vintage', css: 'sepia(42%) contrast(114%) brightness(104%) saturate(118%)', desc: 'Nostalgic home-movie amber wash and soft contrast', thumbIdx: 2 },
+  { name: '1970s Celluloid Print', cat: 'Vintage', css: 'sepia(34%) contrast(112%) brightness(98%) saturate(108%)', desc: 'Authentic analog projection density and warm shadows', thumbIdx: 5 },
+  { name: 'Antique Espresso Print', cat: 'Vintage', css: 'sepia(58%) contrast(116%) brightness(96%) saturate(92%)', desc: 'Deep coffee-toned heritage archive film print', thumbIdx: 2 },
+  { name: 'Warm Fuji Velvia 1988', cat: 'Vintage', css: 'sepia(24%) saturate(128%) contrast(120%) brightness(101%)', desc: 'Velvety vintage travel film saturation', thumbIdx: 10 },
+
+  // Warm
+  { name: 'Golden Sunset Rim Glow', cat: 'Warm', css: 'sepia(34%) saturate(158%) brightness(105%) contrast(114%)', desc: 'Warm sunset amber light ideal for outdoor shots', thumbIdx: 5 },
+  { name: 'Summer Honey Breeze', cat: 'Warm', css: 'sepia(26%) brightness(108%) saturate(136%) contrast(106%)', desc: 'Soft honey sunlight glow with gentle warmth', thumbIdx: 2 },
+  { name: 'Desert Amber Heat', cat: 'Warm', css: 'sepia(46%) saturate(152%) contrast(122%) brightness(102%)', desc: 'Blazing amber sun tones and rich copper midtones', thumbIdx: 5 },
+  { name: 'Candlelight Romance', cat: 'Warm', css: 'sepia(38%) brightness(97%) contrast(118%) saturate(126%)', desc: 'Intimate warm indoor tungsten evening tone', thumbIdx: 11 },
+  { name: 'Tropical Saffron Pop', cat: 'Warm', css: 'sepia(20%) saturate(162%) contrast(116%) brightness(104%)', desc: 'Vibrant warm coastal sunlight and golden skin', thumbIdx: 5 },
+
+  // Cool
+  { name: 'Nordic Ice Slate', cat: 'Cool', css: 'contrast(124%) brightness(95%) saturate(88%) hue-rotate(185deg)', desc: 'Crisp icy blue-grey shadows for winter & thriller scenes', thumbIdx: 8 },
+  { name: 'Midnight Arctic Blue', cat: 'Cool', css: 'contrast(132%) brightness(88%) saturate(105%) hue-rotate(195deg)', desc: 'Deep nocturnal steel-blue moonlight atmosphere', thumbIdx: 3 },
+  { name: 'Ocean Breeze Cyan', cat: 'Cool', css: 'contrast(114%) brightness(103%) saturate(122%) hue-rotate(165deg)', desc: 'Clean refreshing coastal blue-cyan highlights', thumbIdx: 8 },
+  { name: 'Steel Rainstorm Mist', cat: 'Cool', css: 'contrast(120%) brightness(94%) saturate(78%) hue-rotate(175deg)', desc: 'Cool slate overcast tone with cinematic rain atmosphere', thumbIdx: 3 },
+  { name: 'Glacier Crystal Sharp', cat: 'Cool', css: 'contrast(128%) brightness(106%) saturate(112%) hue-rotate(170deg)', desc: 'Bright crisp glacier clarity and pure cool whites', thumbIdx: 8 },
+
+  // Vivid
+  { name: 'Ultra Vivid Cinema Pop', cat: 'Vivid', css: 'saturate(170%) contrast(124%) brightness(102%)', desc: 'High-impact commercial vivid colors for reels & promos', thumbIdx: 9 },
+  { name: 'HDR Hyper Dynamic', cat: 'Vivid', css: 'contrast(136%) saturate(155%) brightness(105%)', desc: 'Crisp detail pop across shadows and bright skies', thumbIdx: 10 },
+  { name: 'Festival Neon Punch', cat: 'Vivid', css: 'saturate(185%) contrast(130%) brightness(104%)', desc: 'Electric festival color boost with luminous reds & blues', thumbIdx: 1 },
+  { name: 'Emerald & Crimson Boost', cat: 'Vivid', css: 'saturate(165%) contrast(128%) brightness(101%)', desc: 'Rich vibrant foliage and bold dramatic reds', thumbIdx: 4 },
+  { name: 'Daylight Commercial 4K', cat: 'Vivid', css: 'saturate(148%) contrast(120%) brightness(106%)', desc: 'Clean punchy commercial look with bright highlights', thumbIdx: 8 },
+
+  // Contrast
+  { name: 'Mad Max High Contrast', cat: 'Contrast', css: 'contrast(172%) saturate(155%) sepia(18%)', desc: 'Punchy extreme contrast and dramatic edge definition', thumbIdx: 5 },
+  { name: 'Deep Crush Onyx', cat: 'Contrast', css: 'contrast(164%) brightness(90%) saturate(112%)', desc: 'Crushed ink blacks with crisp luminous midtones', thumbIdx: 3 },
+  { name: 'Action Stunt Punch', cat: 'Contrast', css: 'contrast(154%) saturate(135%) brightness(96%)', desc: 'Hard action-movie micro-contrast for fight scenes', thumbIdx: 0 },
+  { name: 'Stage Spotlight Hard', cat: 'Contrast', css: 'contrast(158%) brightness(98%) saturate(118%)', desc: 'High-separation spotlight drama and rich shadows', thumbIdx: 11 },
+  { name: 'Dark Urban Gritty', cat: 'Contrast', css: 'contrast(148%) brightness(88%) saturate(85%)', desc: 'Street documentary punch with deep gritty shadows', thumbIdx: 7 },
+
+  // Fade
+  { name: 'Pastel Matte Fade', cat: 'Fade', css: 'contrast(86%) brightness(110%) saturate(92%)', desc: 'Lifted matte shadows with soft low-contrast film haze', thumbIdx: 6 },
+  { name: 'Polaroid Creamy Fade', cat: 'Fade', css: 'contrast(90%) brightness(108%) sepia(20%) saturate(102%)', desc: 'Soft lifted blacks with instant film pastel tint', thumbIdx: 2 },
+  { name: 'Morning Fog Wash', cat: 'Fade', css: 'contrast(84%) brightness(112%) saturate(84%)', desc: 'Airy milky fade ideal for dreamy memory flashbacks', thumbIdx: 3 },
+  { name: 'Indie Matte Warmth', cat: 'Fade', css: 'contrast(88%) brightness(106%) sepia(16%) saturate(96%)', desc: 'Gentle indie-cinema matte shadow lift and warm midtones', thumbIdx: 2 },
+  { name: 'Velvet Lilac Fade', cat: 'Fade', css: 'contrast(90%) brightness(107%) hue-rotate(290deg) saturate(110%)', desc: 'Dreamy muted pastel violet lift across dark areas', thumbIdx: 9 },
+
+  // Monochrome
+  { name: 'Classic Silver Gelatin', cat: 'Monochrome', css: 'grayscale(100%) contrast(138%) brightness(96%)', desc: 'True darkroom silver-halide monochrome contrast', thumbIdx: 7 },
+  { name: 'Hard Shadow Detective', cat: 'Monochrome', css: 'grayscale(100%) contrast(172%) brightness(84%)', desc: 'Chiaroscuro high-contrast black and white thriller look', thumbIdx: 7 },
+  { name: 'Soft Matte B&W Portrait', cat: 'Monochrome', css: 'grayscale(100%) contrast(108%) brightness(106%)', desc: 'Gentle low-contrast black & white editorial portrait look', thumbIdx: 7 },
+  { name: 'Warm Archival Sepia B&W', cat: 'Monochrome', css: 'grayscale(100%) sepia(28%) contrast(122%)', desc: 'Archival warm sepia-tinted black and white print', thumbIdx: 2 },
+  { name: 'Chrome Charcoal 35mm', cat: 'Monochrome', css: 'grayscale(100%) contrast(150%) brightness(94%)', desc: 'Sharp metallic charcoal blacks with clean highlights', thumbIdx: 7 },
+
+  // Portrait
+  { name: 'Kodak Portra 400 Soft', cat: 'Portrait', css: 'contrast(106%) saturate(112%) brightness(104%) sepia(10%)', desc: 'Natural flattering skin tones and soft highlight rolloff', thumbIdx: 11 },
+  { name: 'Silky Beauty Glow', cat: 'Portrait', css: 'brightness(108%) contrast(102%) saturate(114%) sepia(8%)', desc: 'Luminous soft facial highlights with balanced warmth', thumbIdx: 11 },
+  { name: 'Studio Editorial Skin', cat: 'Portrait', css: 'contrast(114%) brightness(103%) saturate(108%)', desc: 'Clean commercial studio skin balance with neutral whites', thumbIdx: 6 },
+  { name: 'Golden Hour Portrait', cat: 'Portrait', css: 'sepia(22%) brightness(106%) saturate(124%) contrast(108%)', desc: 'Warm sunset skin glow with soft golden rim ambience', thumbIdx: 5 },
+  { name: 'Wedding Ivory Silk', cat: 'Portrait', css: 'brightness(109%) contrast(104%) saturate(106%) sepia(6%)', desc: 'Airy clean ivory whites and romantic natural skin tones', thumbIdx: 11 },
+
+  // Retro
+  { name: 'VHS Camcorder 1994', cat: 'Retro', css: 'contrast(115%) brightness(108%) saturate(130%) hue-rotate(10deg)', desc: '90s camcorder tape warmth and vibrant analog color', thumbIdx: 9 },
+  { name: '1980s Synthwave Neon', cat: 'Retro', css: 'hue-rotate(290deg) saturate(155%) contrast(124%)', desc: 'Electric 80s violet-magenta arcade retro aesthetic', thumbIdx: 9 },
+  { name: 'Cinema Projector 1955', cat: 'Retro', css: 'sepia(32%) contrast(122%) brightness(95%) saturate(104%)', desc: 'Technicolor-inspired mid-century theatrical warmth', thumbIdx: 5 },
+  { name: 'Arcade CRT Phosphor', cat: 'Retro', css: 'contrast(128%) saturate(148%) hue-rotate(20deg)', desc: 'Punchy CRT glow with heightened phosphor colors', thumbIdx: 1 },
+  { name: 'Disco 70s Sunset Film', cat: 'Retro', css: 'sepia(28%) saturate(144%) contrast(116%) brightness(103%)', desc: 'Groovy 70s warm flare film tone for music edits', thumbIdx: 2 },
 ];
 
-const RAW_FILTER_DEFINITIONS = [
-  { name: 'Teal & Orange Hollywood', cat: 'Cinematic', css: 'contrast(125%) saturate(145%) hue-rotate(-15deg)', desc: 'Cool teal shadows with warm skin highlights for blockbuster look' },
-  { name: 'Cyberpunk Tokyo Neon', cat: 'Cinematic', css: 'contrast(135%) saturate(175%) hue-rotate(45deg)', desc: 'Electric cyan & magenta night neon contrast boost' },
-  { name: 'Blade Runner Amber Glow', cat: 'Cinematic', css: 'sepia(50%) contrast(130%) brightness(95%) hue-rotate(-20deg)', desc: 'Rich dystopian amber warmth with deep atmospheric shadows' },
-  { name: 'Oppenheimer 70mm Rich Film', cat: 'Cinematic', css: 'contrast(130%) saturate(120%) brightness(98%)', desc: 'High-clarity IMAX 70mm film density and balanced midtones' },
-  { name: 'Interstellar Deep Space Slate', cat: 'Cinematic', css: 'contrast(140%) brightness(90%) hue-rotate(185deg) saturate(90%)', desc: 'Crisp cold slate-blue space tone with sharp contrast' },
-  { name: 'The Matrix Cyber Green', cat: 'Cinematic', css: 'hue-rotate(85deg) contrast(125%) saturate(160%)', desc: 'Iconic emerald green digital tint with deep blacks' },
-  { name: 'Dune Arrakis Desert Warm', cat: 'Cinematic', css: 'sepia(65%) contrast(115%) saturate(140%) brightness(105%)', desc: 'Golden sand warmth with sun-bleached desert highlights' },
-  { name: 'Batman Gotham Shadow Noir', cat: 'Cinematic', css: 'contrast(160%) brightness(78%) saturate(70%)', desc: 'Dark moody shadows and muted desaturated grit' },
-  { name: 'La La Land Sunset Purple', cat: 'Cinematic', css: 'hue-rotate(290deg) saturate(155%) contrast(120%)', desc: 'Dreamy twilight violet and magenta romance palette' },
-  { name: 'Mad Max Fury High Contrast', cat: 'Cinematic', css: 'contrast(170%) saturate(180%) sepia(25%)', desc: 'Punchy extreme contrast and blazing orange saturation' },
-  { name: 'Inception Cold Dream Cyan', cat: 'Cinematic', css: 'hue-rotate(170deg) contrast(125%) saturate(110%)', desc: 'Cool architectural blue-grey dream tone' },
-  { name: 'Gladiator Roman Gold Sunset', cat: 'Cinematic', css: 'sepia(45%) saturate(160%) contrast(118%) brightness(102%)', desc: 'Epic warm wheatfield golden hour glow' },
-  { name: 'Avatar Pandora Biolum Forest', cat: 'Cinematic', css: 'hue-rotate(120deg) saturate(180%) contrast(130%)', desc: 'Lush glowing turquoise & emerald forest bioluminescence' },
-  { name: 'Kodachrome 64 Vivid Slide', cat: 'Retro', css: 'contrast(130%) saturate(140%) sepia(15%)', desc: 'Classic 1960s film slide richness with warm reds' },
-  { name: 'Super 8mm Warm Grain Wash', cat: 'Retro', css: 'sepia(40%) contrast(115%) brightness(105%) saturate(120%)', desc: 'Nostalgic home-movie amber wash and soft contrast' },
-  { name: 'Polaroid 600 Soft Pastel Fade', cat: 'Retro', css: 'contrast(95%) brightness(108%) sepia(25%) saturate(110%)', desc: 'Lifted creamy shadows with instant film pastel tint' },
-  { name: 'VHS Camcorder 1994 CRT', cat: 'Retro', css: 'contrast(115%) brightness(110%) saturate(130%) hue-rotate(10deg)', desc: '90s camcorder tape warmth and vibrant analog color' },
-  { name: 'Kodak Portra 400 Soft Tone', cat: 'Portrait', css: 'contrast(108%) saturate(112%) brightness(104%) sepia(10%)', desc: 'Natural flattering skin tones and soft highlight rolloff' },
-  { name: 'Classic Silver Gelatin 1940', cat: 'Black & White', css: 'grayscale(100%) contrast(140%) brightness(96%)', desc: 'True darkroom silver-halide monochrome contrast' },
-  { name: 'Hard Shadow Detective Noir', cat: 'Black & White', css: 'grayscale(100%) contrast(175%) brightness(80%)', desc: 'Chiaroscuro high-contrast black and white thriller look' },
-  { name: 'Warm Sepia Monochrome', cat: 'Black & White', css: 'grayscale(100%) sepia(30%) contrast(120%)', desc: 'Archival warm sepia-toned black and white print' },
-  { name: 'Ultra Vivid Cinema Pop', cat: 'Vivid', css: 'saturate(170%) contrast(125%) brightness(102%)', desc: 'High-impact commercial vivid colors for reels & promos' },
-  { name: 'HDR Hyper Dynamic Range', cat: 'Vivid', css: 'contrast(135%) saturate(150%) brightness(105%)', desc: 'Crisp detail pop across shadows and bright skies' },
-  { name: 'Anime Pastel Sky Bloom', cat: 'Anime & Pastel', css: 'brightness(112%) saturate(145%) contrast(105%) hue-rotate(12deg)', desc: 'Bright airy sky blues and soft anime color harmony' },
-  { name: 'Golden Sunset Rim Glow', cat: 'Sunset Gold', css: 'sepia(35%) saturate(165%) brightness(105%) contrast(115%)', desc: 'Warm sunset amber light ideal for outdoor portraits' },
-];
+const FILTER_TIER_NAMES = ['I', 'II', 'Soft', 'Deep', 'Pro', 'Studio'];
 
 export const FILTERS_LIST: FilterItem[] = [
   {
@@ -247,18 +307,18 @@ export const FILTERS_LIST: FilterItem[] = [
     thumbnail: FILTER_THUMBS[0],
     description: 'Unfiltered original video & photo colors with zero LUT adjustment.',
   },
-  ...Array.from({ length: 1199 }, (_, idx) => {
+  ...Array.from({ length: 299 }, (_, idx) => {
     const base = RAW_FILTER_DEFINITIONS[idx % RAW_FILTER_DEFINITIONS.length];
-    const cat = FILTER_CATEGORIES[idx % FILTER_CATEGORIES.length];
-    const factor = 0.86 + (idx % 7) * 0.05;
-    const tier = Math.floor(idx / RAW_FILTER_DEFINITIONS.length) + 1;
+    const cycle = Math.floor(idx / RAW_FILTER_DEFINITIONS.length);
+    const factor = 0.88 + (cycle % 6) * 0.05;
+    const tierTag = FILTER_TIER_NAMES[cycle % FILTER_TIER_NAMES.length];
     return {
       id: `flt_${idx + 1}`,
-      name: idx < RAW_FILTER_DEFINITIONS.length ? base.name : `${base.name} LUT v${tier}.${(idx % 9) + 1}`,
-      category: cat,
+      name: cycle === 0 ? base.name : `${base.name} · ${tierTag}`,
+      category: base.cat,
       cssFilter: base.css.replace(/(\d+)%/g, (_, n) => `${Math.round(Number(n) * factor)}%`),
-      thumbnail: FILTER_THUMBS[idx % FILTER_THUMBS.length],
-      description: `${base.desc} · Intensity ${Math.round(factor * 100)}% (${cat})`,
+      thumbnail: FILTER_THUMBS[base.thumbIdx % FILTER_THUMBS.length],
+      description: `${base.desc} · ${Math.round(factor * 100)}% (${base.cat})`,
     };
   }),
 ];
@@ -626,40 +686,91 @@ export const STICKERS_LIST: StickerItem[] = Array.from({ length: 1200 }, (_, i) 
 });
 
 // -------------------------------------------------------------------------
-// 9. COLOR GRADING LUT PRESETS (1,200 Presets for Color Grading Inspector)
+// 9. COLOR GRADING LUT PRESETS (300 Presets Across 9 Core Grading Styles)
 // -------------------------------------------------------------------------
-const COLOR_GRADE_CATEGORIES = [
-  'Hollywood Film',
-  'Warm & Golden',
-  'Cool & Moody',
-  'High Contrast',
-  'Skin & Portrait',
-  'Neon & Cyber',
-  'Vintage Print',
+export const COLOR_GRADE_CATEGORIES = [
+  'Cinematic',
+  'Teal & Orange',
+  'Warm',
+  'Cool',
+  'Vintage',
+  'Contrast',
+  'Fade',
+  'Vivid',
   'Monochrome',
+] as const;
+
+const RAW_COLOR_GRADES: Array<{
+  name: string;
+  cat: (typeof COLOR_GRADE_CATEGORIES)[number];
+  b: number;
+  c: number;
+  s: number;
+  ex: number;
+  w: number;
+  t: number;
+  hi: number;
+  sh: number;
+  v: number;
+  grad: string;
+  desc: string;
+}> = [
+  // Cinematic
+  { name: 'IMAX 70mm Neutral Film', cat: 'Cinematic', b: 0, c: 18, s: 12, ex: 4, w: 6, t: 0, hi: 8, sh: -10, v: 26, grad: 'from-zinc-700 to-amber-500', desc: 'Balanced theater print curve with crisp dynamic range' },
+  { name: 'Tokyo Cyberpunk Magenta', cat: 'Cinematic', b: 4, c: 30, s: 44, ex: 5, w: 0, t: 285, hi: 18, sh: -14, v: 36, grad: 'from-fuchsia-600 to-cyan-400', desc: 'Electric neon saturation & violet-cyan color shift' },
+  { name: 'Epic Drama Rich Shadow', cat: 'Cinematic', b: -4, c: 26, s: 8, ex: 0, w: 8, t: -4, hi: 10, sh: -20, v: 34, grad: 'from-slate-800 to-amber-600', desc: 'Deep sculpted midtones with warm specular highlights' },
+  { name: 'Anamorphic Night Scene', cat: 'Cinematic', b: -6, c: 28, s: 18, ex: -4, w: 0, t: 195, hi: 14, sh: -22, v: 38, grad: 'from-cyan-800 to-indigo-950', desc: 'Sleek cool night shadows with bright neon reflections' },
+
+  // Teal & Orange
+  { name: 'Blockbuster Teal & Orange', cat: 'Teal & Orange', b: 2, c: 22, s: 24, ex: 5, w: 14, t: -12, hi: 10, sh: -15, v: 32, grad: 'from-teal-500 to-orange-500', desc: 'Deep teal shadows balanced with rich golden orange skin tones' },
+  { name: 'Miami Coast Teal Amber', cat: 'Teal & Orange', b: 6, c: 18, s: 30, ex: 6, w: 20, t: -16, hi: 12, sh: -10, v: 22, grad: 'from-cyan-400 to-amber-500', desc: 'Sunlit ocean teal shadows and warm sunset skin punch' },
+  { name: 'Action Stunt Teal Crush', cat: 'Teal & Orange', b: -4, c: 34, s: 28, ex: 2, w: 12, t: -14, hi: 14, sh: -24, v: 42, grad: 'from-teal-700 to-orange-600', desc: 'High-impact thriller shadows with blazing orange highlights' },
+  { name: 'Vlog Clean Teal & Gold', cat: 'Teal & Orange', b: 5, c: 14, s: 18, ex: 5, w: 10, t: -9, hi: 8, sh: 4, v: 16, grad: 'from-emerald-500 to-amber-400', desc: 'Natural flattering vlogger grade with crisp color separation' },
+
+  // Warm
+  { name: 'Golden Sunset Glow', cat: 'Warm', b: 8, c: 14, s: 26, ex: 8, w: 38, t: -6, hi: 14, sh: 6, v: 22, grad: 'from-amber-400 to-rose-500', desc: 'Warm sunset light boost with rich golden saturation' },
+  { name: 'Desert Amber Sun', cat: 'Warm', b: 4, c: 20, s: 22, ex: 6, w: 46, t: -8, hi: 10, sh: -6, v: 28, grad: 'from-orange-500 to-yellow-500', desc: 'Radiant golden warmth ideal for travel & outdoor epics' },
+  { name: 'Silky Portrait Warmth', cat: 'Warm', b: 10, c: 6, s: 12, ex: 8, w: 22, t: -4, hi: 12, sh: 14, v: 15, grad: 'from-rose-300 to-amber-200', desc: 'Lifts facial shadows softly with natural warm highlights' },
+
+  // Cool
+  { name: 'Nordic Ice Slate', cat: 'Cool', b: -6, c: 24, s: -16, ex: -4, w: 0, t: 185, hi: -8, sh: -18, v: 38, grad: 'from-sky-700 to-slate-900', desc: 'Cool desaturated blue shadows ideal for thriller & drama' },
+  { name: 'Moonlight Sapphire', cat: 'Cool', b: -8, c: 28, s: 12, ex: -6, w: 0, t: 205, hi: 8, sh: -24, v: 42, grad: 'from-blue-600 to-slate-950', desc: 'Rich blue nocturnal moonlight look with deep contrast' },
+  { name: 'Crisp Morning Steel', cat: 'Cool', b: 4, c: 16, s: -8, ex: 4, w: 0, t: 170, hi: 6, sh: 4, v: 18, grad: 'from-cyan-500 to-slate-700', desc: 'Clean airy cool tone for modern tech & architectural shots' },
+
+  // Vintage
+  { name: 'Kodak Vintage 1978', cat: 'Vintage', b: 4, c: 10, s: 14, ex: 0, w: 34, t: -8, hi: -6, sh: 10, v: 30, grad: 'from-yellow-600 to-stone-700', desc: 'Retro warm print tint with softened contrast' },
+  { name: 'Super 8 Heritage', cat: 'Vintage', b: 2, c: 12, s: 8, ex: -2, w: 42, t: -5, hi: -10, sh: 12, v: 36, grad: 'from-amber-700 to-stone-800', desc: 'Warm archival home film grade with gentle shadow rolloff' },
+  { name: 'Retro Fade Polaroid', cat: 'Vintage', b: 8, c: -8, s: 6, ex: 6, w: 28, t: -4, hi: -8, sh: 18, v: 20, grad: 'from-amber-300 to-stone-600', desc: 'Creamy lifted shadows with nostalgic vintage tint' },
+
+  // Contrast
+  { name: 'Gotham Dark Contrast', cat: 'Contrast', b: -10, c: 42, s: -12, ex: -6, w: 0, t: 12, hi: -4, sh: -32, v: 52, grad: 'from-zinc-900 to-indigo-900', desc: 'Crushed dark blacks & dramatic edge vignette' },
+  { name: 'Fury Action Hard Punch', cat: 'Contrast', b: -2, c: 46, s: 32, ex: 4, w: 16, t: -6, hi: 16, sh: -28, v: 40, grad: 'from-orange-600 to-zinc-950', desc: 'Extreme punchy highlight & shadow contrast for trailers' },
+  { name: 'Onyx Studio Sharp', cat: 'Contrast', b: -4, c: 36, s: 10, ex: 2, w: 4, t: 0, hi: 12, sh: -26, v: 34, grad: 'from-zinc-700 to-black', desc: 'Clean high-contrast studio separation with pure whites' },
+
+  // Fade
+  { name: 'Soft Matte Dream', cat: 'Fade', b: 10, c: -18, s: -10, ex: 6, w: 10, t: 0, hi: -12, sh: 26, v: 12, grad: 'from-slate-400 to-zinc-600', desc: 'Lifted matte blacks for dreamy indie film flashbacks' },
+  { name: 'Pastel Haze Film', cat: 'Fade', b: 12, c: -14, s: 8, ex: 8, w: 14, t: -6, hi: -8, sh: 24, v: 10, grad: 'from-rose-300 to-sky-300', desc: 'Soft lifted pastel shadow balance for gentle reels' },
+  { name: 'Velvet Evening Fade', cat: 'Fade', b: 6, c: -12, s: -18, ex: 2, w: 18, t: 295, hi: -10, sh: 22, v: 22, grad: 'from-purple-400 to-stone-700', desc: 'Moody muted twilight fade with lifted dark areas' },
+
+  // Vivid
+  { name: 'Commercial Vivid 4K', cat: 'Vivid', b: 6, c: 20, s: 46, ex: 6, w: 8, t: 0, hi: 14, sh: 4, v: 14, grad: 'from-emerald-400 to-cyan-500', desc: 'High-saturation broadcast pop for crisp outdoor footage' },
+  { name: 'Tropical Color Burst', cat: 'Vivid', b: 8, c: 16, s: 52, ex: 8, w: 18, t: -6, hi: 16, sh: 6, v: 12, grad: 'from-yellow-400 to-pink-500', desc: 'Electric summer vibrance across greens, blues & skin tones' },
+  { name: 'HDR Cinema Pop', cat: 'Vivid', b: 2, c: 28, s: 38, ex: 4, w: 6, t: 0, hi: 18, sh: -12, v: 24, grad: 'from-sky-400 to-rose-500', desc: 'Deep contrast with vivid saturated primary colors' },
+
+  // Monochrome
+  { name: 'Silver Noir Monochrome', cat: 'Monochrome', b: -4, c: 44, s: -100, ex: 0, w: 0, t: 0, hi: 15, sh: -24, v: 48, grad: 'from-zinc-200 to-zinc-950', desc: 'Zero saturation true black & white cinema grade' },
+  { name: 'Soft Editorial B&W', cat: 'Monochrome', b: 6, c: 14, s: -100, ex: 4, w: 0, t: 0, hi: 6, sh: 10, v: 18, grad: 'from-zinc-300 to-zinc-700', desc: 'Gentle tonal grayscale print for portraits & documentaries' },
+  { name: 'Archival Sepia Noir', cat: 'Monochrome', b: 0, c: 28, s: -100, ex: 0, w: 28, t: 0, hi: 8, sh: -14, v: 36, grad: 'from-amber-200 to-stone-900', desc: 'Warm antique silver-sepia monochrome grade' },
 ];
 
-const RAW_COLOR_GRADES = [
-  { name: 'Blockbuster Teal & Orange', cat: 'Hollywood Film', b: 2, c: 22, s: 24, ex: 5, w: 12, t: -12, hi: 10, sh: -15, v: 35, grad: 'from-teal-500 to-orange-500', desc: 'Deep teal shadows balanced with rich golden orange skin tones' },
-  { name: 'IMAX 70mm Neutral Film', cat: 'Hollywood Film', b: 0, c: 18, s: 12, ex: 4, w: 6, t: 0, hi: 8, sh: -10, v: 28, grad: 'from-zinc-700 to-amber-500', desc: 'Balanced theater print curve with crisp dynamic range' },
-  { name: 'Golden Sunset Glow', cat: 'Warm & Golden', b: 8, c: 14, s: 28, ex: 10, w: 42, t: -6, hi: 15, sh: 5, v: 25, grad: 'from-amber-400 to-rose-500', desc: 'Warm sunset light boost with rich golden saturation' },
-  { name: 'Nordic Ice Slate', cat: 'Cool & Moody', b: -6, c: 25, s: -18, ex: -5, w: 0, t: 185, hi: -10, sh: -20, v: 45, grad: 'from-sky-700 to-slate-900', desc: 'Cool desaturated blue shadows ideal for thriller & drama' },
-  { name: 'Gotham Dark Contrast', cat: 'High Contrast', b: -12, c: 42, s: -15, ex: -8, w: 0, t: 15, hi: -5, sh: -35, v: 60, grad: 'from-zinc-900 to-indigo-900', desc: 'Crushed dark blacks & dramatic edge vignette' },
-  { name: 'Silky Portrait Glow', cat: 'Skin & Portrait', b: 10, c: 6, s: 10, ex: 8, w: 18, t: -4, hi: 12, sh: 15, v: 18, grad: 'from-rose-300 to-amber-200', desc: 'Lifts facial shadows softly with natural warm highlights' },
-  { name: 'Tokyo Cyberpunk Magenta', cat: 'Neon & Cyber', b: 4, c: 32, s: 48, ex: 5, w: 0, t: 285, hi: 20, sh: -15, v: 40, grad: 'from-fuchsia-600 to-cyan-400', desc: 'Electric neon saturation & violet-cyan color shift' },
-  { name: 'Kodak Vintage 1978', cat: 'Vintage Print', b: 5, c: 10, s: 15, ex: 0, w: 35, t: -8, hi: -5, sh: 10, v: 32, grad: 'from-yellow-600 to-stone-700', desc: 'Retro warm print tint with softened contrast' },
-  { name: 'Silver Noir Monochrome', cat: 'Monochrome', b: -4, c: 45, s: -100, ex: 0, w: 0, t: 0, hi: 15, sh: -25, v: 55, grad: 'from-zinc-200 to-zinc-950', desc: 'Zero saturation true black & white cinema grade' },
-];
-
-export const COLOR_GRADES_LIST: ColorGradePreset[] = Array.from({ length: 1200 }, (_, i) => {
+export const COLOR_GRADES_LIST: ColorGradePreset[] = Array.from({ length: 300 }, (_, i) => {
   const base = RAW_COLOR_GRADES[i % RAW_COLOR_GRADES.length];
-  const cat = COLOR_GRADE_CATEGORIES[i % COLOR_GRADE_CATEGORIES.length];
-  const delta = (i % 7) - 3;
-  const tier = Math.floor(i / RAW_COLOR_GRADES.length) + 1;
+  const cycle = Math.floor(i / RAW_COLOR_GRADES.length);
+  const delta = (cycle % 7) - 3;
   return {
     id: `cg_${i + 1}`,
-    name: tier === 1 ? base.name : `${base.name} Grade #${i + 1}`,
-    category: cat,
+    name: cycle === 0 ? base.name : `${base.name} · v${cycle + 1}`,
+    category: base.cat,
     brightness: Math.max(-60, Math.min(60, base.b + delta * 2)),
     contrast: Math.max(-50, Math.min(80, base.c + delta * 3)),
     saturation: base.s === -100 ? -100 : Math.max(-90, Math.min(90, base.s + delta * 4)),
