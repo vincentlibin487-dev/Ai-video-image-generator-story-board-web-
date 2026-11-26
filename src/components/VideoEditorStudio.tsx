@@ -479,6 +479,12 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
   const trailerCardInputRef = useRef<HTMLInputElement | null>(null);
 
   const mediaCacheRef = useRef<Map<string, HTMLImageElement | HTMLVideoElement>>(new Map());
+  const videoFrameCacheRef = useRef<Map<string, HTMLCanvasElement>>(new Map());
+  const transitionFrozenOutRef = useRef<{ seamKey: string; canvas: HTMLCanvasElement } | null>(null);
+  const lastSeekAtByUrlRef = useRef<Map<string, number>>(new Map());
+  const pendingPlayUrlsRef = useRef<Set<string>>(new Set());
+  const prewarmedSeamKeysRef = useRef<Set<string>>(new Set());
+  const lastSyncedClipIdRef = useRef<string | null>(null);
   const localMediaUrlMapRef = useRef<Map<string, string>>(new Map());
   const bgMusicElRef = useRef<HTMLAudioElement | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
@@ -625,6 +631,29 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
     vid.playsInline = true;
     vid.muted = true;
     vid.addEventListener(
+      'loadeddata',
+      () => {
+        if (vid.videoWidth > 0 && vid.videoHeight > 0) {
+          let cached = videoFrameCacheRef.current.get(url);
+          if (!cached) {
+            cached = document.createElement('canvas');
+            videoFrameCacheRef.current.set(url, cached);
+          }
+          if (cached.width !== vid.videoWidth || cached.height !== vid.videoHeight) {
+            cached.width = vid.videoWidth;
+            cached.height = vid.videoHeight;
+          }
+          const cCtx = cached.getContext('2d');
+          if (cCtx) {
+            try {
+              cCtx.drawImage(vid, 0, 0, cached.width, cached.height);
+            } catch {}
+          }
+        }
+      },
+      { once: true }
+    );
+    vid.addEventListener(
       'loadedmetadata',
       () => {
         if (!isPlayingRef.current && vid.currentTime === 0) {
@@ -737,7 +766,39 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
     }
   };
 
-  // Sync audio mute, transition pre-warm & playback for active/adjacent clip video elements
+  // Safe single-shot seek helper with cooldown & seeking guard (prevents decoder buffer wipes / flicker)
+  const safeSeekVideo = (
+    el: HTMLVideoElement,
+    url: string,
+    targetSec: number,
+    minDriftSec: number,
+    cooldownMs: number
+  ) => {
+    if (el.readyState < 1 || el.seeking) return;
+    const now = performance.now();
+    const lastSeekAt = lastSeekAtByUrlRef.current.get(url) || 0;
+    if (now - lastSeekAt < cooldownMs) return;
+    const safeMax = Number.isFinite(el.duration) && el.duration > 0.05 ? el.duration - 0.02 : targetSec;
+    const clampedTarget = Math.max(0, Math.min(safeMax, targetSec));
+    const drift = Math.abs((el.currentTime || 0) - clampedTarget);
+    if (drift <= minDriftSec) return;
+    lastSeekAtByUrlRef.current.set(url, now);
+    try {
+      el.currentTime = clampedTarget;
+    } catch {}
+  };
+
+  const safePlayVideo = (el: HTMLVideoElement, url: string) => {
+    if (!el.paused || pendingPlayUrlsRef.current.has(url)) return;
+    pendingPlayUrlsRef.current.add(url);
+    el.play()
+      .catch(() => {})
+      .finally(() => {
+        pendingPlayUrlsRef.current.delete(url);
+      });
+  };
+
+  // Sync audio mute, playbackRate, transition pre-warm & native <video> playback cleanly without per-frame re-seeking
   const syncMediaAudioAndSeek = (timeSec: number, forceSeek: boolean) => {
     const isClipAudioDisabled =
       isMuted ||
@@ -749,72 +810,118 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
       setActiveClipIndex(index);
     }
 
+    const clipChanged = (clip?.id || null) !== lastSyncedClipIdRef.current;
+    if (clipChanged) {
+      lastSyncedClipIdRef.current = clip?.id || null;
+    }
+    if (forceSeek) {
+      prewarmedSeamKeysRef.current.clear();
+    }
+
     const seamTrans = getActiveSeamTransitionAtTime(timeSec, timelineClips);
     const nextClip = timelineClips[index + 1] || null;
-    const nearNextSeam = Boolean(nextClip && clipEndSec - timeSec <= 1.0);
+    const nearNextSeam = Boolean(nextClip && clipEndSec - timeSec <= 1.25);
     const activeVideoEl =
-      clip?.type === 'video' && clip.url ? mediaCacheRef.current.get(`video:${clip.url}`) : null;
+      clip?.type === 'video' && clip.url ? getOrLoadSource(clip.url, 'video') : null;
+    const playingNow = isPlayingRef.current && !isScrubbingRef.current;
+
+    if (seamTrans && timeSec < seamTrans.seamSec) {
+      // Snapshot outgoing frame right before crossing the seam so transition never blinks if clip pauses or shares URL
+      const outEl =
+        seamTrans.outClip.type === 'video' && seamTrans.outClip.url
+          ? mediaCacheRef.current.get(`video:${seamTrans.outClip.url}`)
+          : null;
+      if (outEl instanceof HTMLVideoElement && outEl.readyState >= 2 && outEl.videoWidth > 0) {
+        const seamKey = `${seamTrans.outClip.id}->${seamTrans.inClip.id}`;
+        let frozen = transitionFrozenOutRef.current;
+        if (!frozen || frozen.seamKey !== seamKey) {
+          const c = document.createElement('canvas');
+          c.width = outEl.videoWidth;
+          c.height = outEl.videoHeight;
+          frozen = { seamKey, canvas: c };
+          transitionFrozenOutRef.current = frozen;
+        }
+        if (frozen.canvas.width !== outEl.videoWidth || frozen.canvas.height !== outEl.videoHeight) {
+          frozen.canvas.width = outEl.videoWidth;
+          frozen.canvas.height = outEl.videoHeight;
+        }
+        const fCtx = frozen.canvas.getContext('2d');
+        if (fCtx) {
+          try {
+            fCtx.drawImage(outEl, 0, 0, frozen.canvas.width, frozen.canvas.height);
+          } catch {}
+        }
+      }
+    }
+
+    const targetVol = Math.max(0, Math.min(1, volume / 100));
 
     timelineClips.forEach((c) => {
       if (c.type !== 'video' || !c.url) return;
-      const el = mediaCacheRef.current.get(`video:${c.url}`);
+      const el = getOrLoadSource(c.url, 'video');
       if (!(el instanceof HTMLVideoElement)) return;
 
       const isActive = clip?.id === c.id;
-      const isTransitionOut = seamTrans?.outClip.id === c.id;
-      const isTransitionIn = seamTrans?.inClip.id === c.id;
+      const isTransitionIn = seamTrans?.inClip.id === c.id && timeSec < seamTrans.seamSec;
       const isPrewarmNext = nearNextSeam && nextClip?.id === c.id;
 
       if (isActive) {
-        el.muted = isClipAudioDisabled;
-        el.volume = Math.max(0, Math.min(1, volume / 100));
-        el.playbackRate = playbackSpeed;
-        const drift = Math.abs((el.currentTime || 0) - localSec);
-        if ((forceSeek && (!el.seeking || drift > 0.35)) || (!forceSeek && drift > 0.38)) {
-          try {
-            const safeMax = Number.isFinite(el.duration) && el.duration > 0.05 ? el.duration - 0.02 : localSec;
-            el.currentTime = Math.max(0, Math.min(safeMax, localSec));
-          } catch {}
+        if (el.muted !== isClipAudioDisabled) el.muted = isClipAudioDisabled;
+        if (Math.abs(el.volume - targetVol) > 0.01) el.volume = targetVol;
+        if (Math.abs(el.playbackRate - playbackSpeed) > 0.005) el.playbackRate = playbackSpeed;
+
+        if (forceSeek) {
+          // User manually scrubbed/stepped/jumped -> seek once (with tight cooldown)
+          safeSeekVideo(el, c.url, localSec, 0.06, isScrubbingRef.current ? 90 : 120);
+        } else if (clipChanged) {
+          // Entered a new clip on the timeline -> position once cleanly
+          safeSeekVideo(el, c.url, localSec, 0.12, 220);
+        } else if (playingNow) {
+          // During continuous playback: avoid repeated currentTime seeks; only rescue massive >1.25s drift
+          safeSeekVideo(el, c.url, localSec, 1.25, 650);
         }
-        if (isPlayingRef.current && !isScrubbingRef.current && el.paused) {
-          el.play().catch(() => {});
-        } else if ((!isPlayingRef.current || isScrubbingRef.current) && !el.paused) {
+
+        const atClipTailEnded =
+          el.ended &&
+          Number.isFinite(el.duration) &&
+          el.duration > 0.1 &&
+          localSec >= el.duration - 0.1;
+
+        if (playingNow && !atClipTailEnded) {
+          safePlayVideo(el, c.url);
+        } else if (!el.paused) {
           el.pause();
         }
         return;
       }
 
-      // Guard: if another clip (e.g., split segment) shares the same HTMLVideoElement as the active clip, never pause/re-seek it
+      // If another clip (e.g., split segment) shares the same HTMLVideoElement as the active clip, never pause/re-seek it
       if (el === activeVideoEl) return;
 
-      el.muted = true;
-      if (isTransitionOut && seamTrans) {
-        const holdTime = (c.sourceStartSec || 0) + Math.max(0, seamTrans.outDur - 0.05);
-        if (Math.abs((el.currentTime || 0) - holdTime) > 0.25 && !el.seeking) {
-          try {
-            el.currentTime = holdTime;
-          } catch {}
+      if (!el.muted) el.muted = true;
+      if (!el.paused) el.pause();
+
+      // Pre-warm the upcoming clip ONCE before entering it so frame 0 is decoded & ready (no black flash at seam)
+      if (isTransitionIn || isPrewarmNext) {
+        const prewarmKey = `${c.id}:${Math.round((c.sourceStartSec || 0) * 100)}`;
+        if (!prewarmedSeamKeysRef.current.has(prewarmKey)) {
+          prewarmedSeamKeysRef.current.add(prewarmKey);
+          safeSeekVideo(el, c.url, c.sourceStartSec || 0, 0.12, 200);
         }
-        if (!el.paused) el.pause();
-      } else if (isTransitionIn || isPrewarmNext) {
-        const preTime = c.sourceStartSec || 0;
-        if (Math.abs((el.currentTime || 0) - preTime) > 0.25 && !el.seeking) {
-          try {
-            el.currentTime = preTime;
-          } catch {}
-        }
-        if (!el.paused) el.pause();
-      } else if (!el.paused) {
-        el.pause();
       }
     });
 
     // Background Music / Comedy SFX track sync
     if (bgMusicElRef.current) {
       const musicDisabled = isMuted || disabledCategoryIds.includes('music');
-      bgMusicElRef.current.muted = musicDisabled || !hasUserPickedAudio;
-      bgMusicElRef.current.volume = Math.max(0, Math.min(1, (volume / 100) * 0.72));
-      if (isPlayingRef.current && !isScrubbingRef.current && hasUserPickedAudio && !musicDisabled) {
+      const shouldMuteMusic = musicDisabled || !hasUserPickedAudio;
+      const musicVol = Math.max(0, Math.min(1, (volume / 100) * 0.72));
+      if (bgMusicElRef.current.muted !== shouldMuteMusic) bgMusicElRef.current.muted = shouldMuteMusic;
+      if (Math.abs(bgMusicElRef.current.volume - musicVol) > 0.01) bgMusicElRef.current.volume = musicVol;
+      if (Math.abs(bgMusicElRef.current.playbackRate - playbackSpeed) > 0.005) {
+        bgMusicElRef.current.playbackRate = playbackSpeed;
+      }
+      if (playingNow && hasUserPickedAudio && !musicDisabled) {
         if (bgMusicElRef.current.paused) bgMusicElRef.current.play().catch(() => {});
       } else if (!bgMusicElRef.current.paused) {
         bgMusicElRef.current.pause();
@@ -835,7 +942,7 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
     syncMediaAudioAndSeek(clamped, forceVideoSeek);
   };
 
-  // Draw single media clip frame centered inside (w, h)
+  // Draw single media clip frame centered inside (w, h), using last decoded frame fallback if video is seeking/buffering
   const drawSingleClipContent = (
     ctx: CanvasRenderingContext2D,
     w: number,
@@ -843,20 +950,60 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
     clip: TimelineClip,
     tSec: number,
     combinedFilter: string,
-    chromaDisabled: boolean
+    chromaDisabled: boolean,
+    overrideSourceCanvas?: HTMLCanvasElement | null
   ) => {
-    const srcEl = getOrLoadSource(clip.url, clip.type);
-    let sw = 0;
-    let sh = 0;
-    if (srcEl instanceof HTMLVideoElement && srcEl.readyState >= 2) {
-      sw = srcEl.videoWidth;
-      sh = srcEl.videoHeight;
-    } else if (srcEl instanceof HTMLImageElement && srcEl.complete) {
-      sw = srcEl.naturalWidth;
-      sh = srcEl.naturalHeight;
+    let drawSource: CanvasImageSource | null = overrideSourceCanvas || null;
+    let sw = overrideSourceCanvas ? overrideSourceCanvas.width : 0;
+    let sh = overrideSourceCanvas ? overrideSourceCanvas.height : 0;
+
+    if (!drawSource) {
+      const srcEl = getOrLoadSource(clip.url, clip.type);
+      if (srcEl instanceof HTMLVideoElement) {
+        if (srcEl.readyState >= 2 && srcEl.videoWidth > 0 && srcEl.videoHeight > 0) {
+          drawSource = srcEl;
+          sw = srcEl.videoWidth;
+          sh = srcEl.videoHeight;
+
+          // Cache latest crisp video frame so transient readyState drops during seek/seam never blink black
+          let cached = videoFrameCacheRef.current.get(clip.url);
+          if (!cached) {
+            cached = document.createElement('canvas');
+            videoFrameCacheRef.current.set(clip.url, cached);
+          }
+          if (cached.width !== sw || cached.height !== sh) {
+            cached.width = sw;
+            cached.height = sh;
+          }
+          const cCtx = cached.getContext('2d');
+          if (cCtx) {
+            try {
+              cCtx.drawImage(srcEl, 0, 0, sw, sh);
+            } catch {}
+          }
+        } else {
+          const cached = videoFrameCacheRef.current.get(clip.url);
+          if (cached && cached.width > 0 && cached.height > 0) {
+            drawSource = cached;
+            sw = cached.width;
+            sh = cached.height;
+          } else if (clip.thumbnailUrl) {
+            const thumbImg = getOrLoadSource(clip.thumbnailUrl, 'photo');
+            if (thumbImg instanceof HTMLImageElement && thumbImg.complete && thumbImg.naturalWidth > 0) {
+              drawSource = thumbImg;
+              sw = thumbImg.naturalWidth;
+              sh = thumbImg.naturalHeight;
+            }
+          }
+        }
+      } else if (srcEl instanceof HTMLImageElement && srcEl.complete) {
+        drawSource = srcEl;
+        sw = srcEl.naturalWidth;
+        sh = srcEl.naturalHeight;
+      }
     }
 
-    if (!srcEl || sw <= 0 || sh <= 0) return;
+    if (!drawSource || sw <= 0 || sh <= 0) return;
 
     ctx.save();
     const z = activeMotionPreset ? activeMotionPreset.zoomScale : 1;
@@ -869,15 +1016,15 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
         chromaConfig.bgMode === 'custom_media' && chromaConfig.bgMediaUrl
           ? getOrLoadSource(chromaConfig.bgMediaUrl, chromaConfig.bgMediaType || 'photo')
           : null;
-      drawChromaBackground(ctx, w, h, chromaConfig, tSec, customBg, srcEl);
+      drawChromaBackground(ctx, w, h, chromaConfig, tSec, customBg, drawSource);
       ctx.filter = combinedFilter;
-      drawChromaKeyedSource(ctx, srcEl, sw, sh, w, h, chromaConfig);
+      drawChromaKeyedSource(ctx, drawSource, sw, sh, w, h, chromaConfig);
     } else {
       ctx.filter = combinedFilter;
       const fitScale = Math.min(w / sw, h / sh);
       const drawW = sw * fitScale;
       const drawH = sh * fitScale;
-      ctx.drawImage(srcEl, -drawW / 2, -drawH / 2, drawW, drawH);
+      ctx.drawImage(drawSource, -drawW / 2, -drawH / 2, drawW, drawH);
     }
     ctx.restore();
   };
@@ -1034,7 +1181,21 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
         ctxA.clearRect(0, 0, w, h);
         ctxA.fillStyle = '#05070c';
         ctxA.fillRect(0, 0, w, h);
-        drawSingleClipContent(ctxA, w, h, seamTrans.outClip, tSec, combinedFilter, chromaDisabled);
+        const seamKey = `${seamTrans.outClip.id}->${seamTrans.inClip.id}`;
+        const useFrozenOut =
+          tSec >= seamTrans.seamSec &&
+          transitionFrozenOutRef.current?.seamKey === seamKey &&
+          (seamTrans.outClip.url === seamTrans.inClip.url || seamTrans.outClip.type === 'video');
+        drawSingleClipContent(
+          ctxA,
+          w,
+          h,
+          seamTrans.outClip,
+          tSec,
+          combinedFilter,
+          chromaDisabled,
+          useFrozenOut ? transitionFrozenOutRef.current?.canvas : null
+        );
 
         ctxB.clearRect(0, 0, w, h);
         ctxB.fillStyle = '#05070c';
@@ -1173,23 +1334,27 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
 
   // Bridge latest closures into single persistent 60fps RAF loop (zero React effect churn)
   const loopBridgeRef = useRef({
+    timelineClips,
     totalDuration,
     playbackSpeed,
     pxPerSec,
+    getClipAtTime,
     syncMediaAudioAndSeek,
     renderFrameToCanvas,
     updatePlayheadDomInstant,
   });
   loopBridgeRef.current = {
+    timelineClips,
     totalDuration,
     playbackSpeed,
     pxPerSec,
+    getClipAtTime,
     syncMediaAudioAndSeek,
     renderFrameToCanvas,
     updatePlayheadDomInstant,
   };
 
-  // Continuous 60fps requestAnimationFrame loop (mounts once; throttles React time sync to ~10Hz)
+  // Continuous 60fps requestAnimationFrame loop (mounts once; syncs timeline clock cleanly with native <video>)
   useEffect(() => {
     let rafId = 0;
     let lastTs = performance.now();
@@ -1200,7 +1365,36 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
       const bridge = loopBridgeRef.current;
 
       if (isPlayingRef.current && !isScrubbingRef.current && bridge.totalDuration > 0) {
-        let nextTime = currentTimeRef.current + dt * bridge.playbackSpeed;
+        const curSec = currentTimeRef.current;
+        const { clip, clipStartSec, clipEndSec } = bridge.getClipAtTime(curSec, bridge.timelineClips);
+        let nextTime = curSec + dt * bridge.playbackSpeed;
+
+        // Lock timeline playhead cleanly to native <video> clock while active video clip is playing
+        if (clip?.type === 'video' && clip.url) {
+          const el = mediaCacheRef.current.get(`video:${clip.url}`);
+          const lastSeekAt = lastSeekAtByUrlRef.current.get(clip.url) || 0;
+          if (
+            el instanceof HTMLVideoElement &&
+            !el.paused &&
+            !el.ended &&
+            !el.seeking &&
+            el.readyState >= 2 &&
+            now - lastSeekAt > 250
+          ) {
+            const durCap = Number.isFinite(el.duration) && el.duration > 0.1 ? el.duration : Infinity;
+            if (el.currentTime < durCap - 0.05) {
+              const nativeTimelineSec = clipStartSec + Math.max(0, el.currentTime - (clip.sourceStartSec || 0));
+              if (
+                nativeTimelineSec >= curSec - 0.02 &&
+                nativeTimelineSec <= clipEndSec + 0.08 &&
+                nativeTimelineSec - curSec < 0.45
+              ) {
+                nextTime = Math.max(curSec, nativeTimelineSec);
+              }
+            }
+          }
+        }
+
         let finished = false;
         if (nextTime >= bridge.totalDuration) {
           nextTime = 0;
@@ -1245,7 +1439,7 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
     return () => window.cancelAnimationFrame(rafId);
   }, []);
 
-  // Keep DOM playhead, slider & video preview synced whenever timelineClips, totalDuration, or zoom changes while paused
+  // Keep DOM playhead & preview synced when clips/duration change while paused (without re-seeking on zoom)
   useEffect(() => {
     const clamped = Math.max(0, Math.min(totalDuration, currentTimeRef.current));
     if (clamped !== currentTimeRef.current) {
@@ -1254,21 +1448,37 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
     }
     updatePlayheadDomInstant(clamped, totalDuration, pxPerSec);
     if (!isPlayingRef.current && !isScrubbingRef.current && timelineClips.length > 0) {
-      syncMediaAudioAndSeek(clamped, true);
+      syncMediaAudioAndSeek(clamped, false);
     }
-  }, [timelineClips, totalDuration, pxPerSec]);
+  }, [timelineClips, totalDuration]);
+
+  // Keep playhead & ruler geometry synced on zoom change without re-seeking video elements
+  useEffect(() => {
+    updatePlayheadDomInstant(currentTimeRef.current, totalDuration, pxPerSec);
+  }, [pxPerSec, totalDuration]);
+
+  // Apply playbackRate, mute & volume changes immediately without triggering video seeks
+  useEffect(() => {
+    if (timelineClips.length > 0) {
+      syncMediaAudioAndSeek(currentTimeRef.current, false);
+    }
+  }, [playbackSpeed, volume, isMuted, disabledCategoryIds]);
 
   const handleTogglePlayPause = () => {
     if (timelineClips.length === 0) return;
     const nextPlaying = !isPlayingRef.current;
-    if (nextPlaying && totalDuration > 0 && currentTimeRef.current >= totalDuration - 0.02) {
+    let startAt = currentTimeRef.current;
+    let shouldSeekStart = false;
+    if (nextPlaying && totalDuration > 0 && startAt >= totalDuration - 0.05) {
+      startAt = 0;
       currentTimeRef.current = 0;
       setCurrentTimeSec(0);
       updatePlayheadDomInstant(0, totalDuration, pxPerSec);
+      shouldSeekStart = true;
     }
     isPlayingRef.current = nextPlaying;
     setIsPlaying(nextPlaying);
-    syncMediaAudioAndSeek(currentTimeRef.current, false);
+    syncMediaAudioAndSeek(startAt, shouldSeekStart);
   };
 
   // Upload multiple local device files (Video / Photo) with exact metadata duration extraction
@@ -1497,7 +1707,7 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
     setTimelineClips(next);
     setActiveClipIndex(targetIdx + 1);
     setIsTimelineSelectionActive(true);
-    syncMediaAudioAndSeek(currentTimeSec, true);
+    syncMediaAudioAndSeek(splitTime, false);
   };
 
   const handleDeleteSelectedClip = () => {
