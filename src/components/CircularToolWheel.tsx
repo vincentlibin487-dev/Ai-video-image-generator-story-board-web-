@@ -513,7 +513,9 @@ export const CircularToolWheel: React.FC<CircularToolWheelProps> = React.memo(({
                       : 'bg-[#1a202a]/90 hover:bg-[#232b38] border border-white/10 text-zinc-200 hover:text-white'
                   }`}
                   title={
-                    isMutedOrOff
+                    cat.id === 'video'
+                      ? 'Open Gallery & Add Media to Timeline'
+                      : isMutedOrOff
                       ? `${cat.label} (Muted / Off — Tap to open)`
                       : isSelected && isToolDrawerOpen
                       ? `${cat.label} (Open — Tap again to close)`

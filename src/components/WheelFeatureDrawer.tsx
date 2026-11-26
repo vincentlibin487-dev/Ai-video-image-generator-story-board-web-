@@ -14,6 +14,22 @@ import {
 } from 'lucide-react';
 import type { WheelCategoryItem } from './CircularToolWheel';
 import {
+  LiveDrawerPreviewMonitor,
+  MotionPresetThumb,
+  AudioArtworkThumb,
+  TransitionVisualThumb,
+  EffectVisualThumb,
+  VfxVisualThumb,
+  TitleVisualThumb,
+  DialogueVisualThumb,
+  CardVisualThumb,
+  ChromaVisualThumb,
+  SplitVisualThumb,
+  StickerVisualThumb,
+  TemplateVisualThumb,
+  getColorGradeCssFilter,
+} from './PresetVisualPreview';
+import {
   FILTERS_LIST,
   FILTER_CATEGORIES,
   SFX_FOLEY_LIST,
@@ -159,12 +175,24 @@ export interface WheelFeatureDrawerProps {
 
   // Transitions, Effects, Templates
   selectedTransitionId: string | null;
+  activeTransitionObj: TransitionItem | null;
   onSelectTransition: (tr: TransitionItem | null) => void;
   activeEffect: EffectItem | null;
   onSelectEffect: (fx: EffectItem | null) => void;
   activeTemplateId: string | null;
+  activeTemplateObj: TemplateItem | null;
   onApplyTemplate: (tmpl: TemplateItem) => void;
   onApplyTrailerPack: (packId: string) => void;
+
+  // Live Preview Stage Context
+  primaryClipThumbUrl?: string;
+  secondaryClipThumbUrl?: string;
+  activeColorGradeObj: ColorGradePreset | null;
+  activeMotionPresetObj: MediaMotionPreset | null;
+  activeDialogueObj: { speaker: string; text: string } | null;
+  activeCardPresetObj: TrailerCardPresetItem | null;
+  activeVfxObj: CinemaVfxItem | null;
+  activeStickerObj: StickerItem | null;
 }
 
 const PAGE_SIZE = 60;
@@ -466,6 +494,36 @@ export const WheelFeatureDrawer: React.FC<WheelFeatureDrawerProps> = React.memo(
         </div>
       )}
 
+      {/* LIVE ANIMATED SELECTION & TRANSITION PREVIEW MONITOR */}
+      <LiveDrawerPreviewMonitor
+        category={category}
+        isMutedOrOff={isMutedOrOff}
+        primaryClipThumbUrl={props.primaryClipThumbUrl}
+        secondaryClipThumbUrl={props.secondaryClipThumbUrl}
+        activeFilter={props.activeFilter}
+        activeColorGrade={props.activeColorGradeObj}
+        activeTransition={props.activeTransitionObj}
+        activeEffect={props.activeEffect}
+        activeTitle={{
+          title: props.movieTitle,
+          subtitle: props.subtitle,
+          show: props.showTitleOverlay,
+        }}
+        activeAudio={props.activeAudio}
+        previewingAudioId={props.previewingAudioId}
+        activeMotionPreset={props.activeMotionPresetObj}
+        activeDialogue={props.activeDialogueObj}
+        activeCardPreset={props.activeCardPresetObj}
+        activeChromaEnabled={props.chromaConfig.enabled}
+        activeChromaBgMode={props.chromaConfig.bgMode}
+        activeSplitEnabled={props.splitScreenConfig.enabled}
+        activeSplitLayout={props.splitScreenConfig.layout}
+        activeSplitRatio={props.splitScreenConfig.splitRatio}
+        activeVfx={props.activeVfxObj}
+        activeSticker={props.activeStickerObj}
+        activeTemplate={props.activeTemplateObj}
+      />
+
       {/* TWO-COLUMN BODY: Left Category Tabs + Right Search & Paginated Items */}
       <div className="flex-1 min-h-0 flex overflow-hidden">
         <div className="w-[88px] sm:w-[100px] shrink-0 border-r border-zinc-800/80 bg-[#0d1118] overflow-y-auto p-1 space-y-1">
@@ -531,17 +589,14 @@ export const WheelFeatureDrawer: React.FC<WheelFeatureDrawerProps> = React.memo(
                         className="rounded-lg overflow-hidden border border-zinc-800 hover:border-teal-400 bg-[#121822] text-left cursor-pointer"
                       >
                         <div className="aspect-video bg-black relative">
-                          {m.thumbnailUrl || m.type === 'photo' ? (
-                            <img
-                              src={m.thumbnailUrl || m.url}
-                              alt={m.title}
-                              className="w-full h-full object-cover"
-                            />
-                          ) : (
-                            <div className="w-full h-full flex items-center justify-center text-zinc-600">
-                              <Film className="w-4 h-4" />
-                            </div>
-                          )}
+                          <img
+                            src={
+                              m.thumbnailUrl ||
+                              (m.type === 'photo' ? m.url : FILTERS_LIST[0].thumbnail)
+                            }
+                            alt={m.title}
+                            className="w-full h-full object-cover"
+                          />
                           <span className="absolute bottom-1 right-1 px-1 rounded bg-black/80 text-[8px] font-mono text-zinc-200 tabular-nums">
                             {m.duration}
                           </span>
@@ -568,7 +623,7 @@ export const WheelFeatureDrawer: React.FC<WheelFeatureDrawerProps> = React.memo(
                     >
                       Reset Motion & Speed (1.0x)
                     </button>
-                    <div className="space-y-1">
+                    <div className="grid grid-cols-2 gap-1.5">
                       {filteredMediaMotions.slice(0, renderLimit).map((mm) => {
                         const active = props.activeMotionPresetId === mm.id;
                         return (
@@ -576,15 +631,19 @@ export const WheelFeatureDrawer: React.FC<WheelFeatureDrawerProps> = React.memo(
                             key={mm.id}
                             type="button"
                             onClick={() => props.onApplyMediaMotionPreset(mm)}
-                            className={`w-full p-1.5 rounded-lg border text-left cursor-pointer ${
+                            className={`p-1.5 rounded-lg border text-left cursor-pointer ${
                               active
                                 ? 'border-teal-400 bg-teal-950/30 text-white'
                                 : 'border-zinc-800 bg-[#121721] text-zinc-200 hover:border-zinc-600'
                             }`}
                           >
-                            <div className="text-[10px] font-semibold truncate">{mm.name}</div>
-                            <div className="text-[8.5px] text-zinc-400 truncate">
-                              {mm.category} · {mm.speed}x · {Math.round(mm.zoomScale * 100)}%
+                            <MotionPresetThumb
+                              preset={mm}
+                              thumbUrl={props.primaryClipThumbUrl || FILTERS_LIST[0].thumbnail}
+                            />
+                            <div className="text-[9px] font-semibold truncate">{mm.name}</div>
+                            <div className="text-[7.5px] text-zinc-400 truncate">
+                              {mm.category}
                             </div>
                           </button>
                         );
@@ -623,7 +682,7 @@ export const WheelFeatureDrawer: React.FC<WheelFeatureDrawerProps> = React.memo(
                       >
                         <div className="h-11 w-full bg-black relative overflow-hidden">
                           <img
-                            src={f.thumbnail}
+                            src={props.primaryClipThumbUrl || f.thumbnail}
                             alt={f.name}
                             style={{ filter: f.cssFilter }}
                             className="w-full h-full object-cover"
@@ -664,15 +723,30 @@ export const WheelFeatureDrawer: React.FC<WheelFeatureDrawerProps> = React.memo(
                         key={cg.id}
                         type="button"
                         onClick={() => props.onSelectColorGrade(active ? null : cg)}
-                        className={`rounded-lg p-1.5 border text-left cursor-pointer ${
+                        className={`rounded-lg overflow-hidden border text-left cursor-pointer ${
                           active
-                            ? 'border-amber-400 bg-[#231d12]'
+                            ? 'border-amber-400 ring-1 ring-amber-400/50 bg-[#231d12]'
                             : 'border-zinc-800 bg-[#121721] hover:border-zinc-600'
                         }`}
                       >
-                        <div className={`h-6 rounded mb-1 bg-gradient-to-r ${cg.swatchGradient}`} />
-                        <div className="text-[9px] font-semibold text-zinc-100 truncate">{cg.name}</div>
-                        <div className="text-[8px] text-zinc-500 truncate">{cg.category}</div>
+                        <div className="h-10 w-full bg-black relative overflow-hidden">
+                          <img
+                            src={props.primaryClipThumbUrl || FILTERS_LIST[0].thumbnail}
+                            alt={cg.name}
+                            style={{ filter: getColorGradeCssFilter(cg) }}
+                            className="w-full h-full object-cover"
+                          />
+                          {active && (
+                            <span className="absolute top-1 right-1 w-4 h-4 rounded-full bg-amber-400 text-black flex items-center justify-center">
+                              <Check className="w-2.5 h-2.5" />
+                            </span>
+                          )}
+                        </div>
+                        <div className={`h-1 w-full bg-gradient-to-r ${cg.swatchGradient}`} />
+                        <div className="p-1">
+                          <div className="text-[9px] font-semibold text-zinc-100 truncate">{cg.name}</div>
+                          <div className="text-[8px] text-zinc-500 truncate">{cg.category}</div>
+                        </div>
                       </button>
                     );
                   })}
@@ -711,6 +785,7 @@ export const WheelFeatureDrawer: React.FC<WheelFeatureDrawerProps> = React.memo(
                           active ? 'border-emerald-400 bg-emerald-950/30' : 'border-zinc-800 bg-[#121721]'
                         }`}
                       >
+                        <AudioArtworkThumb audio={a} isMusic={category.id === 'music'} playing={playing} />
                         <button
                           type="button"
                           onClick={() => props.onSelectAudio(a)}
@@ -785,7 +860,7 @@ export const WheelFeatureDrawer: React.FC<WheelFeatureDrawerProps> = React.memo(
                     </button>
                   </div>
                 ) : (
-                  <div className="space-y-1">
+                  <div className="space-y-1.5">
                     {filteredDialogues.slice(0, renderLimit).map((dl) => {
                       const active = props.activeDialoguePresetId === dl.id && !isMutedOrOff;
                       return (
@@ -799,6 +874,7 @@ export const WheelFeatureDrawer: React.FC<WheelFeatureDrawerProps> = React.memo(
                               : 'border-zinc-800 bg-[#121721] text-zinc-200 hover:border-amber-400/60'
                           }`}
                         >
+                          <DialogueVisualThumb preset={dl} />
                           <div className="text-[10px] font-bold truncate">{dl.name}</div>
                           <div className="text-[8.5px] text-zinc-300 truncate">{dl.line}</div>
                           <div className="text-[8px] text-zinc-500 truncate">
@@ -876,20 +952,21 @@ export const WheelFeatureDrawer: React.FC<WheelFeatureDrawerProps> = React.memo(
                     </div>
                   </div>
                 ) : (
-                  <div className="space-y-1">
-                    {filteredTitles.slice(0, renderLimit).map((t) => (
-                      <button
-                        key={t.id}
-                        type="button"
-                        onClick={() => props.onApplyTitlePreset(t)}
-                        className="w-full p-1.5 rounded-lg border border-zinc-800 hover:border-amber-400 bg-[#121721] text-left cursor-pointer"
-                      >
-                        <div className="text-[10px] font-bold text-zinc-100 truncate">{t.name}</div>
-                        <div className="text-[8.5px] text-zinc-400 truncate">
-                          {t.category} · {t.subtitleText}
-                        </div>
-                      </button>
-                    ))}
+                  <div className="space-y-1.5">
+                    <div className="grid grid-cols-2 gap-1.5">
+                      {filteredTitles.slice(0, renderLimit).map((t) => (
+                        <button
+                          key={t.id}
+                          type="button"
+                          onClick={() => props.onApplyTitlePreset(t)}
+                          className="p-1.5 rounded-lg border border-zinc-800 hover:border-amber-400 bg-[#121721] text-left cursor-pointer"
+                        >
+                          <TitleVisualThumb title={t} />
+                          <div className="text-[9px] font-bold text-zinc-100 truncate">{t.name}</div>
+                          <div className="text-[7.5px] text-zinc-400 truncate">{t.category}</div>
+                        </button>
+                      ))}
+                    </div>
                     {filteredTitles.length > renderLimit && (
                       <button
                         type="button"
@@ -913,9 +990,9 @@ export const WheelFeatureDrawer: React.FC<WheelFeatureDrawerProps> = React.memo(
                       key={s.id}
                       type="button"
                       onClick={() => props.onAddSticker(s)}
-                      className="p-1.5 rounded-lg border border-zinc-800 hover:border-sky-400 bg-[#121721] flex flex-col items-center gap-0.5 cursor-pointer"
+                      className="p-1 rounded-lg border border-zinc-800 hover:border-sky-400 bg-[#121721] flex flex-col items-center cursor-pointer"
                     >
-                      <span className="text-lg leading-none">{s.emoji}</span>
+                      <StickerVisualThumb sticker={s} />
                       <span className="text-[8px] text-zinc-300 truncate w-full text-center">
                         {s.name}
                       </span>
@@ -944,10 +1021,12 @@ export const WheelFeatureDrawer: React.FC<WheelFeatureDrawerProps> = React.memo(
                     onClick={() => props.onAddVfx(v)}
                     className="w-full p-1.5 rounded-lg border border-zinc-800 hover:border-rose-400 bg-[#121721] flex items-center gap-2 text-left cursor-pointer"
                   >
-                    <span className="text-base shrink-0">{v.emoji}</span>
+                    <VfxVisualThumb vfx={v} />
                     <div className="min-w-0 flex-1">
                       <div className="text-[10px] font-semibold text-zinc-100 truncate">{v.name}</div>
-                      <div className="text-[8.5px] text-zinc-400 truncate">{v.category}</div>
+                      <div className="text-[8.5px] text-zinc-400 truncate">
+                        {v.category} · {v.defaultDurationSec}s
+                      </div>
                     </div>
                   </button>
                 ))}
@@ -1032,27 +1111,30 @@ export const WheelFeatureDrawer: React.FC<WheelFeatureDrawerProps> = React.memo(
                     </div>
                   </div>
                 ) : (
-                  <div className="space-y-1">
-                    {filteredCards.slice(0, renderLimit).map((card) => {
-                      const active = props.activeCardPresetId === card.id && !isMutedOrOff;
-                      return (
-                        <button
-                          key={card.id}
-                          type="button"
-                          onClick={() => props.onApplyTrailerCardPreset(card)}
-                          className={`w-full p-1.5 rounded-lg border text-left cursor-pointer ${
-                            active
-                              ? 'border-amber-400 bg-amber-950/30 text-white'
-                              : 'border-zinc-800 bg-[#121721] text-zinc-200 hover:border-amber-400/60'
-                          }`}
-                        >
-                          <div className="text-[10px] font-bold truncate">{card.name}</div>
-                          <div className="text-[8.5px] text-zinc-400 truncate">
-                            {card.category} · {card.durationSec}s
-                          </div>
-                        </button>
-                      );
-                    })}
+                  <div className="space-y-1.5">
+                    <div className="grid grid-cols-2 gap-1.5">
+                      {filteredCards.slice(0, renderLimit).map((card) => {
+                        const active = props.activeCardPresetId === card.id && !isMutedOrOff;
+                        return (
+                          <button
+                            key={card.id}
+                            type="button"
+                            onClick={() => props.onApplyTrailerCardPreset(card)}
+                            className={`p-1.5 rounded-lg border text-left cursor-pointer ${
+                              active
+                                ? 'border-amber-400 bg-amber-950/30 text-white'
+                                : 'border-zinc-800 bg-[#121721] text-zinc-200 hover:border-amber-400/60'
+                            }`}
+                          >
+                            <CardVisualThumb card={card} />
+                            <div className="text-[9px] font-bold truncate">{card.name}</div>
+                            <div className="text-[7.5px] text-zinc-400 truncate">
+                              {card.category} · {card.durationSec}s
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
                     {filteredCards.length > renderLimit && (
                       <button
                         type="button"
@@ -1168,7 +1250,7 @@ export const WheelFeatureDrawer: React.FC<WheelFeatureDrawerProps> = React.memo(
                                 : 'border-zinc-800 bg-[#121721] hover:border-zinc-600'
                             }`}
                           >
-                            <div className={`h-6 rounded mb-1 bg-gradient-to-r ${ch.swatchClass}`} />
+                            <ChromaVisualThumb chroma={ch} />
                             <div className="text-[9px] font-semibold text-zinc-100 truncate">{ch.name}</div>
                             <div className="text-[8px] text-zinc-500 truncate">{ch.category}</div>
                           </button>
@@ -1315,15 +1397,18 @@ export const WheelFeatureDrawer: React.FC<WheelFeatureDrawerProps> = React.memo(
                             key={sp.id}
                             type="button"
                             onClick={() => props.onApplySplitPreset(sp)}
-                            className={`w-full p-1.5 rounded-lg border text-left cursor-pointer ${
+                            className={`w-full p-1.5 rounded-lg border flex items-center gap-2 text-left cursor-pointer ${
                               active
                                 ? 'border-cyan-400 bg-cyan-950/30 text-white'
                                 : 'border-zinc-800 bg-[#121721] text-zinc-200'
                             }`}
                           >
-                            <div className="text-[10px] font-semibold truncate">{sp.name}</div>
-                            <div className="text-[8.5px] text-zinc-400 truncate">
-                              {sp.category} · {sp.splitRatio}% / {sp.gapPx}px
+                            <SplitVisualThumb preset={sp} />
+                            <div className="min-w-0 flex-1">
+                              <div className="text-[10px] font-semibold truncate">{sp.name}</div>
+                              <div className="text-[8.5px] text-zinc-400 truncate">
+                                {sp.category} · {sp.splitRatio}% / {sp.gapPx}px
+                              </div>
                             </div>
                           </button>
                         );
@@ -1360,13 +1445,14 @@ export const WheelFeatureDrawer: React.FC<WheelFeatureDrawerProps> = React.memo(
                       key={tr.id}
                       type="button"
                       onClick={() => props.onSelectTransition(active ? null : tr)}
-                      className={`w-full p-1.5 rounded-lg border flex items-center justify-between text-left cursor-pointer ${
+                      className={`w-full p-1.5 rounded-lg border flex items-center gap-2 text-left cursor-pointer ${
                         active ? 'border-amber-400 bg-amber-950/30 text-white' : 'border-zinc-800 bg-[#121721] text-zinc-200'
                       }`}
                     >
-                      <div className="min-w-0">
+                      <TransitionVisualThumb transition={tr} />
+                      <div className="min-w-0 flex-1">
                         <div className="text-[10px] font-semibold truncate">{tr.name}</div>
-                        <div className="text-[8px] text-zinc-400">
+                        <div className="text-[8px] text-zinc-400 truncate">
                           {tr.category} · {tr.durationSec}s
                         </div>
                       </div>
@@ -1388,7 +1474,7 @@ export const WheelFeatureDrawer: React.FC<WheelFeatureDrawerProps> = React.memo(
 
             {/* 13. VISUAL EFFECTS (1,280) */}
             {category.id === 'effects' && (
-              <div className="space-y-1">
+              <div className="space-y-1.5">
                 <button
                   type="button"
                   onClick={() => props.onSelectEffect(null)}
@@ -1396,22 +1482,28 @@ export const WheelFeatureDrawer: React.FC<WheelFeatureDrawerProps> = React.memo(
                 >
                   Clear Visual Effect
                 </button>
-                {filteredEffects.slice(0, renderLimit).map((fx) => {
-                  const active = props.activeEffect?.id === fx.id && !isMutedOrOff;
-                  return (
-                    <button
-                      key={fx.id}
-                      type="button"
-                      onClick={() => props.onSelectEffect(active ? null : fx)}
-                      className={`w-full p-1.5 rounded-lg border text-left cursor-pointer ${
-                        active ? 'border-purple-400 bg-purple-950/30 text-white' : 'border-zinc-800 bg-[#121721] text-zinc-200'
-                      }`}
-                    >
-                      <div className="text-[10px] font-semibold truncate">{fx.name}</div>
-                      <div className="text-[8px] text-zinc-400 truncate">{fx.category}</div>
-                    </button>
-                  );
-                })}
+                <div className="grid grid-cols-2 gap-1.5">
+                  {filteredEffects.slice(0, renderLimit).map((fx) => {
+                    const active = props.activeEffect?.id === fx.id && !isMutedOrOff;
+                    return (
+                      <button
+                        key={fx.id}
+                        type="button"
+                        onClick={() => props.onSelectEffect(active ? null : fx)}
+                        className={`p-1.5 rounded-lg border text-left cursor-pointer ${
+                          active ? 'border-purple-400 bg-purple-950/30 text-white' : 'border-zinc-800 bg-[#121721] text-zinc-200'
+                        }`}
+                      >
+                        <EffectVisualThumb
+                          effect={fx}
+                          baseThumb={props.primaryClipThumbUrl || FILTERS_LIST[0].thumbnail}
+                        />
+                        <div className="text-[9px] font-semibold truncate">{fx.name}</div>
+                        <div className="text-[7.5px] text-zinc-400 truncate">{fx.category}</div>
+                      </button>
+                    );
+                  })}
+                </div>
                 {filteredEffects.length > renderLimit && (
                   <button
                     type="button"
@@ -1433,31 +1525,39 @@ export const WheelFeatureDrawer: React.FC<WheelFeatureDrawerProps> = React.memo(
                       key={pk.id}
                       type="button"
                       onClick={() => props.onApplyTrailerPack(pk.id)}
-                      className="w-full p-2 rounded-lg border border-zinc-800 hover:border-teal-400 bg-[#121721] text-left cursor-pointer"
+                      className="w-full p-1.5 rounded-lg border border-zinc-800 hover:border-teal-400 bg-[#121721] text-left cursor-pointer"
                     >
+                      <div className="h-8 w-full rounded bg-gradient-to-r from-[#0f172a] via-[#134e4a] to-[#9a3412] border border-zinc-800 flex items-center justify-center mb-1 px-1">
+                        <span className="text-[8.5px] font-black tracking-wider text-amber-200 truncate">
+                          {pk.title}
+                        </span>
+                      </div>
                       <div className="text-[10px] font-bold text-white truncate">{pk.name}</div>
                       <div className="text-[8.5px] text-zinc-400 truncate">{pk.description}</div>
                     </button>
                   ))
                 ) : (
                   <>
-                    {filteredTemplates.slice(0, renderLimit).map((tm) => (
-                      <button
-                        key={tm.id}
-                        type="button"
-                        onClick={() => props.onApplyTemplate(tm)}
-                        className={`w-full p-1.5 rounded-lg border text-left cursor-pointer ${
-                          props.activeTemplateId === tm.id
-                            ? 'border-teal-400 bg-teal-950/30'
-                            : 'border-zinc-800 bg-[#121721]'
-                        }`}
-                      >
-                        <div className="text-[10px] font-semibold text-white truncate">{tm.title}</div>
-                        <div className="text-[8.5px] text-zinc-400 truncate">
-                          {tm.category} · {tm.duration}
-                        </div>
-                      </button>
-                    ))}
+                    <div className="grid grid-cols-2 gap-1.5">
+                      {filteredTemplates.slice(0, renderLimit).map((tm) => (
+                        <button
+                          key={tm.id}
+                          type="button"
+                          onClick={() => props.onApplyTemplate(tm)}
+                          className={`p-1.5 rounded-lg border text-left cursor-pointer ${
+                            props.activeTemplateId === tm.id
+                              ? 'border-teal-400 bg-teal-950/30'
+                              : 'border-zinc-800 bg-[#121721]'
+                          }`}
+                        >
+                          <TemplateVisualThumb template={tm} />
+                          <div className="text-[9px] font-semibold text-white truncate">{tm.title}</div>
+                          <div className="text-[7.5px] text-zinc-400 truncate">
+                            {tm.category} · {tm.duration}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
                     {filteredTemplates.length > renderLimit && (
                       <button
                         type="button"

@@ -20,7 +20,7 @@ import {
   Scissors,
 } from 'lucide-react';
 import type { WheelCategoryItem } from './CircularToolWheel';
-import type { TransitionItem } from './videoStudioLibrary';
+import { FILTERS_LIST, type TransitionItem } from './videoStudioLibrary';
 
 export interface TimelineClipItem {
   id: string;
@@ -390,21 +390,15 @@ export const TimelinePanel: React.FC<TimelinePanelProps> = React.memo(({
                     title={`${clip.title} (${durationSec.toFixed(1)}s)`}
                   >
                     {/* Filmstrip thumbnail background */}
-                    {clip.thumbnailUrl ? (
-                      <img
-                        src={clip.thumbnailUrl}
-                        alt={clip.title}
-                        draggable={false}
-                        className="absolute inset-0 w-full h-full object-cover opacity-55 pointer-events-none"
-                      />
-                    ) : clip.type === 'photo' && clip.url ? (
-                      <img
-                        src={clip.url}
-                        alt={clip.title}
-                        draggable={false}
-                        className="absolute inset-0 w-full h-full object-cover opacity-55 pointer-events-none"
-                      />
-                    ) : null}
+                    <img
+                      src={
+                        clip.thumbnailUrl ||
+                        (clip.type === 'photo' && clip.url ? clip.url : FILTERS_LIST[0].thumbnail)
+                      }
+                      alt={clip.title}
+                      draggable={false}
+                      className="absolute inset-0 w-full h-full object-cover opacity-55 pointer-events-none"
+                    />
 
                     <div className="relative h-full w-full px-1.5 py-0.5 flex flex-col justify-between bg-gradient-to-r from-black/75 via-black/35 to-black/75 pointer-events-none">
                       <div className="flex items-center justify-between gap-1 min-w-0">

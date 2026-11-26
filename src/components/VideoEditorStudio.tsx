@@ -54,6 +54,7 @@ import {
   SFX_FOLEY_LIST,
   MUSIC_BGM_LIST,
   TEMPLATES_LIST,
+  TRAILER_CARDS_LIST,
   type FilterItem,
   type AudioItem,
   type TransitionItem,
@@ -200,25 +201,7 @@ async function extractVideoMetadataAndThumb(
       resolve({ durationSec: dur, thumbnailUrl: thumb });
     };
 
-    const timer = window.setTimeout(() => {
-      const fallbackDur = Number.isFinite(vid.duration) && vid.duration > 0.2 ? vid.duration : 5;
-      finish(Number(fallbackDur.toFixed(2)));
-    }, 3500);
-
-    vid.onloadedmetadata = () => {
-      const exactDur =
-        Number.isFinite(vid.duration) && vid.duration > 0.15 ? Number(vid.duration.toFixed(2)) : 5;
-      try {
-        vid.currentTime = Math.min(0.4, Math.max(0.05, exactDur * 0.15));
-      } catch {
-        finish(exactDur);
-      }
-    };
-
-    vid.onseeked = () => {
-      const exactDur =
-        Number.isFinite(vid.duration) && vid.duration > 0.15 ? Number(vid.duration.toFixed(2)) : 5;
-      let thumb: string | undefined;
+    const captureFrameThumb = (): string | undefined => {
       try {
         if (vid.videoWidth > 0 && vid.videoHeight > 0) {
           const c = document.createElement('canvas');
@@ -227,11 +210,32 @@ async function extractVideoMetadataAndThumb(
           const cCtx = c.getContext('2d');
           if (cCtx) {
             cCtx.drawImage(vid, 0, 0, c.width, c.height);
-            thumb = c.toDataURL('image/jpeg', 0.72);
+            return c.toDataURL('image/jpeg', 0.72);
           }
         }
       } catch {}
-      finish(exactDur, thumb);
+      return undefined;
+    };
+
+    const timer = window.setTimeout(() => {
+      const fallbackDur = Number.isFinite(vid.duration) && vid.duration > 0.2 ? vid.duration : 5;
+      finish(Number(fallbackDur.toFixed(2)), captureFrameThumb());
+    }, 3500);
+
+    vid.onloadedmetadata = () => {
+      const exactDur =
+        Number.isFinite(vid.duration) && vid.duration > 0.15 ? Number(vid.duration.toFixed(2)) : 5;
+      try {
+        vid.currentTime = Math.min(0.4, Math.max(0.05, exactDur * 0.15));
+      } catch {
+        finish(exactDur, captureFrameThumb());
+      }
+    };
+
+    vid.onseeked = () => {
+      const exactDur =
+        Number.isFinite(vid.duration) && vid.duration > 0.15 ? Number(vid.duration.toFixed(2)) : 5;
+      finish(exactDur, captureFrameThumb());
     };
 
     vid.onerror = () => finish(5);
@@ -399,7 +403,9 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
   const [titleThemeType, setTitleThemeType] = useState<TitleThemeType>('blockbuster_gold');
 
   const [activeStickers, setActiveStickers] = useState<TimelineStickerLayer[]>([]);
+  const [lastAddedSticker, setLastAddedSticker] = useState<StickerItem | null>(null);
   const [vfxLayers, setVfxLayers] = useState<TimelineVfxLayer[]>([]);
+  const [lastAddedVfx, setLastAddedVfx] = useState<CinemaVfxItem | null>(null);
   const [activeEffect, setActiveEffect] = useState<EffectItem | null>(null);
   const [selectedTransitionId, setSelectedTransitionId] = useState<string | null>(null);
   const [selectedTransitionObj, setSelectedTransitionObj] = useState<TransitionItem | null>(null);
@@ -618,6 +624,17 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
     vid.preload = 'auto';
     vid.playsInline = true;
     vid.muted = true;
+    vid.addEventListener(
+      'loadedmetadata',
+      () => {
+        if (!isPlayingRef.current && vid.currentTime === 0) {
+          try {
+            vid.currentTime = 0.01;
+          } catch {}
+        }
+      },
+      { once: true }
+    );
     vid.src = url;
     mediaCacheRef.current.set(key, vid);
     return vid;
@@ -1045,10 +1062,36 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
     // Active Visual Effect Overlay
     if (activeEffect && !effectsDisabled) {
       ctx.save();
-      ctx.globalCompositeOperation = 'screen';
-      ctx.fillStyle = activeEffect.accentColor || 'rgba(56,189,248,0.18)';
-      ctx.globalAlpha = 0.16;
-      ctx.fillRect(-w / 2, -h / 2, w, h);
+      if (activeEffect.effectType === 'neon') {
+        ctx.strokeStyle = activeEffect.accentColor || '#22d3ee';
+        ctx.lineWidth = Math.max(4, Math.round(Math.min(w, h) * 0.012));
+        ctx.globalAlpha = 0.72 + 0.25 * Math.sin(tSec * 4);
+        ctx.strokeRect(-w / 2 + 12, -h / 2 + 12, w - 24, h - 24);
+      } else if (activeEffect.effectType === 'particles') {
+        ctx.globalCompositeOperation = 'screen';
+        ctx.fillStyle = activeEffect.accentColor || '#fde68a';
+        for (let i = 0; i < 24; i += 1) {
+          const px = (((i * 97 + tSec * 70) % w) - w / 2);
+          const py = (((i * 61 + tSec * 45) % h) - h / 2);
+          ctx.globalAlpha = 0.45 + 0.35 * Math.sin(tSec * 3 + i);
+          ctx.beginPath();
+          ctx.arc(px, py, 2 + (i % 3) * 1.4, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      } else if (activeEffect.effectType === 'halftone' || activeEffect.effectType === 'grain') {
+        ctx.fillStyle = 'rgba(255,255,255,0.08)';
+        for (let y = -h / 2; y < h / 2; y += 6) {
+          ctx.fillRect(-w / 2, y, w, 2);
+        }
+      } else {
+        ctx.globalCompositeOperation = 'screen';
+        const gr = ctx.createRadialGradient(-w * 0.18, -h * 0.15, 10, 0, 0, Math.max(w, h) * 0.75);
+        gr.addColorStop(0, activeEffect.accentColor || 'rgba(56,189,248,0.45)');
+        gr.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.globalAlpha = 0.35;
+        ctx.fillStyle = gr;
+        ctx.fillRect(-w / 2, -h / 2, w, h);
+      }
       ctx.restore();
     }
 
@@ -1202,7 +1245,7 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
     return () => window.cancelAnimationFrame(rafId);
   }, []);
 
-  // Keep DOM playhead & slider aligned whenever totalDuration or zoom changes while paused
+  // Keep DOM playhead, slider & video preview synced whenever timelineClips, totalDuration, or zoom changes while paused
   useEffect(() => {
     const clamped = Math.max(0, Math.min(totalDuration, currentTimeRef.current));
     if (clamped !== currentTimeRef.current) {
@@ -1210,7 +1253,10 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
       setCurrentTimeSec(clamped);
     }
     updatePlayheadDomInstant(clamped, totalDuration, pxPerSec);
-  }, [totalDuration, pxPerSec]);
+    if (!isPlayingRef.current && !isScrubbingRef.current && timelineClips.length > 0) {
+      syncMediaAudioAndSeek(clamped, true);
+    }
+  }, [timelineClips, totalDuration, pxPerSec]);
 
   const handleTogglePlayPause = () => {
     if (timelineClips.length === 0) return;
@@ -1320,6 +1366,11 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
     }
 
     if (addedClips.length > 0) {
+      const prevTotalSec = timelineClips.reduce((acc, c) => acc + Math.max(0.2, c.durationSec || 4), 0);
+      const addedTotalSec = addedClips.reduce((acc, c) => acc + Math.max(0.2, c.durationSec || 4), 0);
+      const nextTotalSec = prevTotalSec + addedTotalSec;
+      const targetStartSec = timelineClips.length === 0 ? 0 : prevTotalSec;
+
       setMediaGallery((prev) => [...addedGallery, ...prev]);
       setTimelineClips((prev) => {
         const next = [...prev, ...addedClips];
@@ -1327,6 +1378,20 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
         return next;
       });
       setIsTimelineSelectionActive(true);
+      setIsWheelFeaturePanelOpen(false);
+      setIsInspectorOpen(false);
+
+      // Update playhead, slider & scroll directly onto the newly added clip for instant preview
+      currentTimeRef.current = targetStartSec;
+      setCurrentTimeSec(targetStartSec);
+      updatePlayheadDomInstant(targetStartSec, nextTotalSec, pxPerSec);
+      window.requestAnimationFrame(() => {
+        const scroller = timelineScrollRef.current;
+        if (scroller) {
+          scroller.scrollLeft = Math.max(0, 20 + targetStartSec * pxPerSec - 48);
+        }
+      });
+
       void recordVideoEditorActivity({
         actionType: 'add_media',
         projectTitle: 'CineStudio Project',
@@ -1464,27 +1529,32 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
     setActiveClipIndex(activeClipIndex + 1);
   };
 
-  // Round Control Wheel Selection: tap same open category to close, tap any other category to switch immediately
+  // Round Control Wheel Selection:
+  // - Tapping Media directly opens the phone gallery/file picker with NO extra options drawer
+  // - Tapping same active open category closes drawer; tapping another switches immediately
   const handleSelectWheelCategory = (
     category: WheelCategoryItem,
     openDrawer = true,
     fromWheelTap = false
   ) => {
+    setSelectedWheelCategoryId(category.id);
+    setDisabledCategoryIds((prev) => prev.filter((id) => id !== category.id));
+
+    if (category.id === 'video' && fromWheelTap) {
+      setIsWheelFeaturePanelOpen(false);
+      setIsInspectorOpen(false);
+      multiFileInputRef.current?.click();
+      return;
+    }
+
     if (fromWheelTap && selectedWheelCategoryId === category.id && isWheelFeaturePanelOpen) {
       setIsWheelFeaturePanelOpen(false);
       return;
     }
 
-    setSelectedWheelCategoryId(category.id);
-    setDisabledCategoryIds((prev) => prev.filter((id) => id !== category.id));
-
     if (openDrawer) {
       setIsInspectorOpen(false);
       setIsWheelFeaturePanelOpen(true);
-    }
-
-    if (category.id === 'video' && fromWheelTap && timelineClips.length === 0 && mediaGallery.length === 0) {
-      multiFileInputRef.current?.click();
     }
   };
 
@@ -1548,6 +1618,24 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
     () => (activeColorGradeId ? COLOR_GRADES_LIST.find((c) => c.id === activeColorGradeId) || null : null),
     [activeColorGradeId]
   );
+
+  const activeCardPresetObj = useMemo(
+    () => (activeCardPresetId ? TRAILER_CARDS_LIST.find((c) => c.id === activeCardPresetId) || null : null),
+    [activeCardPresetId]
+  );
+
+  const seamPreviewThumbs = useMemo(() => {
+    const seamIdx = activeTransitionSeamClipId
+      ? timelineClips.findIndex((c) => c.id === activeTransitionSeamClipId)
+      : Math.max(0, Math.min(timelineClips.length - 2, activeClipIndex));
+    const idxA = seamIdx >= 0 ? seamIdx : 0;
+    const clipA = timelineClips[idxA];
+    const clipB = timelineClips[idxA + 1] || timelineClips[1];
+    return {
+      thumbA: clipA?.thumbnailUrl || (clipA?.type === 'photo' ? clipA?.url : undefined),
+      thumbB: clipB?.thumbnailUrl || (clipB?.type === 'photo' ? clipB?.url : undefined),
+    };
+  }, [timelineClips, activeTransitionSeamClipId, activeClipIndex]);
 
   // Compact proportional overlay blocks for TimelinePanel (NEVER giant detached boxes!)
   const timelineOverlayBlocks: TimelineOverlayBlock[] = useMemo(() => {
@@ -2532,6 +2620,7 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
             onAddSticker={(st) => {
               pushUndoCheckpoint();
               setDisabledCategoryIds((p) => p.filter((x) => x !== 'stickers'));
+              setLastAddedSticker(st);
               setActiveStickers((prev) => [
                 ...prev,
                 {
@@ -2550,6 +2639,7 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
             onAddVfx={(v) => {
               pushUndoCheckpoint();
               setDisabledCategoryIds((p) => p.filter((x) => x !== 'vfx'));
+              setLastAddedVfx(v);
               setVfxLayers((prev) => [
                 ...prev,
                 {
@@ -2687,6 +2777,7 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
               }));
             }}
             selectedTransitionId={selectedTransitionId}
+            activeTransitionObj={selectedTransitionObj}
             onSelectTransition={(tr) => {
               setDisabledCategoryIds((p) => p.filter((x) => x !== 'transitions'));
               if (!tr) {
@@ -2715,6 +2806,13 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                   setTimelineClips((prev) =>
                     prev.map((c) => (c.id === targetId ? { ...c, transitionOut: tr } : c))
                   );
+                  if (!isPlayingRef.current) {
+                    let seamSec = 0;
+                    for (let i = 0; i <= validIdx; i += 1) {
+                      seamSec += Math.max(0.2, timelineClips[i].durationSec || 4);
+                    }
+                    seekToTime(seamSec, true);
+                  }
                 }
               }
             }}
@@ -2724,6 +2822,7 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
               setActiveEffect(fx);
             }}
             activeTemplateId={activeTemplate?.id || null}
+            activeTemplateObj={activeTemplate}
             onApplyTemplate={(tm) => {
               setDisabledCategoryIds((p) => p.filter((x) => x !== 'templates'));
               setActiveTemplate(tm);
@@ -2747,9 +2846,19 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                 ...TEMPLATES_LIST[0],
                 id: `pack_${pack.id}`,
                 title: pack.name,
+                movieTitle: pack.title,
+                subtitle: pack.subtitle,
                 durationSec: Math.max(4, totalDuration || 8),
               });
             }}
+            primaryClipThumbUrl={seamPreviewThumbs.thumbA}
+            secondaryClipThumbUrl={seamPreviewThumbs.thumbB}
+            activeColorGradeObj={activeColorGradeObj}
+            activeMotionPresetObj={activeMotionPreset}
+            activeDialogueObj={activeDialogue}
+            activeCardPresetObj={activeCardPresetObj}
+            activeVfxObj={lastAddedVfx}
+            activeStickerObj={lastAddedSticker}
           />
         )}
 
