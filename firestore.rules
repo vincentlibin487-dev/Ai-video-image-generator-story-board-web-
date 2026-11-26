@@ -27,6 +27,13 @@ service cloud.firestore {
         && id.matches('^[a-zA-Z0-9_\\-]+$');
     }
 
+    function isValidCategoryId(id) {
+      return id is string
+        && id.size() >= 2
+        && id.size() <= 128
+        && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
     function isSignedIn() {
       return request.auth != null;
     }
@@ -416,6 +423,135 @@ service cloud.firestore {
         && data.createdAt is timestamp;
     }
 
+    function isValidEditorConfigState(data, configId) {
+      return data.keys().hasAll([
+          'configId',
+          'categoriesInitialized',
+          'musicLyricsInitialized',
+          'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'configId',
+          'categoriesInitialized',
+          'musicLyricsInitialized',
+          'updatedAt'
+        ])
+        && isValidId(data.configId)
+        && data.configId == configId
+        && data.categoriesInitialized is bool
+        && data.musicLyricsInitialized is bool
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidEditorCategory(data, categoryId) {
+      return data.keys().hasAll([
+          'categoryId',
+          'label',
+          'shortLabel',
+          'tab',
+          'subCategory',
+          'trackNumber',
+          'trackName',
+          'accentHex',
+          'iconKey',
+          'orderIndex',
+          'isBuiltIn',
+          'hasLyricsBoxes',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'categoryId',
+          'label',
+          'shortLabel',
+          'tab',
+          'subCategory',
+          'trackNumber',
+          'trackName',
+          'accentHex',
+          'iconKey',
+          'orderIndex',
+          'isBuiltIn',
+          'hasLyricsBoxes',
+          'createdAt',
+          'updatedAt'
+        ])
+        && isValidCategoryId(data.categoryId)
+        && data.categoryId == categoryId
+        && data.label is string
+        && data.label.size() >= 1
+        && data.label.size() <= 80
+        && data.shortLabel is string
+        && data.shortLabel.size() >= 1
+        && data.shortLabel.size() <= 24
+        && data.tab is string
+        && data.tab.size() >= 1
+        && data.tab.size() <= 32
+        && data.subCategory is string
+        && data.subCategory.size() <= 64
+        && data.trackNumber is int
+        && data.trackNumber >= 1
+        && data.trackNumber <= 1000
+        && data.trackName is string
+        && data.trackName.size() >= 1
+        && data.trackName.size() <= 40
+        && data.accentHex is string
+        && data.accentHex.size() == 7
+        && data.accentHex.matches('^#[0-9a-fA-F]{6}$')
+        && data.iconKey is string
+        && data.iconKey.size() >= 1
+        && data.iconKey.size() <= 32
+        && data.orderIndex is int
+        && data.orderIndex >= 0
+        && data.orderIndex <= 10000
+        && data.isBuiltIn is bool
+        && data.hasLyricsBoxes is bool
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidCategoryContentItem(data, itemId) {
+      return data.keys().hasAll([
+          'itemId',
+          'categoryId',
+          'title',
+          'subtitle',
+          'lyrics',
+          'badgeText',
+          'orderIndex',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'itemId',
+          'categoryId',
+          'title',
+          'subtitle',
+          'lyrics',
+          'badgeText',
+          'orderIndex',
+          'createdAt',
+          'updatedAt'
+        ])
+        && isValidId(data.itemId)
+        && data.itemId == itemId
+        && isValidCategoryId(data.categoryId)
+        && data.title is string
+        && data.title.size() >= 1
+        && data.title.size() <= 160
+        && data.subtitle is string
+        && data.subtitle.size() <= 160
+        && data.lyrics is string
+        && data.lyrics.size() <= 8000
+        && data.badgeText is string
+        && data.badgeText.size() <= 40
+        && data.orderIndex is int
+        && data.orderIndex >= 0
+        && data.orderIndex <= 10000
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
     // =========================================================================
     // 4. Collection Rules
     // =========================================================================
@@ -583,6 +719,88 @@ service cloud.firestore {
         && incoming().createdAt == request.time;
       allow update: if false;
       allow delete: if isValidId(editId) && isAdmin();
+    }
+
+    // Editor initialization flags (Public get for client sync, Admin-only writes)
+    match /editor_config/{configId} {
+      allow get: if isValidId(configId);
+      allow list: if isBootstrappedAdmin();
+      allow create: if isValidId(configId)
+        && isAdmin()
+        && isValidEditorConfigState(incoming(), configId)
+        && incoming().updatedAt == request.time;
+      allow update: if isValidId(configId)
+        && isAdmin()
+        && isValidEditorConfigState(incoming(), configId)
+        && incoming().configId == existing().configId
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'categoriesInitialized',
+          'musicLyricsInitialized',
+          'updatedAt'
+        ]);
+      allow delete: if isValidId(configId) && isAdmin();
+    }
+
+    // Public dynamic editor wheel categories (Non-PII, Admin-only writes)
+    match /editor_categories/{categoryId} {
+      allow get: if isValidCategoryId(categoryId);
+      allow list: if true;
+      allow create: if isValidCategoryId(categoryId)
+        && isAdmin()
+        && isValidEditorCategory(incoming(), categoryId)
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isValidCategoryId(categoryId)
+        && isAdmin()
+        && isValidEditorCategory(incoming(), categoryId)
+        && incoming().categoryId == existing().categoryId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'label',
+          'shortLabel',
+          'tab',
+          'subCategory',
+          'trackNumber',
+          'trackName',
+          'accentHex',
+          'iconKey',
+          'orderIndex',
+          'isBuiltIn',
+          'hasLyricsBoxes',
+          'updatedAt'
+        ]);
+      allow delete: if isValidCategoryId(categoryId) && isAdmin();
+    }
+
+    // Public copyable song lyrics & category content boxes (Non-PII, Admin-only writes)
+    match /category_items/{itemId} {
+      allow get: if isValidId(itemId);
+      allow list: if true;
+      allow create: if isValidId(itemId)
+        && isAdmin()
+        && isValidCategoryContentItem(incoming(), itemId)
+        && existsAfter(/databases/$(database)/documents/editor_categories/$(incoming().categoryId))
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isValidId(itemId)
+        && isAdmin()
+        && isValidCategoryContentItem(incoming(), itemId)
+        && exists(/databases/$(database)/documents/editor_categories/$(incoming().categoryId))
+        && incoming().itemId == existing().itemId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'categoryId',
+          'title',
+          'subtitle',
+          'lyrics',
+          'badgeText',
+          'orderIndex',
+          'updatedAt'
+        ]);
+      allow delete: if isValidId(itemId) && isAdmin();
     }
   }
 }

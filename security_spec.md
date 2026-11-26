@@ -6,6 +6,7 @@
 3. **Master Gate & Owner Enforcement on Synced Stories / ❤️ History**: `/user_accounts/{uid}/saved_stories/{storyId}` enforces `exists(/databases/$(database)/documents/user_accounts/$(uid))` on writes, binds `ownerUid == request.auth.uid` and `ownerEmail == request.auth.token.email` immutably, and validates array bounds (`shots.size() >= 0 && shots.size() <= 500`), string sizes, `isLoved` boolean flag, and server timestamps.
 4. **Bootstrapped Admin Isolation**: `/admins/{uid}` modifications are restricted strictly to the verified bootstrapped administrator (`amalj7767@gmail.com` with `email_verified == true`).
 5. **Append-Only Video Editor Telemetry**: `/video_edit_logs/{editId}` allows bounded `create` for editor activity (`open_editor`, `add_media`, `edit_timeline`, `export_video`) with strict field validation and verified Gmail anti-spoofing, while `get`, `list`, and `delete` are strictly locked to verified admin and `update` is permanently disabled (`false`).
+6. **Public-Read, Admin-Write Dynamic Categories & Lyrics Boxes**: `/editor_categories/{categoryId}`, `/category_items/{itemId}`, and `/editor_config/{configId}` hold zero PII (only UI categories, song titles, and copyable lyrics). Clients may `get`/`list` categories and items without sign-in so the video editor syncs live across devices, while `create`, `update`, and `delete` require `isAdmin()`, strict key/size/type/regex checks, immutable IDs & `createdAt`, `request.time` timestamps, and relational `existsAfter` / `exists` verification on `/category_items` referencing `/editor_categories`.
 
 ## 2. Adversarial Audit ("Dirty Dozen" Payloads)
 1. **Unauthenticated `list` on `/visitor_sessions`, `/user_accounts`, `/generation_logs`, or `/video_edit_logs`** -> `PERMISSION_DENIED` (`isBootstrappedAdmin()` required).
@@ -13,10 +14,11 @@
 3. **Email Spoofing (`email == 'amalj7767@gmail.com'`, `email_verified == false`)** -> `PERMISSION_DENIED`.
 4. **Email Spoofing in `generation_logs` / `video_edit_logs` (`userEmail: "victim@gmail.com"` when guest or another user)** -> `PERMISSION_DENIED`.
 5. **Shadow / Ghost Field Injection (`{ ..., isAdmin: true }`)** -> `PERMISSION_DENIED` (`keys().hasOnly(...)` & `affectedKeys().hasOnly(...)`).
-6. **ID Poisoning (`logId`, `editId`, or `storyId` > 128 chars or invalid chars)** -> `PERMISSION_DENIED` (`isValidId()`).
+6. **ID Poisoning (`logId`, `editId`, `categoryId`, `itemId`, or `storyId` > 128 chars or invalid chars)** -> `PERMISSION_DENIED` (`isValidId()` / `isValidCategoryId()`).
 7. **Timestamp Forgery (`createdAt` or `updatedAt` != `request.time`)** -> `PERMISSION_DENIED`.
-8. **Type / Value Poisoning (`shots: ["bad"]` or `searchPremise > 5000` chars or invalid `resolution`)** -> `PERMISSION_DENIED`.
-9. **Orphaned Story Write (missing parent `/user_accounts/{uid}`)** -> `PERMISSION_DENIED`.
-10. **Immutable Field Hijack (`ownerUid`, `createdAt`, or modifying `/generation_logs` / `/video_edit_logs`)** -> `PERMISSION_DENIED` (`allow update: if false;`).
-11. **Self-Assigned Admin Privilege Escalation (`create` on `/admins/{uid}`)** -> `PERMISSION_DENIED`.
+8. **Type / Value Poisoning (`shots: ["bad"]`, `lyrics > 8000` chars, invalid `accentHex`, or `searchPremise > 5000` chars)** -> `PERMISSION_DENIED`.
+9. **Orphaned Write (missing `/user_accounts/{uid}` for `saved_stories`, or missing `/editor_categories/{categoryId}` for `category_items`)** -> `PERMISSION_DENIED`.
+10. **Immutable Field Hijack (`ownerUid`, `categoryId`, `itemId`, `createdAt`, or modifying `/generation_logs` / `/video_edit_logs`)** -> `PERMISSION_DENIED`.
+11. **Non-Admin Category/Lyrics Tampering (guest or regular Gmail user attempting `create`/`update`/`delete` on `/editor_categories`, `/category_items`, `/editor_config`)** -> `PERMISSION_DENIED` (`isAdmin()` required).
 12. **Arbitrary Collection Write (`/other/123`)** -> `PERMISSION_DENIED` (Global catch-all default deny).
+

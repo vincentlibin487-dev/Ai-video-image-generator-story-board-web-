@@ -44,10 +44,13 @@ export interface WheelCategoryItem {
   shortLabel: string;
   tab: EditorToolTab;
   subCategory?: string;
-  trackNumber: number; // 1..14 corresponding to 14 dedicated timeline categories
+  trackNumber: number; // 1..N corresponding to timeline categories
   trackName: string;
   accentHex: string;
   icon: LucideIcon;
+  isBuiltIn?: boolean;
+  hasLyricsBoxes?: boolean;
+  iconKey?: string;
 }
 
 // Group 1 (First 7 Categories): Core Media, Sound, Looks & Overlays
@@ -249,38 +252,44 @@ export const CircularToolWheel: React.FC<CircularToolWheelProps> = React.memo(({
     startY: number;
   } | null>(null);
 
-  const halfSize = Math.ceil(categories.length / 2);
-  const group1 = categories.slice(0, halfSize);
-  const group2 = categories.slice(halfSize);
+  const ITEMS_PER_PAGE = 7;
+  const pageCount = Math.max(1, Math.ceil(categories.length / ITEMS_PER_PAGE));
 
-  const [wheelGroup, setWheelGroup] = useState<0 | 1>(() =>
-    group2.some((c) => c.id === activeCategoryId) ? 1 : 0
-  );
+  const [wheelPage, setWheelPage] = useState<number>(() => {
+    const idx = categories.findIndex((c) => c.id === activeCategoryId);
+    return idx >= 0 ? Math.floor(idx / ITEMS_PER_PAGE) : 0;
+  });
   const [flipSpinDeg, setFlipSpinDeg] = useState<number>(0);
   const [visualTickAngle, setVisualTickAngle] = useState<number>(0);
   const prevActiveIdRef = useRef<string>(activeCategoryId);
 
-  // Sync active wheel half automatically only when activeCategoryId changes programmatically
+  const safeWheelPage = Math.min(wheelPage, pageCount - 1);
+
+  // Sync active wheel page automatically only when activeCategoryId changes programmatically
   useEffect(() => {
     if (prevActiveIdRef.current !== activeCategoryId) {
       prevActiveIdRef.current = activeCategoryId;
-      const inGroup2 = group2.some((c) => c.id === activeCategoryId);
-      const targetGroup: 0 | 1 = inGroup2 ? 1 : 0;
-      if (targetGroup !== wheelGroup) {
-        setWheelGroup(targetGroup);
+      const idx = categories.findIndex((c) => c.id === activeCategoryId);
+      const targetPage = idx >= 0 ? Math.floor(idx / ITEMS_PER_PAGE) : 0;
+      if (targetPage !== safeWheelPage) {
+        setWheelPage(targetPage);
         setFlipSpinDeg((deg) => deg + 180);
       }
     }
-  }, [activeCategoryId, group2, wheelGroup]);
+  }, [activeCategoryId, categories, safeWheelPage]);
 
   const count = Math.max(1, categories.length);
   const rawIndex = categories.findIndex((c) => c.id === activeCategoryId);
   const activeIndex = rawIndex >= 0 ? rawIndex : 0;
   const activeCat = categories[activeIndex];
 
-  const visibleGroupItems = wheelGroup === 0 ? group1 : group2.length > 0 ? group2 : group1;
+  const pageStart = safeWheelPage * ITEMS_PER_PAGE;
+  const visibleGroupItems = categories.slice(pageStart, pageStart + ITEMS_PER_PAGE);
+  const pageRangeStart = visibleGroupItems.length > 0 ? pageStart + 1 : 0;
+  const pageRangeEnd = pageStart + visibleGroupItems.length;
 
   const stepBy = (delta: number, openDrawer = false) => {
+    if (categories.length === 0) return;
     const nextIdx = (activeIndex + delta + count) % count;
     const target = categories[nextIdx];
     if (target) {
@@ -289,8 +298,11 @@ export const CircularToolWheel: React.FC<CircularToolWheelProps> = React.memo(({
   };
 
   const handleToggleWheelGroup = () => {
-    const nextGroup: 0 | 1 = wheelGroup === 0 ? 1 : 0;
-    setWheelGroup(nextGroup);
+    if (pageCount <= 1) {
+      setFlipSpinDeg((deg) => deg + 180);
+      return;
+    }
+    setWheelPage((prev) => (prev + 1) % pageCount);
     setFlipSpinDeg((deg) => deg + 180);
   };
 
@@ -434,8 +446,8 @@ export const CircularToolWheel: React.FC<CircularToolWheelProps> = React.memo(({
             style={{ transform: `rotate(${visualTickAngle + flipSpinDeg}deg)` }}
           >
             {visibleGroupItems.map((cat, idx) => {
-              const deg = (idx * 360) / visibleGroupItems.length;
-              const isAct = cat.id === activeCat.id;
+              const deg = (idx * 360) / Math.max(1, visibleGroupItems.length);
+              const isAct = activeCat ? cat.id === activeCat.id : false;
               const isMutedOrOff = disabledCategoryIds.includes(cat.id);
               return (
                 <div
@@ -459,18 +471,18 @@ export const CircularToolWheel: React.FC<CircularToolWheelProps> = React.memo(({
             })}
           </div>
 
-          {/* Rotating 7-Node Orbit Container (Smoothly spins 180° when Center Button flips Group 1 <-> Group 2) */}
+          {/* Rotating Orbit Container (Smoothly spins 180° when switching category pages) */}
           <div
             className="absolute inset-0 transition-transform duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]"
             style={{ transform: `rotate(${flipSpinDeg}deg)` }}
           >
             {visibleGroupItems.map((cat, idx) => {
-              const itemCount = visibleGroupItems.length;
+              const itemCount = Math.max(1, visibleGroupItems.length);
               const angleRad = ((-90 + (idx * 360) / itemCount) * Math.PI) / 180;
               const radiusPct = 35.5;
               const leftPct = 50 + radiusPct * Math.cos(angleRad);
               const topPct = 50 + radiusPct * Math.sin(angleRad);
-              const isSelected = cat.id === activeCat.id;
+              const isSelected = activeCat ? cat.id === activeCat.id : false;
               const isMutedOrOff = disabledCategoryIds.includes(cat.id);
               const hasActiveApplied = activeFeatureIds.includes(cat.id) && !isMutedOrOff;
               const IconComp = cat.icon;
@@ -544,7 +556,7 @@ export const CircularToolWheel: React.FC<CircularToolWheelProps> = React.memo(({
             })}
           </div>
 
-          {/* INTERACTIVE CENTER TOGGLE BUTTON: Switches smoothly between Categories 1–7 and 8–14 */}
+          {/* INTERACTIVE CENTER TOGGLE BUTTON: Cycles across all dynamic wheel pages (1–7, 8–14, 15+, ...) */}
           <button
             type="button"
             onPointerDown={(e) => e.stopPropagation()}
@@ -552,18 +564,14 @@ export const CircularToolWheel: React.FC<CircularToolWheelProps> = React.memo(({
             className={`z-20 ${
               compact ? 'w-[52px] h-[52px]' : 'w-[60px] h-[60px] sm:w-[66px] sm:h-[66px]'
             } rounded-full bg-gradient-to-b from-[#333d4f] to-[#1e2532] hover:from-teal-400 hover:to-cyan-400 hover:text-black border-2 border-teal-400/75 text-white shadow-[0_6px_22px_rgba(0,0,0,0.8)] flex flex-col items-center justify-center gap-0.5 cursor-pointer transition-all active:scale-90`}
-            title={
-              wheelGroup === 0
-                ? 'Switch wheel to Categories 8–14'
-                : 'Switch wheel to Categories 1–7'
-            }
+            title={`Switch wheel categories (${pageCount} pages, ${categories.length} total)`}
           >
             <RefreshCw
               className={`${compact ? 'w-4 h-4' : 'w-4 h-4 sm:w-5 sm:h-5'} transition-transform duration-500`}
               style={{ transform: `rotate(${flipSpinDeg}deg)` }}
             />
             <span className={`${compact ? 'text-[8.5px]' : 'text-[9.5px]'} font-black uppercase tracking-tight leading-none tabular-nums`}>
-              {wheelGroup === 0 ? '1–7 ↻' : '8–14 ↻'}
+              {pageRangeStart > 0 ? `${pageRangeStart}–${pageRangeEnd} ↻` : '0 ↻'}
             </span>
           </button>
         </div>

@@ -63,6 +63,7 @@ import type { GenerationLogRecord, VideoEditLogRecord, VisitorSessionRecord } fr
 import type { UserAccountRecord } from '../lib/storySync';
 import { AppLang, LANGUAGE_OPTIONS } from '../lib/i18n';
 import { BookOpen, Calendar, FileText, Mail } from 'lucide-react';
+import { AdminCategoriesManager } from './AdminCategoriesManager';
 
 interface AdminDashboardProps {
   lang: AppLang;
@@ -1494,6 +1495,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ lang, onClose })
               {dataError}
             </div>
           )}
+
+          {/* Dynamic Wheel Categories (+ Category) & Separate Song Lyrics Boxes Manager */}
+          <AdminCategoriesManager isMl={isMl} />
 
           {/* Timeframe Filter Bar */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[#11131f] border border-zinc-800 rounded-2xl p-3.5">

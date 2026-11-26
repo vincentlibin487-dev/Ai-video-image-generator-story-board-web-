@@ -42,6 +42,14 @@ import {
   type WheelCategoryItem,
 } from './CircularToolWheel';
 import {
+  DEFAULT_EDITOR_CATEGORIES,
+  DEFAULT_MUSIC_LYRICS_SEED,
+  subscribeDynamicEditorCatalog,
+  toWheelCategoryItem,
+  type DynamicCategoryItem,
+  type DynamicEditorCategory,
+} from '../lib/dynamicCategories';
+import {
   TimelinePanel,
   formatTimecodeShort,
   type TimelineClipItem,
@@ -315,11 +323,24 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
     });
   }, []);
 
-  // Wheel & Drawer State
+  // Wheel & Drawer State (Live synced from Admin via Firestore)
+  const [dynamicCategories, setDynamicCategories] = useState<DynamicEditorCategory[]>(
+    DEFAULT_EDITOR_CATEGORIES
+  );
+  const [dynamicCategoryItems, setDynamicCategoryItems] = useState<DynamicCategoryItem[]>(
+    DEFAULT_MUSIC_LYRICS_SEED
+  );
   const [selectedWheelCategoryId, setSelectedWheelCategoryId] = useState<string>('video');
   const [isWheelFeaturePanelOpen, setIsWheelFeaturePanelOpen] = useState<boolean>(false);
   const [isInspectorOpen, setIsInspectorOpen] = useState<boolean>(false);
   const [disabledCategoryIds, setDisabledCategoryIds] = useState<string[]>([]);
+
+  useEffect(() => {
+    return subscribeDynamicEditorCatalog({
+      onCategoriesChange: setDynamicCategories,
+      onItemsChange: setDynamicCategoryItems,
+    });
+  }, []);
 
   // Media & Timeline Clips
   const [mediaGallery, setMediaGallery] = useState<MediaItem[]>([]);
@@ -464,9 +485,23 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
   const lastReactTimeSyncRef = useRef<number>(0);
   const lastActiveClipIdxRef = useRef<number>(0);
 
+  const wheelCategories = useMemo(
+    () => dynamicCategories.map(toWheelCategoryItem),
+    [dynamicCategories]
+  );
+
+  useEffect(() => {
+    if (wheelCategories.length > 0 && !wheelCategories.some((c) => c.id === selectedWheelCategoryId)) {
+      setSelectedWheelCategoryId(wheelCategories[0].id);
+    }
+  }, [wheelCategories, selectedWheelCategoryId]);
+
   const activeWheelCategory = useMemo(
-    () => WHEEL_CATEGORIES.find((c) => c.id === selectedWheelCategoryId) || WHEEL_CATEGORIES[0],
-    [selectedWheelCategoryId]
+    () =>
+      wheelCategories.find((c) => c.id === selectedWheelCategoryId) ||
+      wheelCategories[0] ||
+      WHEEL_CATEGORIES[0],
+    [wheelCategories, selectedWheelCategoryId]
   );
 
   const activeAspectOpt = useMemo(
@@ -2767,10 +2802,153 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
           </div>
         </div>
 
-        {/* 3. SIDE FEATURE DRAWER OR INSPECTOR (Sits cleanly beside the Wheel — NEVER covers the Wheel) */}
-        {isWheelFeaturePanelOpen && (
+        {/* 3. INSPECTOR (Sits cleanly beside the Wheel when toggled) */}
+
+        {isInspectorOpen && (
+          <aside className="w-[216px] sm:w-[258px] shrink-0 h-full bg-[#0b0f16] border-l border-zinc-800 flex flex-col overflow-hidden z-20">
+            <div className="h-9 px-2 border-b border-zinc-800 bg-[#10151f] flex items-center justify-between shrink-0">
+              <span className="text-[11px] font-bold text-teal-300 flex items-center gap-1">
+                <Sliders className="w-3.5 h-3.5" />
+                <span>Inspector</span>
+              </span>
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setColorAdjust({ brightness: 100, contrast: 100, saturation: 100, warmth: 0, vignette: 12 });
+                    setPlaybackSpeed(1);
+                    setVolume(85);
+                  }}
+                  className="p-1 rounded hover:bg-zinc-800 text-zinc-300 cursor-pointer"
+                  title="Reset"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsInspectorOpen(false)}
+                  className="p-1 rounded hover:bg-zinc-800 text-zinc-300 cursor-pointer"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+            <div className="flex-1 overflow-y-auto p-2.5 space-y-2.5 text-[10px]">
+              {[
+                { label: 'Brightness', val: colorAdjust.brightness, min: 40, max: 180, key: 'brightness' as const },
+                { label: 'Contrast', val: colorAdjust.contrast, min: 40, max: 200, key: 'contrast' as const },
+                { label: 'Saturation', val: colorAdjust.saturation, min: 0, max: 200, key: 'saturation' as const },
+                { label: 'Warmth', val: colorAdjust.warmth, min: 0, max: 80, key: 'warmth' as const },
+                { label: 'Vignette', val: colorAdjust.vignette, min: 0, max: 90, key: 'vignette' as const },
+              ].map((s) => (
+                <div key={s.key} className="space-y-0.5">
+                  <div className="flex justify-between text-zinc-300">
+                    <span>{s.label}</span>
+                    <span className="font-mono tabular-nums text-teal-300">{s.val}%</span>
+                  </div>
+                  <input
+                    type="range"
+                    min={s.min}
+                    max={s.max}
+                    value={s.val}
+                    onChange={(e) =>
+                      setColorAdjust((p) => ({ ...p, [s.key]: Number(e.target.value) }))
+                    }
+                    className="w-full accent-teal-400"
+                  />
+                </div>
+              ))}
+              <div className="space-y-0.5 pt-1 border-t border-zinc-800">
+                <div className="flex justify-between text-zinc-300">
+                  <span>Speed</span>
+                  <span className="font-mono tabular-nums text-amber-300">{playbackSpeed}x</span>
+                </div>
+                <input
+                  type="range"
+                  min={0.25}
+                  max={3}
+                  step={0.25}
+                  value={playbackSpeed}
+                  onChange={(e) => setPlaybackSpeed(Number(e.target.value))}
+                  className="w-full accent-amber-400"
+                />
+              </div>
+              <div className="space-y-0.5">
+                <div className="flex justify-between text-zinc-300">
+                  <span>Master Volume</span>
+                  <span className="font-mono tabular-nums text-emerald-300">{volume}%</span>
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  value={volume}
+                  onChange={(e) => setVolume(Number(e.target.value))}
+                  className="w-full accent-emerald-400"
+                />
+              </div>
+              <div className="space-y-0.5">
+                <div className="flex justify-between text-zinc-300">
+                  <span>Timeline Zoom</span>
+                  <span className="font-mono tabular-nums text-cyan-300">{timelineZoom.toFixed(1)}x</span>
+                </div>
+                <input
+                  type="range"
+                  min={0.5}
+                  max={3}
+                  step={0.1}
+                  value={timelineZoom}
+                  onChange={(e) => setTimelineZoom(Number(e.target.value))}
+                  className="w-full accent-cyan-400"
+                />
+              </div>
+            </div>
+          </aside>
+        )}
+
+        {/* 4. RIGHT SIDE: CIRCULAR TOOL WHEEL (Always uncovered & interactive) */}
+        <div
+          className={`relative ${
+            isCompactLandscape ? 'w-[202px]' : 'w-[234px] sm:w-[266px]'
+          } shrink-0 bg-[#0b0e13] border-l border-zinc-800/80 flex flex-col items-center justify-center overflow-hidden`}
+        >
+          <CircularToolWheel
+            categories={wheelCategories}
+            activeCategoryId={selectedWheelCategoryId}
+            disabledCategoryIds={disabledCategoryIds}
+            activeFeatureIds={activeFeatureIds}
+            onSelectCategory={handleSelectWheelCategory}
+            onToggleCategoryMute={handleToggleCategoryMute}
+            isToolDrawerOpen={isWheelFeaturePanelOpen}
+            onToggleToolDrawer={() => {
+              setIsInspectorOpen(false);
+              setIsWheelFeaturePanelOpen((o) => !o);
+            }}
+            isInspectorOpen={isInspectorOpen}
+            onToggleInspector={() => {
+              setIsWheelFeaturePanelOpen(false);
+              setIsInspectorOpen((o) => !o);
+            }}
+            isPlaying={isPlaying}
+            onTogglePlay={handleTogglePlayPause}
+            onExport={() => setShowExportModal(true)}
+            aspectRatio={selectedAspectRatio}
+            compact={isCompactLandscape}
+          />
+
+          <div className="mt-0.5 text-[9px] font-mono text-zinc-400 tabular-nums">
+            {selectedAspectRatio} · {activeWheelCategory.shortLabel}
+            {disabledCategoryIds.includes(activeWheelCategory.id) ? ' (Muted)' : ''}
+          </div>
+        </div>
+      </div>
+
+      {/* LOWER DOCK: Clean Bottom Category Cards/Boxes when a Wheel category is open, else Compact Timeline */}
+      <div className="h-[124px] sm:h-[144px] shrink-0 flex flex-col">
+        {isWheelFeaturePanelOpen ? (
           <WheelFeatureDrawer
             category={activeWheelCategory}
+            categoryItems={dynamicCategoryItems}
             isMutedOrOff={disabledCategoryIds.includes(activeWheelCategory.id)}
             onBack={() => setIsWheelFeaturePanelOpen(false)}
             onToggleMuteOrOff={() => handleToggleCategoryMute(activeWheelCategory)}
@@ -3152,195 +3330,55 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
             activeVfxObj={lastAddedVfx}
             activeStickerObj={lastAddedSticker}
           />
-        )}
-
-        {isInspectorOpen && (
-          <aside className="w-[216px] sm:w-[258px] shrink-0 h-full bg-[#0b0f16] border-l border-zinc-800 flex flex-col overflow-hidden z-20">
-            <div className="h-9 px-2 border-b border-zinc-800 bg-[#10151f] flex items-center justify-between shrink-0">
-              <span className="text-[11px] font-bold text-teal-300 flex items-center gap-1">
-                <Sliders className="w-3.5 h-3.5" />
-                <span>Inspector</span>
-              </span>
-              <div className="flex items-center gap-1">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setColorAdjust({ brightness: 100, contrast: 100, saturation: 100, warmth: 0, vignette: 12 });
-                    setPlaybackSpeed(1);
-                    setVolume(85);
-                  }}
-                  className="p-1 rounded hover:bg-zinc-800 text-zinc-300 cursor-pointer"
-                  title="Reset"
-                >
-                  <RotateCcw className="w-3.5 h-3.5" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setIsInspectorOpen(false)}
-                  className="p-1 rounded hover:bg-zinc-800 text-zinc-300 cursor-pointer"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            </div>
-            <div className="flex-1 overflow-y-auto p-2.5 space-y-2.5 text-[10px]">
-              {[
-                { label: 'Brightness', val: colorAdjust.brightness, min: 40, max: 180, key: 'brightness' as const },
-                { label: 'Contrast', val: colorAdjust.contrast, min: 40, max: 200, key: 'contrast' as const },
-                { label: 'Saturation', val: colorAdjust.saturation, min: 0, max: 200, key: 'saturation' as const },
-                { label: 'Warmth', val: colorAdjust.warmth, min: 0, max: 80, key: 'warmth' as const },
-                { label: 'Vignette', val: colorAdjust.vignette, min: 0, max: 90, key: 'vignette' as const },
-              ].map((s) => (
-                <div key={s.key} className="space-y-0.5">
-                  <div className="flex justify-between text-zinc-300">
-                    <span>{s.label}</span>
-                    <span className="font-mono tabular-nums text-teal-300">{s.val}%</span>
-                  </div>
-                  <input
-                    type="range"
-                    min={s.min}
-                    max={s.max}
-                    value={s.val}
-                    onChange={(e) =>
-                      setColorAdjust((p) => ({ ...p, [s.key]: Number(e.target.value) }))
-                    }
-                    className="w-full accent-teal-400"
-                  />
-                </div>
-              ))}
-              <div className="space-y-0.5 pt-1 border-t border-zinc-800">
-                <div className="flex justify-between text-zinc-300">
-                  <span>Speed</span>
-                  <span className="font-mono tabular-nums text-amber-300">{playbackSpeed}x</span>
-                </div>
-                <input
-                  type="range"
-                  min={0.25}
-                  max={3}
-                  step={0.25}
-                  value={playbackSpeed}
-                  onChange={(e) => setPlaybackSpeed(Number(e.target.value))}
-                  className="w-full accent-amber-400"
-                />
-              </div>
-              <div className="space-y-0.5">
-                <div className="flex justify-between text-zinc-300">
-                  <span>Master Volume</span>
-                  <span className="font-mono tabular-nums text-emerald-300">{volume}%</span>
-                </div>
-                <input
-                  type="range"
-                  min={0}
-                  max={100}
-                  value={volume}
-                  onChange={(e) => setVolume(Number(e.target.value))}
-                  className="w-full accent-emerald-400"
-                />
-              </div>
-              <div className="space-y-0.5">
-                <div className="flex justify-between text-zinc-300">
-                  <span>Timeline Zoom</span>
-                  <span className="font-mono tabular-nums text-cyan-300">{timelineZoom.toFixed(1)}x</span>
-                </div>
-                <input
-                  type="range"
-                  min={0.5}
-                  max={3}
-                  step={0.1}
-                  value={timelineZoom}
-                  onChange={(e) => setTimelineZoom(Number(e.target.value))}
-                  className="w-full accent-cyan-400"
-                />
-              </div>
-            </div>
-          </aside>
-        )}
-
-        {/* 4. RIGHT SIDE: CIRCULAR TOOL WHEEL (Always uncovered & interactive) */}
-        <div
-          className={`relative ${
-            isCompactLandscape ? 'w-[202px]' : 'w-[234px] sm:w-[266px]'
-          } shrink-0 bg-[#0b0e13] border-l border-zinc-800/80 flex flex-col items-center justify-center overflow-hidden`}
-        >
-          <CircularToolWheel
-            activeCategoryId={selectedWheelCategoryId}
+        ) : (
+          <TimelinePanel
+            clips={timelineClips}
+            activeClipIndex={activeClipIndex}
+            isTimelineSelectionActive={isTimelineSelectionActive}
+            activeCategory={activeWheelCategory}
             disabledCategoryIds={disabledCategoryIds}
-            activeFeatureIds={activeFeatureIds}
-            onSelectCategory={handleSelectWheelCategory}
-            onToggleCategoryMute={handleToggleCategoryMute}
-            isToolDrawerOpen={isWheelFeaturePanelOpen}
-            onToggleToolDrawer={() => {
-              setIsInspectorOpen(false);
-              setIsWheelFeaturePanelOpen((o) => !o);
-            }}
-            isInspectorOpen={isInspectorOpen}
-            onToggleInspector={() => {
-              setIsWheelFeaturePanelOpen(false);
-              setIsInspectorOpen((o) => !o);
-            }}
+            currentTimeSec={currentTimeSec}
+            totalDurationSec={totalDuration}
+            pxPerSec={pxPerSec}
+            isClipAudioMuted={isMuted || disabledCategoryIds.includes('audio')}
             isPlaying={isPlaying}
-            onTogglePlay={handleTogglePlayPause}
-            onExport={() => setShowExportModal(true)}
-            aspectRatio={selectedAspectRatio}
-            compact={isCompactLandscape}
+            isCssRotatedLandscape={isCssRotatedLandscape}
+            overlayBlocks={timelineOverlayBlocks}
+            onSelectClip={(idx) => {
+              setActiveClipIndex(idx);
+              setIsTimelineSelectionActive(true);
+              setSelectedWheelCategoryId('video');
+            }}
+            onSeekToTime={(sec) => seekToTime(sec, true)}
+            onScrubStart={() => {
+              isScrubbingRef.current = true;
+              wasPlayingBeforeScrubRef.current = isPlayingRef.current;
+              if (isPlayingRef.current) setIsPlaying(false);
+            }}
+            onScrubEnd={() => {
+              isScrubbingRef.current = false;
+              if (wasPlayingBeforeScrubRef.current) setIsPlaying(true);
+            }}
+            onRequestAddMedia={() => multiFileInputRef.current?.click()}
+            onOpenActiveCategoryPanel={() => setIsWheelFeaturePanelOpen(true)}
+            onToggleCategoryMute={handleToggleCategoryMute}
+            onSplitAtPlayhead={handleSplitClipAtPlayhead}
+            activeTransitionSeamClipId={activeTransitionSeamClipId}
+            onSelectTransitionSeam={(clipIndex) => {
+              const seamClip = timelineClips[clipIndex];
+              if (!seamClip) return;
+              setActiveTransitionSeamClipId(seamClip.id);
+              setSelectedTransitionId(seamClip.transitionOut?.id || null);
+              setSelectedTransitionObj(seamClip.transitionOut || null);
+              setSelectedWheelCategoryId('transitions');
+              setIsInspectorOpen(false);
+              setIsWheelFeaturePanelOpen(true);
+            }}
+            timelineScrollRef={timelineScrollRef}
+            playheadLineRef={playheadLineRef}
+            redBadgeTimeRef={redBadgeTimeRef}
           />
-
-          <div className="mt-0.5 text-[9px] font-mono text-zinc-400 tabular-nums">
-            {selectedAspectRatio} · {activeWheelCategory.shortLabel}
-            {disabledCategoryIds.includes(activeWheelCategory.id) ? ' (Muted)' : ''}
-          </div>
-        </div>
-      </div>
-
-      {/* LOWER TIMELINE DOCK (Compact, exact ruler alignment, smooth scroll & scrubbing) */}
-      <div className="h-[112px] sm:h-[126px] shrink-0 flex flex-col">
-        <TimelinePanel
-          clips={timelineClips}
-          activeClipIndex={activeClipIndex}
-          isTimelineSelectionActive={isTimelineSelectionActive}
-          activeCategory={activeWheelCategory}
-          disabledCategoryIds={disabledCategoryIds}
-          currentTimeSec={currentTimeSec}
-          totalDurationSec={totalDuration}
-          pxPerSec={pxPerSec}
-          isClipAudioMuted={isMuted || disabledCategoryIds.includes('audio')}
-          isPlaying={isPlaying}
-          isCssRotatedLandscape={isCssRotatedLandscape}
-          overlayBlocks={timelineOverlayBlocks}
-          onSelectClip={(idx) => {
-            setActiveClipIndex(idx);
-            setIsTimelineSelectionActive(true);
-            setSelectedWheelCategoryId('video');
-          }}
-          onSeekToTime={(sec) => seekToTime(sec, true)}
-          onScrubStart={() => {
-            isScrubbingRef.current = true;
-            wasPlayingBeforeScrubRef.current = isPlayingRef.current;
-            if (isPlayingRef.current) setIsPlaying(false);
-          }}
-          onScrubEnd={() => {
-            isScrubbingRef.current = false;
-            if (wasPlayingBeforeScrubRef.current) setIsPlaying(true);
-          }}
-          onRequestAddMedia={() => multiFileInputRef.current?.click()}
-          onOpenActiveCategoryPanel={() => setIsWheelFeaturePanelOpen(true)}
-          onToggleCategoryMute={handleToggleCategoryMute}
-          onSplitAtPlayhead={handleSplitClipAtPlayhead}
-          activeTransitionSeamClipId={activeTransitionSeamClipId}
-          onSelectTransitionSeam={(clipIndex) => {
-            const seamClip = timelineClips[clipIndex];
-            if (!seamClip) return;
-            setActiveTransitionSeamClipId(seamClip.id);
-            setSelectedTransitionId(seamClip.transitionOut?.id || null);
-            setSelectedTransitionObj(seamClip.transitionOut || null);
-            setSelectedWheelCategoryId('transitions');
-            setIsInspectorOpen(false);
-            setIsWheelFeaturePanelOpen(true);
-          }}
-          timelineScrollRef={timelineScrollRef}
-          playheadLineRef={playheadLineRef}
-          redBadgeTimeRef={redBadgeTimeRef}
-        />
+        )}
       </div>
 
       {/* Compact Bottom Ad Bar when vertical viewport allows */}
