@@ -396,6 +396,8 @@ export const TimelinePanel: React.FC<TimelinePanelProps> = React.memo(({
                         (clip.type === 'photo' && clip.url ? clip.url : FILTERS_LIST[0].thumbnail)
                       }
                       alt={clip.title}
+                      loading="lazy"
+                      decoding="async"
                       draggable={false}
                       className="absolute inset-0 w-full h-full object-cover opacity-55 pointer-events-none"
                     />

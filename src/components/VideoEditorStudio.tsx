@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { startTransition, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Play,
   Pause,
@@ -178,69 +178,29 @@ function formatDurationLabel(sec: number): string {
   return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
 
-async function extractVideoMetadataAndThumb(
-  url: string
-): Promise<{ durationSec: number; thumbnailUrl?: string }> {
-  if (typeof document === 'undefined') return { durationSec: 5 };
-  return new Promise((resolve) => {
-    const vid = document.createElement('video');
-    vid.preload = 'metadata';
-    vid.muted = true;
-    vid.playsInline = true;
-    vid.crossOrigin = 'anonymous';
-    let settled = false;
-    const finish = (dur: number, thumb?: string) => {
-      if (settled) return;
-      settled = true;
-      window.clearTimeout(timer);
-      try {
-        vid.pause();
-        vid.removeAttribute('src');
-        vid.load();
-      } catch {}
-      resolve({ durationSec: dur, thumbnailUrl: thumb });
-    };
-
-    const captureFrameThumb = (): string | undefined => {
-      try {
-        if (vid.videoWidth > 0 && vid.videoHeight > 0) {
-          const c = document.createElement('canvas');
-          c.width = 160;
-          c.height = 90;
-          const cCtx = c.getContext('2d');
-          if (cCtx) {
-            cCtx.drawImage(vid, 0, 0, c.width, c.height);
-            return c.toDataURL('image/jpeg', 0.72);
-          }
-        }
-      } catch {}
-      return undefined;
-    };
-
-    const timer = window.setTimeout(() => {
-      const fallbackDur = Number.isFinite(vid.duration) && vid.duration > 0.2 ? vid.duration : 5;
-      finish(Number(fallbackDur.toFixed(2)), captureFrameThumb());
-    }, 3500);
-
-    vid.onloadedmetadata = () => {
-      const exactDur =
-        Number.isFinite(vid.duration) && vid.duration > 0.15 ? Number(vid.duration.toFixed(2)) : 5;
-      try {
-        vid.currentTime = Math.min(0.4, Math.max(0.05, exactDur * 0.15));
-      } catch {
-        finish(exactDur, captureFrameThumb());
+function captureVideoThumbnail(vid: HTMLVideoElement): string | undefined {
+  try {
+    if (vid.videoWidth > 0 && vid.videoHeight > 0) {
+      const c = document.createElement('canvas');
+      c.width = 160;
+      c.height = 90;
+      const cCtx = c.getContext('2d');
+      if (cCtx) {
+        cCtx.drawImage(vid, 0, 0, c.width, c.height);
+        return c.toDataURL('image/jpeg', 0.65);
       }
-    };
+    }
+  } catch {}
+  return undefined;
+}
 
-    vid.onseeked = () => {
-      const exactDur =
-        Number.isFinite(vid.duration) && vid.duration > 0.15 ? Number(vid.duration.toFixed(2)) : 5;
-      finish(exactDur, captureFrameThumb());
-    };
-
-    vid.onerror = () => finish(5);
-    vid.src = url;
-  });
+function getScaledCacheSize(sw: number, sh: number, maxDim = 720): { cw: number; ch: number } {
+  if (sw <= 0 || sh <= 0) return { cw: 0, ch: 0 };
+  const scale = Math.min(1, maxDim / Math.max(sw, sh));
+  return {
+    cw: Math.max(1, Math.round(sw * scale)),
+    ch: Math.max(1, Math.round(sh * scale)),
+  };
 }
 
 async function extractAudioDuration(url: string): Promise<number> {
@@ -480,12 +440,16 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
 
   const mediaCacheRef = useRef<Map<string, HTMLImageElement | HTMLVideoElement>>(new Map());
   const videoFrameCacheRef = useRef<Map<string, HTMLCanvasElement>>(new Map());
+  const lastCacheUpdateAtByUrlRef = useRef<Map<string, number>>(new Map());
   const transitionFrozenOutRef = useRef<{ seamKey: string; canvas: HTMLCanvasElement } | null>(null);
   const lastSeekAtByUrlRef = useRef<Map<string, number>>(new Map());
   const pendingPlayUrlsRef = useRef<Set<string>>(new Set());
   const prewarmedSeamKeysRef = useRef<Set<string>>(new Set());
   const lastSyncedClipIdRef = useRef<string | null>(null);
   const localMediaUrlMapRef = useRef<Map<string, string>>(new Map());
+  const bgSaveTimersRef = useRef<number[]>([]);
+  const needsRenderRef = useRef<boolean>(true);
+  const previewCtxRef = useRef<{ canvas: HTMLCanvasElement; ctx: CanvasRenderingContext2D } | null>(null);
   const bgMusicElRef = useRef<HTMLAudioElement | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const previewTimerRef = useRef<number | null>(null);
@@ -610,7 +574,7 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
     applySnapshot(next);
   };
 
-  // Preload & cache HTMLVideoElement / HTMLImageElement sources
+  // Preload & cache HTMLVideoElement / HTMLImageElement sources (single decoder per media URL)
   const getOrLoadSource = (url: string, type: 'video' | 'photo'): HTMLVideoElement | HTMLImageElement | null => {
     if (!url || typeof document === 'undefined') return null;
     const key = `${type}:${url}`;
@@ -620,6 +584,9 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
     if (type === 'photo') {
       const img = new Image();
       img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        needsRenderRef.current = true;
+      };
       img.src = url;
       mediaCacheRef.current.set(key, img);
       return img;
@@ -630,33 +597,40 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
     vid.preload = 'auto';
     vid.playsInline = true;
     vid.muted = true;
-    vid.addEventListener(
-      'loadeddata',
-      () => {
-        if (vid.videoWidth > 0 && vid.videoHeight > 0) {
-          let cached = videoFrameCacheRef.current.get(url);
-          if (!cached) {
-            cached = document.createElement('canvas');
-            videoFrameCacheRef.current.set(url, cached);
-          }
-          if (cached.width !== vid.videoWidth || cached.height !== vid.videoHeight) {
-            cached.width = vid.videoWidth;
-            cached.height = vid.videoHeight;
-          }
-          const cCtx = cached.getContext('2d');
-          if (cCtx) {
-            try {
-              cCtx.drawImage(vid, 0, 0, cached.width, cached.height);
-            } catch {}
-          }
+    const refreshVideoCacheOnce = () => {
+      if (vid.videoWidth > 0 && vid.videoHeight > 0) {
+        const { cw, ch } = getScaledCacheSize(vid.videoWidth, vid.videoHeight, 720);
+        let cached = videoFrameCacheRef.current.get(url);
+        if (!cached) {
+          cached = document.createElement('canvas');
+          videoFrameCacheRef.current.set(url, cached);
         }
-      },
-      { once: true }
-    );
+        if (cached.width !== cw || cached.height !== ch) {
+          cached.width = cw;
+          cached.height = ch;
+        }
+        const cCtx = cached.getContext('2d');
+        if (cCtx) {
+          try {
+            cCtx.drawImage(vid, 0, 0, cw, ch);
+            lastCacheUpdateAtByUrlRef.current.set(url, performance.now());
+          } catch {}
+        }
+      }
+      needsRenderRef.current = true;
+    };
+    vid.addEventListener('loadeddata', refreshVideoCacheOnce, { once: true });
+    vid.addEventListener('canplay', () => {
+      needsRenderRef.current = true;
+    });
+    vid.addEventListener('seeked', () => {
+      needsRenderRef.current = true;
+    });
     vid.addEventListener(
       'loadedmetadata',
       () => {
-        if (!isPlayingRef.current && vid.currentTime === 0) {
+        needsRenderRef.current = true;
+        if (!isPlayingRef.current && vid.currentTime === 0 && vid.readyState < 2) {
           try {
             vid.currentTime = 0.01;
           } catch {}
@@ -933,16 +907,17 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
   const seekToTime = (targetSec: number, forceVideoSeek = true) => {
     const clamped = Math.max(0, Math.min(totalDuration, targetSec));
     currentTimeRef.current = clamped;
+    needsRenderRef.current = true;
     updatePlayheadDomInstant(clamped, totalDuration, pxPerSec);
     const now = performance.now();
-    if (!isSliderDraggingRef.current || now - lastReactTimeSyncRef.current > 65) {
+    if (!isSliderDraggingRef.current || now - lastReactTimeSyncRef.current > 95) {
       lastReactTimeSyncRef.current = now;
       setCurrentTimeSec(clamped);
     }
     syncMediaAudioAndSeek(clamped, forceVideoSeek);
   };
 
-  // Draw single media clip frame centered inside (w, h), using last decoded frame fallback if video is seeking/buffering
+  // Draw single media clip frame centered inside (w, h), using throttled downscaled frame cache fallback
   const drawSingleClipContent = (
     ctx: CanvasRenderingContext2D,
     w: number,
@@ -965,21 +940,34 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
           sw = srcEl.videoWidth;
           sh = srcEl.videoHeight;
 
-          // Cache latest crisp video frame so transient readyState drops during seek/seam never blink black
-          let cached = videoFrameCacheRef.current.get(clip.url);
-          if (!cached) {
-            cached = document.createElement('canvas');
-            videoFrameCacheRef.current.set(clip.url, cached);
-          }
-          if (cached.width !== sw || cached.height !== sh) {
-            cached.width = sw;
-            cached.height = sh;
-          }
-          const cCtx = cached.getContext('2d');
-          if (cCtx) {
-            try {
-              cCtx.drawImage(srcEl, 0, 0, sw, sh);
-            } catch {}
+          // Throttle downscaled (max 720p) fallback frame snapshots so 60fps playback stays lag-free
+          const now = performance.now();
+          const lastCachedAt = lastCacheUpdateAtByUrlRef.current.get(clip.url) || 0;
+          const existingCache = videoFrameCacheRef.current.get(clip.url);
+          const shouldRefreshCache =
+            !existingCache ||
+            existingCache.width === 0 ||
+            isScrubbingRef.current ||
+            now - lastCachedAt > 200;
+
+          if (shouldRefreshCache) {
+            const { cw, ch } = getScaledCacheSize(sw, sh, 720);
+            let cached = existingCache;
+            if (!cached) {
+              cached = document.createElement('canvas');
+              videoFrameCacheRef.current.set(clip.url, cached);
+            }
+            if (cached.width !== cw || cached.height !== ch) {
+              cached.width = cw;
+              cached.height = ch;
+            }
+            const cCtx = cached.getContext('2d');
+            if (cCtx) {
+              try {
+                cCtx.drawImage(srcEl, 0, 0, cw, ch);
+                lastCacheUpdateAtByUrlRef.current.set(clip.url, now);
+              } catch {}
+            }
           }
         } else {
           const cached = videoFrameCacheRef.current.get(clip.url);
@@ -1017,10 +1005,10 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
           ? getOrLoadSource(chromaConfig.bgMediaUrl, chromaConfig.bgMediaType || 'photo')
           : null;
       drawChromaBackground(ctx, w, h, chromaConfig, tSec, customBg, drawSource);
-      ctx.filter = combinedFilter;
+      if (combinedFilter !== 'none') ctx.filter = combinedFilter;
       drawChromaKeyedSource(ctx, drawSource, sw, sh, w, h, chromaConfig);
     } else {
-      ctx.filter = combinedFilter;
+      if (combinedFilter !== 'none') ctx.filter = combinedFilter;
       const fitScale = Math.min(w / sw, h / sh);
       const drawW = sw * fitScale;
       const drawH = sh * fitScale;
@@ -1132,16 +1120,23 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
     const cardsDisabled = disabledCategoryIds.includes('card');
     const effectsDisabled = disabledCategoryIds.includes('effects');
 
-    // Compute CSS filter string (Base Filter + Inspector Adjustments)
+    // Compute CSS filter string (skip identity filter pass for raw/unadjusted video so GPU blit stays fast)
     const activeCssFilter = !filtersDisabled && activeFilter.id !== 'f_none' ? activeFilter.cssFilter : '';
-    const adjFilter = [
-      `brightness(${colorAdjust.brightness}%)`,
-      `contrast(${colorAdjust.contrast}%)`,
-      `saturate(${colorAdjust.saturation}%)`,
-      colorAdjust.warmth > 0 ? `sepia(${Math.min(60, colorAdjust.warmth)}%)` : '',
-    ]
-      .filter(Boolean)
-      .join(' ');
+    const hasAdj =
+      colorAdjust.brightness !== 100 ||
+      colorAdjust.contrast !== 100 ||
+      colorAdjust.saturation !== 100 ||
+      colorAdjust.warmth > 0;
+    const adjFilter = hasAdj
+      ? [
+          colorAdjust.brightness !== 100 ? `brightness(${colorAdjust.brightness}%)` : '',
+          colorAdjust.contrast !== 100 ? `contrast(${colorAdjust.contrast}%)` : '',
+          colorAdjust.saturation !== 100 ? `saturate(${colorAdjust.saturation}%)` : '',
+          colorAdjust.warmth > 0 ? `sepia(${Math.min(60, colorAdjust.warmth)}%)` : '',
+        ]
+          .filter(Boolean)
+          .join(' ')
+      : '';
     const combinedFilter = [activeCssFilter, adjFilter].filter(Boolean).join(' ') || 'none';
 
     const seamTrans = getActiveSeamTransitionAtTime(tSec, timelineClips);
@@ -1408,7 +1403,7 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
         bridge.updatePlayheadDomInstant(nextTime, bridge.totalDuration, bridge.pxPerSec);
         bridge.syncMediaAudioAndSeek(nextTime, finished);
 
-        if (finished || now - lastReactTimeSyncRef.current > 100) {
+        if (finished || now - lastReactTimeSyncRef.current > 150) {
           lastReactTimeSyncRef.current = now;
           setCurrentTimeSec(nextTime);
         }
@@ -1423,21 +1418,62 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
             scroller.scrollLeft = Math.max(0, playheadPx - scroller.clientWidth * 0.35);
           }
         }
+        needsRenderRef.current = true;
       }
 
-      const canvas = previewCanvasRef.current;
-      if (canvas) {
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          bridge.renderFrameToCanvas(ctx, canvas.width, canvas.height, currentTimeRef.current);
+      if (isPlayingRef.current || needsRenderRef.current) {
+        const canvas = previewCanvasRef.current;
+        if (canvas) {
+          if (!previewCtxRef.current || previewCtxRef.current.canvas !== canvas) {
+            const freshCtx = canvas.getContext('2d');
+            previewCtxRef.current = freshCtx ? { canvas, ctx: freshCtx } : null;
+          }
+          const ctx = previewCtxRef.current?.ctx;
+          if (ctx) {
+            needsRenderRef.current = false;
+            bridge.renderFrameToCanvas(ctx, canvas.width, canvas.height, currentTimeRef.current);
+          }
         }
       }
       rafId = window.requestAnimationFrame(tick);
     };
 
     rafId = window.requestAnimationFrame(tick);
-    return () => window.cancelAnimationFrame(rafId);
+    return () => {
+      window.cancelAnimationFrame(rafId);
+      bgSaveTimersRef.current.forEach((tId) => window.clearTimeout(tId));
+      bgSaveTimersRef.current = [];
+    };
   }, []);
+
+  // Repaint paused preview canvas only when editor visual state or timeline changes (zero idle GPU burn)
+  useEffect(() => {
+    needsRenderRef.current = true;
+  }, [
+    timelineClips,
+    activeFilter,
+    activeColorGradeId,
+    colorAdjust,
+    selectedAspectRatio,
+    activeMotionPreset,
+    showTitleOverlay,
+    movieTitle,
+    subtitle,
+    titleAnimType,
+    titleThemeType,
+    activeStickers,
+    vfxLayers,
+    activeEffect,
+    selectedTransitionObj,
+    activeTransitionSeamClipId,
+    activeTemplate,
+    trailerFxMode,
+    chromaConfig,
+    splitScreenConfig,
+    trailerCardLayers,
+    activeDialogue,
+    disabledCategoryIds,
+  ]);
 
   // Keep DOM playhead & preview synced when clips/duration change while paused (without re-seeking on zoom)
   useEffect(() => {
@@ -1446,6 +1482,7 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
       currentTimeRef.current = clamped;
       setCurrentTimeSec(clamped);
     }
+    needsRenderRef.current = true;
     updatePlayheadDomInstant(clamped, totalDuration, pxPerSec);
     if (!isPlayingRef.current && !isScrubbingRef.current && timelineClips.length > 0) {
       syncMediaAudioAndSeek(clamped, false);
@@ -1477,12 +1514,13 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
       shouldSeekStart = true;
     }
     isPlayingRef.current = nextPlaying;
+    needsRenderRef.current = true;
     setIsPlaying(nextPlaying);
     syncMediaAudioAndSeek(startAt, shouldSeekStart);
   };
 
-  // Upload multiple local device files (Video / Photo) with exact metadata duration extraction
-  const handleUploadMediaFiles = async (files: FileList | null) => {
+  // Upload multiple local device files (Video / Photo) with single-decoder metadata & deferred IndexedDB persistence
+  const handleUploadMediaFiles = (files: FileList | null) => {
     if (!files || files.length === 0) return;
     pushUndoCheckpoint();
 
@@ -1524,52 +1562,95 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
       };
       addedGallery.push(initialGalleryItem);
 
-      void saveLocalMediaRecord({
-        id: mediaId,
-        file,
-        name: initialClip.title,
-        mimeType: file.type,
-        mediaType: isVideo ? 'video' : 'photo',
-        duration: initialGalleryItem.duration,
+      const pendingMeta = {
         durationSec: initialClip.durationSec,
+        duration: initialGalleryItem.duration,
         thumbnailUrl: initialClip.thumbnailUrl,
-        createdAt: Date.now(),
-      });
+        persistedOnce: false,
+      };
+
+      // Defer heavy multi-MB Blob IndexedDB write so gallery selection renders on frame 0 instantaneously
+      const saveTimer = window.setTimeout(() => {
+        pendingMeta.persistedOnce = true;
+        void saveLocalMediaRecord({
+          id: mediaId,
+          file,
+          name: initialClip.title,
+          mimeType: file.type,
+          mediaType: isVideo ? 'video' : 'photo',
+          duration: pendingMeta.duration,
+          durationSec: pendingMeta.durationSec,
+          thumbnailUrl: pendingMeta.thumbnailUrl,
+          createdAt: Date.now(),
+        });
+      }, 900);
+      bgSaveTimersRef.current.push(saveTimer);
 
       if (isVideo) {
-        // Preload video element for canvas rendering & extract exact real duration
-        getOrLoadSource(blobUrl, 'video');
-        void extractVideoMetadataAndThumb(blobUrl).then(({ durationSec, thumbnailUrl }) => {
-          setTimelineClips((prev) =>
-            prev.map((c) =>
-              c.id === initialClip.id
-                ? {
-                    ...c,
-                    durationSec,
-                    thumbnailUrl: thumbnailUrl || c.thumbnailUrl,
-                    isProcessing: false,
-                  }
-                : c
-            )
-          );
-          setMediaGallery((prev) =>
-            prev.map((m) =>
-              m.id === mediaId
-                ? {
-                    ...m,
-                    durationSec,
-                    duration: formatDurationLabel(durationSec),
-                    thumbnailUrl: thumbnailUrl || m.thumbnailUrl,
-                  }
-                : m
-            )
-          );
-          void updateLocalMediaMetadata(mediaId, {
-            durationSec,
-            duration: formatDurationLabel(durationSec),
-            thumbnailUrl,
-          });
-        });
+        // Reuse the single cached <video> decoder to read exact duration & frame-0 thumbnail (no 2nd decoder lag)
+        const cachedEl = getOrLoadSource(blobUrl, 'video');
+        if (cachedEl instanceof HTMLVideoElement) {
+          let metaSettled = false;
+          const finishVideoMeta = () => {
+            if (metaSettled) return;
+            metaSettled = true;
+            window.clearTimeout(fallbackTimer);
+            const exactDur =
+              Number.isFinite(cachedEl.duration) && cachedEl.duration > 0.15
+                ? Number(cachedEl.duration.toFixed(2))
+                : 5;
+            const thumbUrl = captureVideoThumbnail(cachedEl);
+            const durLabel = formatDurationLabel(exactDur);
+            pendingMeta.durationSec = exactDur;
+            pendingMeta.duration = durLabel;
+            if (thumbUrl) pendingMeta.thumbnailUrl = thumbUrl;
+
+            needsRenderRef.current = true;
+            startTransition(() => {
+              setTimelineClips((prev) =>
+                prev.map((c) =>
+                  c.id === initialClip.id
+                    ? {
+                        ...c,
+                        durationSec: exactDur,
+                        thumbnailUrl: thumbUrl || c.thumbnailUrl,
+                        isProcessing: false,
+                      }
+                    : c
+                )
+              );
+              setMediaGallery((prev) =>
+                prev.map((m) =>
+                  m.id === mediaId
+                    ? {
+                        ...m,
+                        durationSec: exactDur,
+                        duration: durLabel,
+                        thumbnailUrl: thumbUrl || m.thumbnailUrl,
+                      }
+                    : m
+                )
+              );
+            });
+
+            if (pendingMeta.persistedOnce) {
+              void updateLocalMediaMetadata(mediaId, {
+                durationSec: exactDur,
+                duration: durLabel,
+                thumbnailUrl: thumbUrl,
+              });
+            }
+          };
+
+          const fallbackTimer = window.setTimeout(finishVideoMeta, 2500);
+
+          if (cachedEl.readyState >= 2) {
+            finishVideoMeta();
+          } else {
+            cachedEl.addEventListener('loadeddata', finishVideoMeta, { once: true });
+            cachedEl.addEventListener('error', finishVideoMeta, { once: true });
+          }
+        }
       } else {
         getOrLoadSource(blobUrl, 'photo');
       }
@@ -1581,6 +1662,7 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
       const nextTotalSec = prevTotalSec + addedTotalSec;
       const targetStartSec = timelineClips.length === 0 ? 0 : prevTotalSec;
 
+      needsRenderRef.current = true;
       setMediaGallery((prev) => [...addedGallery, ...prev]);
       setTimelineClips((prev) => {
         const next = [...prev, ...addedClips];
