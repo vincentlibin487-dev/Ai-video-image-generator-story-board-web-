@@ -8,9 +8,12 @@ import {
   Clock,
   Download,
   ExternalLink,
+  Eye,
+  EyeOff,
   Film,
   Globe,
   Heart,
+  KeyRound,
   Layers,
   Lock,
   LogOut,
@@ -28,10 +31,10 @@ import {
   Volume2,
 } from 'lucide-react';
 import {
-  getRedirectResult,
   onAuthStateChanged,
-  signInWithPopup,
-  signInWithRedirect,
+  sendEmailVerification,
+  sendPasswordResetEmail,
+  signInWithEmailAndPassword,
   signOut,
   type User,
 } from 'firebase/auth';
@@ -50,9 +53,9 @@ import {
   ADMIN_EMAIL,
   auth,
   db,
-  FIREBASE_AUTH_DOMAINS_URL,
+  FIREBASE_AUTH_PROVIDERS_URL,
+  FIREBASE_AUTH_USERS_URL,
   FIREBASE_QUOTA_UPGRADE_URL,
-  googleProvider,
   handleFirestoreError,
   OperationType,
 } from '../lib/firebase';
@@ -119,6 +122,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ lang, onClose })
   const [authReady, setAuthReady] = useState<boolean>(false);
   const [authBusy, setAuthBusy] = useState<boolean>(false);
   const [authError, setAuthError] = useState<string | null>(null);
+  const [passwordInput, setPasswordInput] = useState<string>('');
+  const [showPassword, setShowPassword] = useState<boolean>(false);
+  const [passwordUnlocked, setPasswordUnlocked] = useState<boolean>(false);
+  const [needsProviderSetup, setNeedsProviderSetup] = useState<boolean>(false);
+  const [resetBusy, setResetBusy] = useState<boolean>(false);
+  const [resetMessage, setResetMessage] = useState<string | null>(null);
+  const [verifyBusy, setVerifyBusy] = useState<boolean>(false);
+  const [verifyMessage, setVerifyMessage] = useState<string | null>(null);
 
   const [sessions, setSessions] = useState<VisitorSessionRecord[]>([]);
   const [userAccounts, setUserAccounts] = useState<UserAccountRecord[]>([]);
@@ -164,33 +175,20 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ lang, onClose })
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [visibleRows, setVisibleRows] = useState<number>(30);
 
-  const isAuthorizedAdmin = Boolean(
-    authUser &&
-      authUser.emailVerified &&
-      authUser.email?.toLowerCase() === ADMIN_EMAIL.toLowerCase()
+  const isAdminAccount = Boolean(
+    authUser && authUser.email?.toLowerCase() === ADMIN_EMAIL.toLowerCase()
   );
 
-  const [unauthorizedDomain, setUnauthorizedDomain] = useState<string | null>(null);
-  const isInIframe =
-    typeof window !== 'undefined' &&
-    (() => {
-      try {
-        return window.self !== window.top;
-      } catch {
-        return true;
-      }
-    })();
+  const isAuthorizedAdmin = Boolean(
+    passwordUnlocked && isAdminAccount && authUser?.emailVerified
+  );
+
+  const needsEmailVerification = Boolean(
+    passwordUnlocked && isAdminAccount && authUser && !authUser.emailVerified
+  );
 
   useEffect(() => {
     let active = true;
-    getRedirectResult(auth).catch((err: any) => {
-      if (!active || !err) return;
-      const code = String(err?.code || '');
-      if (code === 'auth/unauthorized-domain' && typeof window !== 'undefined') {
-        setUnauthorizedDomain(window.location.hostname);
-      }
-      setAuthError(err instanceof Error ? err.message : String(err));
-    });
     const unsub = onAuthStateChanged(auth, (user) => {
       if (!active) return;
       setAuthUser(user);
@@ -399,57 +397,131 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ lang, onClose })
     };
   }, [authReady, isAuthorizedAdmin]);
 
-  const formatAuthError = (err: any): string => {
-    const code = String(err?.code || '');
-    const host = typeof window !== 'undefined' ? window.location.hostname : '';
-    if (code === 'auth/unauthorized-domain') {
-      setUnauthorizedDomain(host);
-      return isMl
-        ? `ഈ വെബ്സൈറ്റ് ഡൊമെയ്ൻ (${host}) Firebase-ൽ അനുവദിച്ചിട്ടില്ല (auth/unauthorized-domain). Firebase Console -> Authentication -> Settings -> Authorized domains-ൽ ഈ ഡൊമെയ്ൻ ചേർക്കുക.`
-        : `Domain "${host}" is not in Firebase Authorized Domains. Add it under Firebase Console -> Authentication -> Settings -> Authorized domains.`;
+  const handlePasswordSignIn = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!passwordInput) {
+      setAuthError(isMl ? 'ദയവായി അഡ്മിൻ പാസ്സ്‌വേർഡ് നൽകുക.' : 'Please enter the admin password.');
+      return;
     }
-    if (code === 'auth/popup-blocked') {
-      return isMl
-        ? 'ബ്രൗസർ ലോഗിൻ പോപ്പ്-അപ്പ് തടഞ്ഞു. പോപ്പ്-അപ്പ് അനുവദിക്കുകയോ അല്ലെങ്കിൽ താഴെയുള്ള "പുതിയ ടാബിൽ തുറക്കുക" ബട്ടൺ ഉപയോഗിക്കുകയോ ചെയ്യുക.'
-        : 'Sign-in popup was blocked by your browser. Allow popups or open the Admin Panel in a new tab.';
-    }
-    if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') {
-      return isMl
-        ? 'Google ലോഗിൻ വിൻഡോ പൂർത്തിയാക്കുന്നതിന് മുമ്പ് അടച്ചുപോയി. വീണ്ടും ശ്രമിക്കുക.'
-        : 'Google sign-in window was closed before completing login. Please try again.';
-    }
-    return err instanceof Error ? err.message : 'Google Sign-In failed';
-  };
 
-  const handleGoogleSignIn = async () => {
     setAuthBusy(true);
     setAuthError(null);
-    setUnauthorizedDomain(null);
+    setResetMessage(null);
+    setVerifyMessage(null);
+    setNeedsProviderSetup(false);
+
     try {
-      await signInWithPopup(auth, googleProvider);
+      const cred = await signInWithEmailAndPassword(auth, ADMIN_EMAIL, passwordInput);
+      setAuthUser(cred.user);
+      setPasswordUnlocked(true);
+      setPasswordInput('');
     } catch (err: any) {
       const code = String(err?.code || '');
-      if (
-        code === 'auth/popup-blocked' ||
-        code === 'auth/operation-not-supported-in-this-environment'
+      if (code === 'auth/operation-not-allowed') {
+        setNeedsProviderSetup(true);
+        setAuthError(
+          isMl
+            ? 'Firebase Console-ൽ Email/Password സൈൻ-ഇൻ ഇതുവരെ ഓൺ ആക്കിയിട്ടില്ല. താഴെ കാണുന്ന സ്റ്റെപ്പുകൾ വഴി അത് ഓൺ ആക്കുക.'
+            : 'Email/Password sign-in is not enabled in Firebase Console yet. Enable it using the steps below.'
+        );
+      } else if (
+        code === 'auth/invalid-credential' ||
+        code === 'auth/wrong-password' ||
+        code === 'auth/user-not-found'
       ) {
-        try {
-          await signInWithRedirect(auth, googleProvider);
-          return;
-        } catch (redirectErr) {
-          setAuthError(formatAuthError(redirectErr));
-        }
+        setNeedsProviderSetup(true);
+        setAuthError(
+          isMl
+            ? 'നൽകിയ പാസ്സ്‌വേർഡ് തെറ്റാണ്, അല്ലെങ്കിൽ Firebase Authentication-ൽ അഡ്മിൻ പാസ്സ്‌വേർഡ് ഇതുവരെ സെറ്റ് ചെയ്തിട്ടില്ല.'
+            : 'Incorrect password, or the admin password has not been set in Firebase Authentication yet.'
+        );
+      } else if (code === 'auth/too-many-requests') {
+        setAuthError(
+          isMl
+            ? 'നിരവധി തവണ തെറ്റായ പാസ്സ്‌വേർഡ് നൽകിയതിനാൽ താൽക്കാലികമായി തടഞ്ഞിരിക്കുന്നു. അല്പസമയത്തിന് ശേഷം വീണ്ടും ശ്രമിക്കുക.'
+            : 'Too many failed attempts. Please wait a few minutes and try again.'
+        );
       } else {
-        setAuthError(formatAuthError(err));
+        setAuthError(err instanceof Error ? err.message : 'Password sign-in failed');
       }
     } finally {
       setAuthBusy(false);
     }
   };
 
+  const handleSendPasswordSetupEmail = async () => {
+    setResetBusy(true);
+    setResetMessage(null);
+    setAuthError(null);
+    try {
+      await sendPasswordResetEmail(auth, ADMIN_EMAIL);
+      setResetMessage(
+        isMl
+          ? `അഡ്മിൻ ഇമെയിലിലേക്ക് (${ADMIN_EMAIL}) പാസ്സ്‌വേർഡ് സെറ്റ്/റീസെറ്റ് ലിങ്ക് അയച്ചിട്ടുണ്ട്. ആ ലിങ്ക് തുറന്ന് നിങ്ങളുടെ പാസ്സ്‌വേർഡ് സെറ്റ് ചെയ്ത ശേഷം ഇവിടെ പാസ്സ്‌വേർഡ് അടിച്ചു കയറുക.`
+          : `Password setup/reset link sent to ${ADMIN_EMAIL}. Open the link to set your password, then enter it here to sign in.`
+      );
+    } catch (err: any) {
+      const code = String(err?.code || '');
+      if (code === 'auth/operation-not-allowed') {
+        setNeedsProviderSetup(true);
+        setAuthError(
+          isMl
+            ? 'ആദ്യം Firebase Console -> Authentication -> Sign-in method-ൽ Email/Password ഓൺ ആക്കുക.'
+            : 'Please enable Email/Password first in Firebase Console -> Authentication -> Sign-in method.'
+        );
+      } else {
+        setAuthError(err instanceof Error ? err.message : 'Could not send password setup email.');
+      }
+    } finally {
+      setResetBusy(false);
+    }
+  };
+
+  const handleSendVerificationEmail = async () => {
+    if (!auth.currentUser) return;
+    setVerifyBusy(true);
+    setVerifyMessage(null);
+    try {
+      await sendEmailVerification(auth.currentUser);
+      setVerifyMessage(
+        isMl
+          ? 'വേരിഫിക്കേഷൻ ലിങ്ക് ഇമെയിലിലേക്ക് അയച്ചു. ലിങ്ക് ക്ലിക്ക് ചെയ്ത ശേഷം "വേരിഫിക്കേഷൻ പരിശോധിക്കുക" ബട്ടൺ അമർത്തുക.'
+          : 'Verification link sent. Open the email link, then click "Check Verification".'
+      );
+    } catch (err) {
+      setVerifyMessage(err instanceof Error ? err.message : 'Failed to send verification email');
+    } finally {
+      setVerifyBusy(false);
+    }
+  };
+
+  const handleRefreshVerificationStatus = async () => {
+    if (!auth.currentUser) return;
+    setVerifyBusy(true);
+    setVerifyMessage(null);
+    try {
+      await auth.currentUser.reload();
+      await auth.currentUser.getIdToken(true);
+      setAuthUser(auth.currentUser);
+      if (!auth.currentUser.emailVerified) {
+        setVerifyMessage(
+          isMl
+            ? 'ഇമെയിൽ ഇതുവരെ വേരിഫൈ ആയിട്ടില്ല. ഇൻബോക്സിലെ ലിങ്ക് ക്ലിക്ക് ചെയ്ത ശേഷം വീണ്ടും ശ്രമിക്കുക.'
+            : 'Email is not verified yet. Click the link in your inbox, then try again.'
+        );
+      }
+    } catch (err) {
+      setVerifyMessage(err instanceof Error ? err.message : 'Could not refresh status');
+    } finally {
+      setVerifyBusy(false);
+    }
+  };
+
   const handleSignOut = async () => {
     setAuthBusy(true);
     setAuthError(null);
+    setPasswordInput('');
+    setPasswordUnlocked(false);
     try {
       await signOut(auth);
     } catch (err) {
@@ -1201,103 +1273,195 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ lang, onClose })
         </div>
       )}
 
-      {/* Auth Gate 2: Not Signed In */}
-      {authReady && !authUser && (
+      {/* Auth Gate 2: Admin Password Sign-In (No Gmail login screen) */}
+      {authReady && !isAuthorizedAdmin && !needsEmailVerification && (
         <div className="bg-[#11131f] border border-zinc-800 rounded-2xl p-6 sm:p-10 max-w-xl mx-auto text-center space-y-5">
           <div className="w-12 h-12 rounded-2xl bg-amber-500/15 border border-amber-500/30 text-amber-400 flex items-center justify-center mx-auto">
-            <Lock className="w-6 h-6" />
+            <KeyRound className="w-6 h-6" />
           </div>
           <div className="space-y-2">
             <h3 className="text-base sm:text-lg font-extrabold text-white">
-              {isMl ? 'അഡ്മിൻ ലോഗിൻ ആവശ്യമാണ്' : 'Administrator Sign-In Required'}
+              {isMl ? 'അഡ്മിൻ പാസ്സ്‌വേർഡ് നൽകുക' : 'Enter Admin Password'}
             </h3>
             <p className="text-xs sm:text-sm text-zinc-400 leading-relaxed">
               {isMl
-                ? 'സാധാരണ ഉപയോക്താക്കൾക്ക് ലോഗിൻ ഇല്ലാതെ തന്നെ വെബ്സൈറ്റ് ഉപയോഗിക്കാം. എന്നാൽ സന്ദർശകരുടെ കണക്കുകൾ കാണാൻ അഡ്മിൻ Google അക്കൗണ്ട് വഴി ലോഗിൻ ചെയ്യുക.'
-                : 'Regular visitors can use the website completely without logging in. Only the authorized administrator can sign in with Google to view visitor analytics.'}
+                ? 'ജിമെയിൽ ലോഗിൻ ഇല്ലാതെ അഡ്മിൻ പാസ്സ്‌വേർഡ് നൽകി പാനലിലേക്ക് കയറാം.'
+                : 'Enter your administrator password to unlock the analytics dashboard.'}
             </p>
           </div>
 
           {authError && (
             <div className="p-3.5 rounded-xl bg-red-500/10 border border-red-500/30 text-xs text-red-300 text-left space-y-2">
               <p className="leading-relaxed">{authError}</p>
-              {unauthorizedDomain && (
-                <div className="pt-1 flex flex-wrap items-center gap-2">
-                  <code className="px-2 py-1 rounded bg-black/50 text-amber-300 font-mono">
-                    {unauthorizedDomain}
-                  </code>
-                  <a
-                    href={FIREBASE_AUTH_DOMAINS_URL}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 underline font-bold text-amber-400 hover:text-amber-300"
-                  >
-                    <span>{isMl ? 'Firebase Authorized Domains തുറക്കുക' : 'Open Firebase Auth Domains'}</span>
-                    <ExternalLink className="w-3 h-3" />
-                  </a>
-                </div>
-              )}
             </div>
           )}
 
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-2.5">
+          {resetMessage && (
+            <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-xs text-emerald-300 text-left leading-relaxed">
+              {resetMessage}
+            </div>
+          )}
+
+          <form onSubmit={handlePasswordSignIn} className="space-y-3 text-left max-w-sm mx-auto">
+            <label className="block space-y-1.5">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-400">
+                {isMl ? 'അഡ്മിൻ പാസ്സ്‌വേർഡ്' : 'Admin Password'}
+              </span>
+              <div className="relative">
+                <Lock className="w-4 h-4 text-zinc-500 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  value={passwordInput}
+                  onChange={(e) => setPasswordInput(e.target.value)}
+                  autoComplete="current-password"
+                  autoFocus
+                  placeholder={isMl ? 'പാസ്സ്‌വേർഡ് ടൈപ്പ് ചെയ്യുക...' : 'Enter password...'}
+                  className="w-full min-h-[46px] pl-10 pr-11 py-2.5 rounded-xl bg-zinc-950 border border-zinc-700 focus:border-amber-500 text-sm text-white placeholder-zinc-500 focus:outline-none"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((prev) => !prev)}
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1.5 rounded-lg text-zinc-400 hover:text-white cursor-pointer"
+                >
+                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+            </label>
+
             <button
-              type="button"
-              onClick={handleGoogleSignIn}
+              type="submit"
               disabled={authBusy}
-              className="w-full sm:w-auto min-h-[44px] px-6 py-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-extrabold text-xs sm:text-sm inline-flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+              className="w-full min-h-[46px] px-6 py-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-extrabold text-xs sm:text-sm inline-flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
             >
               <ShieldCheck className="w-4 h-4" />
               <span>
                 {authBusy
                   ? isMl
-                    ? 'ലോഗിൻ ചെയ്യുന്നു...'
-                    : 'Signing in...'
+                    ? 'പരിശോധിക്കുന്നു...'
+                    : 'Unlocking...'
                   : isMl
-                  ? 'Google ഉപയോഗിച്ച് അഡ്മിൻ ലോഗിൻ ചെയ്യുക'
-                  : 'Sign in with Google (Admin)'}
+                  ? 'അഡ്മിൻ പാനലിൽ കയറുക'
+                  : 'Unlock Admin Panel'}
               </span>
             </button>
+          </form>
 
-            {isInIframe && typeof window !== 'undefined' && (
-              <a
-                href={window.location.href}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="w-full sm:w-auto min-h-[44px] px-4 py-3 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-zinc-200 text-xs font-bold inline-flex items-center justify-center gap-1.5"
-              >
-                <ExternalLink className="w-3.5 h-3.5 text-amber-400" />
-                <span>{isMl ? 'പുതിയ ടാബിൽ തുറക്കുക' : 'Open in New Tab'}</span>
-              </a>
+          <div className="pt-2 border-t border-zinc-800/80 max-w-md mx-auto text-left space-y-2.5">
+            <button
+              type="button"
+              onClick={() => setNeedsProviderSetup((prev) => !prev)}
+              className="text-[11px] font-bold text-amber-400 hover:text-amber-300 underline cursor-pointer"
+            >
+              {isMl
+                ? 'ആദ്യ തവണയാണോ? പാസ്സ്‌വേർഡ് സെറ്റ് ചെയ്യുന്ന വിധം'
+                : 'First time? How to enable & set the admin password'}
+            </button>
+
+            {needsProviderSetup && (
+              <div className="p-3.5 rounded-xl bg-zinc-950/80 border border-zinc-800 text-[11px] text-zinc-300 space-y-2 leading-relaxed">
+                <p className="font-bold text-white">
+                  {isMl ? '1-മിനിറ്റ് Firebase സെറ്റപ്പ്:' : '1-Minute Firebase Setup:'}
+                </p>
+                <ol className="list-decimal list-inside space-y-1 text-zinc-400">
+                  <li>
+                    {isMl
+                      ? 'Firebase Console -> Authentication -> Sign-in method തുറന്ന് "Email/Password" Enable ചെയ്യുക.'
+                      : 'Open Firebase Console -> Authentication -> Sign-in method and enable "Email/Password".'}
+                  </li>
+                  <li>
+                    {isMl
+                      ? 'താഴെയുള്ള ബട്ടൺ അമർത്തി പാസ്സ്‌വേർഡ് സെറ്റ് ലിങ്ക് അയയ്ക്കുകയോ, Users-ൽ അഡ്മിൻ യൂസർക്ക് പാസ്സ്‌വേർഡ് നൽകുകയോ ചെയ്യുക.'
+                      : 'Click the button below to send a password setup email, or set the password in Authentication -> Users.'}
+                  </li>
+                </ol>
+                <div className="flex flex-wrap items-center gap-2 pt-1">
+                  <a
+                    href={FIREBASE_AUTH_PROVIDERS_URL}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-amber-400 font-bold"
+                  >
+                    <span>{isMl ? 'Sign-in Method തുറക്കുക' : 'Open Sign-in Methods'}</span>
+                    <ExternalLink className="w-3 h-3" />
+                  </a>
+                  <a
+                    href={FIREBASE_AUTH_USERS_URL}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-zinc-200 font-bold"
+                  >
+                    <span>{isMl ? 'Users തുറക്കുക' : 'Open Users'}</span>
+                    <ExternalLink className="w-3 h-3" />
+                  </a>
+                  <button
+                    type="button"
+                    onClick={handleSendPasswordSetupEmail}
+                    disabled={resetBusy}
+                    className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-amber-300 font-bold cursor-pointer disabled:opacity-50"
+                  >
+                    <span>
+                      {resetBusy
+                        ? isMl
+                          ? 'അയക്കുന്നു...'
+                          : 'Sending...'
+                        : isMl
+                        ? 'പാസ്സ്‌വേർഡ് സെറ്റ് ലിങ്ക് അയക്കുക'
+                        : 'Send Password Setup Email'}
+                    </span>
+                  </button>
+                </div>
+              </div>
             )}
           </div>
         </div>
       )}
 
-      {/* Auth Gate 3: Signed In with Wrong Account */}
-      {authReady && authUser && !isAuthorizedAdmin && (
-        <div className="bg-[#11131f] border border-red-500/30 rounded-2xl p-6 sm:p-10 max-w-xl mx-auto text-center space-y-5">
-          <div className="w-12 h-12 rounded-2xl bg-red-500/15 border border-red-500/30 text-red-400 flex items-center justify-center mx-auto">
+      {/* Auth Gate 3: Password OK, pending one-time email verification */}
+      {authReady && needsEmailVerification && (
+        <div className="bg-[#11131f] border border-amber-500/30 rounded-2xl p-6 sm:p-10 max-w-xl mx-auto text-center space-y-5">
+          <div className="w-12 h-12 rounded-2xl bg-amber-500/15 border border-amber-500/30 text-amber-400 flex items-center justify-center mx-auto">
             <ShieldAlert className="w-6 h-6" />
           </div>
           <div className="space-y-2">
             <h3 className="text-base sm:text-lg font-extrabold text-white">
-              {isMl ? 'അനുമതിയില്ലാത്ത അക്കൗണ്ട്' : 'Unauthorized Account'}
+              {isMl ? 'ഒറ്റത്തവണ ഇമെയിൽ വേരിഫിക്കേഷൻ ആവശ്യമാണ്' : 'One-Time Verification Required'}
             </h3>
             <p className="text-xs sm:text-sm text-zinc-400 leading-relaxed">
               {isMl
-                ? `നിങ്ങൾ ഇപ്പോൾ ${authUser.email || 'Unknown'} എന്ന അക്കൗണ്ടിലാണ് ലോഗിൻ ചെയ്തിരിക്കുന്നത്. അഡ്മിൻ പാനൽ തുറക്കാൻ ${ADMIN_EMAIL} എന്ന അക്കൗണ്ട് ഉപയോഗിക്കുക.`
-                : `Signed in as ${authUser.email || 'unknown'}. Please sign in with the authorized admin account (${ADMIN_EMAIL}) to access analytics.`}
+                ? 'പാസ്സ്‌വേർഡ് ശരിയാണ്. എന്നാൽ Firebase സുരക്ഷാ നിയമങ്ങൾ ഡാറ്റ അനുവദിക്കാൻ അഡ്മിൻ അക്കൗണ്ട് ഒരിക്കൽ വേരിഫൈ ചെയ്യേണ്ടതുണ്ട്.'
+                : 'Your password matched, and Firebase security rules require verifying the admin account once before reading analytics.'}
             </p>
           </div>
+          {verifyMessage && (
+            <div className="p-3 rounded-xl bg-zinc-950 border border-zinc-800 text-xs text-amber-300">
+              {verifyMessage}
+            </div>
+          )}
           <div className="flex flex-wrap items-center justify-center gap-2.5">
+            <button
+              type="button"
+              onClick={handleSendVerificationEmail}
+              disabled={verifyBusy}
+              className="min-h-[44px] px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-black text-xs font-extrabold cursor-pointer disabled:opacity-50"
+            >
+              {isMl ? 'വേരിഫിക്കേഷൻ ലിങ്ക് അയക്കുക' : 'Send Verification Link'}
+            </button>
+            <button
+              type="button"
+              onClick={handleRefreshVerificationStatus}
+              disabled={verifyBusy}
+              className="min-h-[44px] px-5 py-2.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-zinc-200 text-xs font-bold cursor-pointer disabled:opacity-50"
+            >
+              {isMl ? 'വേരിഫിക്കേഷൻ പരിശോധിക്കുക' : 'Check Verification'}
+            </button>
             <button
               type="button"
               onClick={handleSignOut}
               disabled={authBusy}
-              className="min-h-[44px] px-5 py-2.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-zinc-200 text-xs font-bold cursor-pointer"
+              className="min-h-[44px] px-4 py-2.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 text-xs font-bold cursor-pointer"
             >
-              {isMl ? 'മറ്റൊരു അക്കൗണ്ടിലേക്ക് മാറുക' : 'Switch Google Account'}
+              {isMl ? 'തിരികെ' : 'Back'}
             </button>
           </div>
         </div>
@@ -1362,7 +1526,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ lang, onClose })
 
             <div className="flex items-center gap-2 text-xs text-zinc-400 font-mono tabular-nums">
               <UserCheck className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-              <span>{authUser?.email}</span>
+              <span>{isMl ? 'അഡ്മിൻ (പാസ്സ്‌വേർഡ്)' : 'Admin Unlocked'}</span>
               <span className="text-zinc-600">•</span>
               <span>
                 {isMl ? 'കഴിഞ്ഞ 15 മിനിറ്റിൽ:' : 'Active (15m):'}{' '}

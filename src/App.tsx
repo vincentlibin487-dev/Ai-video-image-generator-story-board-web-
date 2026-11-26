@@ -1146,8 +1146,29 @@ export default function App() {
 
   const totalAngleCountDisplay = storyAngles.length > 0 ? storyAngles.length : 14;
 
+  // Standalone dedicated Admin Panel view (no website header, login bar, or bottom nav tabs)
+  if (showAdminPanel) {
+    return (
+      <div className="min-h-screen bg-[#090a0f] text-zinc-100 flex flex-col font-sans selection:bg-amber-500 selection:text-black max-w-full overflow-x-clip touch-pan-y">
+        <AdminDashboard
+          lang={lang}
+          onClose={() => {
+            setShowAdminPanel(false);
+            if (typeof window !== 'undefined') {
+              const url = new URL(window.location.href);
+              url.searchParams.delete('admin');
+              if (url.hash.toLowerCase().includes('admin')) url.hash = '';
+              if (url.pathname.toLowerCase().replace(/\/+$/, '') === '/admin') url.pathname = '/';
+              window.history.replaceState(null, '', url.pathname + url.search + url.hash);
+            }
+          }}
+        />
+      </div>
+    );
+  }
+
   // Mandatory First-Open Terms & Conditions Gate (blocks until user taps I Agree / Continue)
-  if (!showAdminPanel && !termsAccepted) {
+  if (!termsAccepted) {
     return (
       <div className="min-h-screen bg-[#07090e] text-zinc-100">
         <TermsAndConditionsModal
@@ -1343,24 +1364,8 @@ export default function App() {
         </div>
       </header>
 
-      {showAdminPanel ? (
-        <AdminDashboard
-          lang={lang}
-          onClose={() => {
-            setShowAdminPanel(false);
-            if (typeof window !== 'undefined') {
-              const url = new URL(window.location.href);
-              url.searchParams.delete('admin');
-              if (url.hash.toLowerCase().includes('admin')) url.hash = '';
-              if (url.pathname.toLowerCase().replace(/\/+$/, '') === '/admin') url.pathname = '/';
-              window.history.replaceState(null, '', url.pathname + url.search + url.hash);
-            }
-          }}
-        />
-      ) : (
-        <>
-          {/* Main Container (Safe bottom clearance above fixed 4-tab bottom nav on both mobile & desktop) */}
-          <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-6 pb-24 overflow-x-clip touch-pan-y">
+      {/* Main Container (Safe bottom clearance above fixed 4-tab bottom nav on both mobile & desktop) */}
+      <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-6 pb-24 overflow-x-clip touch-pan-y">
             {/* Top In-Flow Banner placed cleanly below Language Bar & Header */}
             <TopBannerAd />
 
@@ -3010,8 +3015,6 @@ ${imgPromptText}`;
         onAccept={() => setShowTermsReviewModal(false)}
         onCloseReview={() => setShowTermsReviewModal(false)}
       />
-        </>
-      )}
 
       {/* Unified 4-Tab Bottom App Navigation Bar (Mobile & Desktop with Cinematic Photo Thumbnails) */}
       <nav className="fixed bottom-0 inset-x-0 z-40 bg-[#0d0f17]/95 backdrop-blur-lg border-t border-zinc-800 px-2.5 py-2 shadow-[0_-8px_30px_rgba(0,0,0,0.7)]">
