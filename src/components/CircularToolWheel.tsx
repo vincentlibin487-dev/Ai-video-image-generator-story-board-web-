@@ -222,7 +222,7 @@ interface CircularToolWheelProps {
   compact?: boolean;
 }
 
-export const CircularToolWheel: React.FC<CircularToolWheelProps> = ({
+export const CircularToolWheel: React.FC<CircularToolWheelProps> = React.memo(({
   categories = WHEEL_CATEGORIES,
   activeCategoryId,
   disabledCategoryIds = [],
@@ -476,12 +476,6 @@ export const CircularToolWheel: React.FC<CircularToolWheelProps> = ({
               const IconComp = cat.icon;
 
               const handleNodeClick = () => {
-                // If this category is already selected and has a toggle/mute handler,
-                // tapping it again toggles/mutes/disables it cleanly instead of staying stuck active.
-                if (isSelected && onToggleCategoryMute && cat.id !== 'video') {
-                  onToggleCategoryMute(cat);
-                  return;
-                }
                 onSelectCategory(cat, true, true);
               };
 
@@ -520,9 +514,9 @@ export const CircularToolWheel: React.FC<CircularToolWheelProps> = ({
                   }`}
                   title={
                     isMutedOrOff
-                      ? `${cat.label} (Muted / Off — Tap to turn on)`
-                      : isSelected && cat.id !== 'video'
-                      ? `${cat.label} (Selected — Tap again to disable/mute)`
+                      ? `${cat.label} (Muted / Off — Tap to open)`
+                      : isSelected && isToolDrawerOpen
+                      ? `${cat.label} (Open — Tap again to close)`
                       : `T${cat.trackNumber} · ${cat.label}`
                   }
                 >
@@ -574,4 +568,5 @@ export const CircularToolWheel: React.FC<CircularToolWheelProps> = ({
       </div>
     </div>
   );
-};
+});
+

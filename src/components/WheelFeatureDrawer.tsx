@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   ChevronLeft,
   Search,
@@ -16,8 +16,20 @@ import type { WheelCategoryItem } from './CircularToolWheel';
 import {
   FILTERS_LIST,
   FILTER_CATEGORIES,
-  AUDIO_LIST,
-  AUDIO_CATEGORIES,
+  SFX_FOLEY_LIST,
+  SFX_FOLEY_CATEGORIES,
+  MUSIC_BGM_LIST,
+  MUSIC_BGM_CATEGORIES,
+  MEDIA_MOTION_LIST,
+  MEDIA_MOTION_CATEGORIES,
+  DIALOGUE_PRESETS_LIST,
+  DIALOGUE_PRESET_CATEGORIES,
+  TRAILER_CARDS_LIST,
+  TRAILER_CARD_CATEGORIES,
+  CHROMA_BACKGROUNDS_LIST,
+  CHROMA_BG_CATEGORIES,
+  SPLIT_PRESETS_LIST,
+  SPLIT_PRESET_CATEGORIES,
   TRANSITIONS_LIST,
   TRANSITION_CATEGORIES,
   EFFECTS_LIST,
@@ -42,6 +54,11 @@ import {
   type StickerItem,
   type ColorGradePreset,
   type CinemaVfxItem,
+  type MediaMotionPreset,
+  type DialoguePresetItem,
+  type TrailerCardPresetItem,
+  type ChromaPresetItem,
+  type SplitLayoutPresetItem,
 } from './videoStudioLibrary';
 import {
   TRAILER_CARD_ANIMATIONS,
@@ -66,10 +83,12 @@ export interface WheelFeatureDrawerProps {
   onBack: () => void;
   onToggleMuteOrOff: () => void;
 
-  // Media
+  // Media & Clip Motion / Speed
   mediaGallery: MediaItem[];
+  activeMotionPresetId: string | null;
   onTriggerUploadMedia: () => void;
   onAddMediaToTimeline: (item: MediaItem) => void;
+  onApplyMediaMotionPreset: (preset: MediaMotionPreset | null) => void;
 
   // Filters & Color Grading
   activeFilter: FilterItem;
@@ -87,10 +106,12 @@ export interface WheelFeatureDrawerProps {
   dialogueSpeaker: string;
   dialogueText: string;
   dialogueDur: number;
+  activeDialoguePresetId: string | null;
   onChangeDialogueSpeaker: (v: string) => void;
   onChangeDialogueText: (v: string) => void;
   onChangeDialogueDur: (v: number) => void;
   onApplyDialogue: () => void;
+  onApplyDialoguePreset: (preset: DialoguePresetItem) => void;
 
   // Titles
   showTitleOverlay: boolean;
@@ -107,32 +128,38 @@ export interface WheelFeatureDrawerProps {
   onAddSticker: (sticker: StickerItem) => void;
   onAddVfx: (vfx: CinemaVfxItem) => void;
 
-  // Trailer Card
+  // Trailer Card & Frames
   draftCardTitle: string;
   draftCardSubtitle: string;
   draftCardTheme: TrailerCardTheme;
   draftCardAnim: TrailerCardAnimation;
+  activeCardPresetId: string | null;
   onChangeDraftCardTitle: (v: string) => void;
   onChangeDraftCardSubtitle: (v: string) => void;
   onChangeDraftCardTheme: (v: TrailerCardTheme) => void;
   onChangeDraftCardAnim: (v: TrailerCardAnimation) => void;
   onPickTrailerCardMedia: () => void;
   onAddTrailerCard: () => void;
+  onApplyTrailerCardPreset: (preset: TrailerCardPresetItem) => void;
 
-  // Chroma Key
+  // Chroma Key & Backgrounds
   chromaConfig: ChromaKeyConfig;
+  activeChromaPresetId: string | null;
   onUpdateChromaConfig: (updater: (prev: ChromaKeyConfig) => ChromaKeyConfig) => void;
   onPickChromaBg: () => void;
+  onApplyChromaPreset: (preset: ChromaPresetItem) => void;
 
   // Split Screen
   splitScreenConfig: SplitScreenConfig;
+  activeSplitPresetId: string | null;
   onUpdateSplitScreenConfig: (updater: (prev: SplitScreenConfig) => SplitScreenConfig) => void;
   onPickSplitSide: (side: 'left' | 'right') => void;
   onAutoJoinSplitClips: () => void;
+  onApplySplitPreset: (preset: SplitLayoutPresetItem) => void;
 
   // Transitions, Effects, Templates
   selectedTransitionId: string | null;
-  onSelectTransition: (tr: TransitionItem) => void;
+  onSelectTransition: (tr: TransitionItem | null) => void;
   activeEffect: EffectItem | null;
   onSelectEffect: (fx: EffectItem | null) => void;
   activeTemplateId: string | null;
@@ -140,29 +167,38 @@ export interface WheelFeatureDrawerProps {
   onApplyTrailerPack: (packId: string) => void;
 }
 
-export const WheelFeatureDrawer: React.FC<WheelFeatureDrawerProps> = (props) => {
+const PAGE_SIZE = 60;
+
+export const WheelFeatureDrawer: React.FC<WheelFeatureDrawerProps> = React.memo((props) => {
   const { category, isMutedOrOff, onBack, onToggleMuteOrOff } = props;
   const [subCat, setSubCat] = useState<string>('All');
   const [search, setSearch] = useState<string>('');
-  const [renderLimit, setRenderLimit] = useState<number>(80);
+  const [renderLimit, setRenderLimit] = useState<number>(PAGE_SIZE);
   const [filterMode, setFilterMode] = useState<'filters' | 'grading'>('filters');
+
+  // Reset pagination & search cleanly whenever switching between wheel categories
+  useEffect(() => {
+    setSubCat('All');
+    setSearch('');
+    setRenderLimit(PAGE_SIZE);
+  }, [category.id]);
 
   const q = search.trim().toLowerCase();
 
-  // Compute left-column sub-category tabs for current feature
   const subCategories = useMemo(() => {
     switch (category.id) {
       case 'video':
-        return ['All', 'Video', 'Photo'];
+        return ['All', 'Gallery', ...MEDIA_MOTION_CATEGORIES];
+      case 'audio':
+        return ['All', 'My Audio', ...SFX_FOLEY_CATEGORIES];
+      case 'music':
+        return ['All', 'My Audio', ...MUSIC_BGM_CATEGORIES];
       case 'filters':
         return filterMode === 'filters'
           ? ['All', ...FILTER_CATEGORIES]
           : ['All', ...COLOR_GRADE_CATEGORIES];
-      case 'audio':
-      case 'music':
-        return ['All', 'My Audio', ...AUDIO_CATEGORIES];
       case 'dialogues':
-        return ['Write Dialogue', 'Voice Presets'];
+        return ['All', 'Custom Line', ...DIALOGUE_PRESET_CATEGORIES];
       case 'titles':
         return ['All', 'Custom Text', 'Animation', ...TITLE_CATEGORIES];
       case 'stickers':
@@ -170,11 +206,11 @@ export const WheelFeatureDrawer: React.FC<WheelFeatureDrawerProps> = (props) => 
       case 'vfx':
         return ['All', ...VFX_CATEGORIES];
       case 'card':
-        return ['Design Card', 'Themes', 'Motion'];
+        return ['All', 'Custom Card', ...TRAILER_CARD_CATEGORIES];
       case 'chroma':
-        return ['Key Color', 'Background', 'Fine Tune'];
+        return ['All', 'Custom Key', ...CHROMA_BG_CATEGORIES];
       case 'split':
-        return ['Layouts', 'Pick Clips', 'Divider'];
+        return ['All', 'Pick Clips', 'Divider', ...SPLIT_PRESET_CATEGORIES];
       case 'transitions':
         return ['All', ...TRANSITION_CATEGORIES];
       case 'effects':
@@ -189,13 +225,16 @@ export const WheelFeatureDrawer: React.FC<WheelFeatureDrawerProps> = (props) => 
   const activeSub = subCategories.includes(subCat) ? subCat : subCategories[0];
 
   const filteredMedia = useMemo(() => {
-    return props.mediaGallery.filter((m) => {
-      if (activeSub === 'Video' && m.type !== 'video') return false;
-      if (activeSub === 'Photo' && m.type !== 'photo') return false;
-      if (q && !m.title.toLowerCase().includes(q)) return false;
+    return props.mediaGallery.filter((m) => !q || m.title.toLowerCase().includes(q));
+  }, [props.mediaGallery, q]);
+
+  const filteredMediaMotions = useMemo(() => {
+    return MEDIA_MOTION_LIST.filter((m) => {
+      if (activeSub !== 'All' && activeSub !== 'Gallery' && m.category !== activeSub) return false;
+      if (q && !m.name.toLowerCase().includes(q) && !m.category.toLowerCase().includes(q)) return false;
       return true;
     });
-  }, [props.mediaGallery, activeSub, q]);
+  }, [activeSub, q]);
 
   const filteredFilters = useMemo(() => {
     return FILTERS_LIST.filter((f) => {
@@ -214,7 +253,8 @@ export const WheelFeatureDrawer: React.FC<WheelFeatureDrawerProps> = (props) => 
   }, [activeSub, q]);
 
   const filteredAudio = useMemo(() => {
-    const combined = [...props.userAudioLibrary, ...AUDIO_LIST];
+    const library = category.id === 'music' ? MUSIC_BGM_LIST : SFX_FOLEY_LIST;
+    const combined = [...props.userAudioLibrary, ...library];
     return combined.filter((a) => {
       if (activeSub === 'My Audio') {
         if (!props.userAudioLibrary.some((u) => u.id === a.id)) return false;
@@ -231,7 +271,22 @@ export const WheelFeatureDrawer: React.FC<WheelFeatureDrawerProps> = (props) => 
       }
       return true;
     });
-  }, [props.userAudioLibrary, activeSub, q]);
+  }, [category.id, props.userAudioLibrary, activeSub, q]);
+
+  const filteredDialogues = useMemo(() => {
+    return DIALOGUE_PRESETS_LIST.filter((d) => {
+      if (activeSub !== 'All' && activeSub !== 'Custom Line' && d.category !== activeSub) return false;
+      if (
+        q &&
+        !d.name.toLowerCase().includes(q) &&
+        !d.line.toLowerCase().includes(q) &&
+        !d.speaker.toLowerCase().includes(q)
+      ) {
+        return false;
+      }
+      return true;
+    });
+  }, [activeSub, q]);
 
   const filteredTitles = useMemo(() => {
     return TITLES_LIST.filter((t) => {
@@ -255,6 +310,14 @@ export const WheelFeatureDrawer: React.FC<WheelFeatureDrawerProps> = (props) => 
     });
   }, [activeSub, q]);
 
+  const filteredStickers = useMemo(() => {
+    return STICKERS_LIST.filter((s) => {
+      if (activeSub !== 'All' && s.category !== activeSub) return false;
+      if (q && !s.name.toLowerCase().includes(q) && !s.category.toLowerCase().includes(q)) return false;
+      return true;
+    });
+  }, [activeSub, q]);
+
   const filteredVfx = useMemo(() => {
     return VFX_LIST.filter((v) => {
       if (activeSub !== 'All' && v.category !== activeSub) return false;
@@ -263,9 +326,32 @@ export const WheelFeatureDrawer: React.FC<WheelFeatureDrawerProps> = (props) => 
     });
   }, [activeSub, q]);
 
-  const filteredStickers = useMemo(() => {
-    return STICKERS_LIST.filter((s) => {
-      if (activeSub !== 'All' && s.category !== activeSub) return false;
+  const filteredCards = useMemo(() => {
+    return TRAILER_CARDS_LIST.filter((c) => {
+      if (activeSub !== 'All' && activeSub !== 'Custom Card' && c.category !== activeSub) return false;
+      if (q && !c.name.toLowerCase().includes(q) && !c.title.toLowerCase().includes(q)) return false;
+      return true;
+    });
+  }, [activeSub, q]);
+
+  const filteredChroma = useMemo(() => {
+    return CHROMA_BACKGROUNDS_LIST.filter((c) => {
+      if (activeSub !== 'All' && activeSub !== 'Custom Key' && c.category !== activeSub) return false;
+      if (q && !c.name.toLowerCase().includes(q) && !c.category.toLowerCase().includes(q)) return false;
+      return true;
+    });
+  }, [activeSub, q]);
+
+  const filteredSplit = useMemo(() => {
+    return SPLIT_PRESETS_LIST.filter((s) => {
+      if (
+        activeSub !== 'All' &&
+        activeSub !== 'Pick Clips' &&
+        activeSub !== 'Divider' &&
+        s.category !== activeSub
+      ) {
+        return false;
+      }
       if (q && !s.name.toLowerCase().includes(q) && !s.category.toLowerCase().includes(q)) return false;
       return true;
     });
@@ -303,16 +389,16 @@ export const WheelFeatureDrawer: React.FC<WheelFeatureDrawerProps> = (props) => 
   }, [activeSub, q]);
 
   return (
-    <div className="absolute inset-0 z-30 bg-[#0b0f16]/98 border-l border-zinc-800/90 flex flex-col overflow-hidden">
-      {/* TOP HEADER: < Back button + Feature Name + Mute/Off Toggle */}
+    <aside className="w-[224px] sm:w-[272px] md:w-[300px] shrink-0 h-full bg-[#0b0f16] border-l border-zinc-800/90 flex flex-col overflow-hidden z-20">
+      {/* TOP HEADER: Back button + Active Feature Title + ON/OFF or Pick Media */}
       <div className="h-9 px-2 border-b border-zinc-800/90 bg-[#10151f] flex items-center justify-between gap-1.5 shrink-0">
         <button
           type="button"
           onClick={onBack}
-          className="h-7 px-2 rounded-lg bg-[#1a2230] hover:bg-[#232d40] border border-zinc-700/70 text-zinc-100 flex items-center gap-1 text-[11px] font-bold cursor-pointer"
+          className="h-7 px-2 rounded-lg bg-[#1a2230] hover:bg-[#232d40] border border-zinc-700/70 text-zinc-100 flex items-center gap-0.5 text-[10.5px] font-bold cursor-pointer shrink-0 whitespace-nowrap"
         >
           <ChevronLeft className="w-3.5 h-3.5" />
-          <span>Back</span>
+          <span>Close</span>
         </button>
 
         <span
@@ -326,7 +412,7 @@ export const WheelFeatureDrawer: React.FC<WheelFeatureDrawerProps> = (props) => 
           <button
             type="button"
             onClick={onToggleMuteOrOff}
-            className={`h-7 px-2 rounded-lg border text-[10px] font-bold flex items-center gap-1 cursor-pointer transition-colors ${
+            className={`h-7 px-2 rounded-lg border text-[10px] font-bold flex items-center gap-1 cursor-pointer shrink-0 whitespace-nowrap transition-colors ${
               isMutedOrOff
                 ? 'bg-red-950/60 border-red-500/50 text-red-300'
                 : 'bg-emerald-950/50 border-emerald-500/40 text-emerald-300'
@@ -340,7 +426,7 @@ export const WheelFeatureDrawer: React.FC<WheelFeatureDrawerProps> = (props) => 
           <button
             type="button"
             onClick={props.onTriggerUploadMedia}
-            className="h-7 px-2 rounded-lg bg-teal-400 text-black text-[10px] font-extrabold flex items-center gap-1 cursor-pointer"
+            className="h-7 px-2 rounded-lg bg-teal-400 text-black text-[10px] font-extrabold flex items-center gap-1 cursor-pointer shrink-0 whitespace-nowrap"
           >
             <Plus className="w-3 h-3" />
             <span>Pick</span>
@@ -348,7 +434,7 @@ export const WheelFeatureDrawer: React.FC<WheelFeatureDrawerProps> = (props) => 
         )}
       </div>
 
-      {/* Filters vs Color Grading segmented switch inside Filters drawer */}
+      {/* Filters vs Color Grading segmented toggle */}
       {category.id === 'filters' && (
         <div className="px-2 py-1 border-b border-zinc-800/70 bg-[#0d121a] flex items-center gap-1 shrink-0">
           <button
@@ -356,34 +442,33 @@ export const WheelFeatureDrawer: React.FC<WheelFeatureDrawerProps> = (props) => 
             onClick={() => {
               setFilterMode('filters');
               setSubCat('All');
-              setRenderLimit(80);
+              setRenderLimit(PAGE_SIZE);
             }}
-            className={`flex-1 py-1 rounded-md text-[10px] font-bold cursor-pointer ${
+            className={`flex-1 py-1 rounded-md text-[10px] font-bold cursor-pointer whitespace-nowrap ${
               filterMode === 'filters' ? 'bg-cyan-400 text-black' : 'bg-[#151c27] text-zinc-300'
             }`}
           >
-            1,200 Filters
+            1,300 Filters
           </button>
           <button
             type="button"
             onClick={() => {
               setFilterMode('grading');
               setSubCat('All');
-              setRenderLimit(80);
+              setRenderLimit(PAGE_SIZE);
             }}
-            className={`flex-1 py-1 rounded-md text-[10px] font-bold cursor-pointer ${
+            className={`flex-1 py-1 rounded-md text-[10px] font-bold cursor-pointer whitespace-nowrap ${
               filterMode === 'grading' ? 'bg-amber-400 text-black' : 'bg-[#151c27] text-zinc-300'
             }`}
           >
-            1,200 Color Grades
+            1,260 Grades
           </button>
         </div>
       )}
 
-      {/* TWO-COLUMN SPLIT BODY */}
+      {/* TWO-COLUMN BODY: Left Category Tabs + Right Search & Paginated Items */}
       <div className="flex-1 min-h-0 flex overflow-hidden">
-        {/* LEFT COLUMN: Sub-categories */}
-        <div className="w-[92px] sm:w-[104px] shrink-0 border-r border-zinc-800/80 bg-[#0d1118] overflow-y-auto p-1 space-y-1">
+        <div className="w-[88px] sm:w-[100px] shrink-0 border-r border-zinc-800/80 bg-[#0d1118] overflow-y-auto p-1 space-y-1">
           {subCategories.map((sc) => {
             const active = activeSub === sc;
             return (
@@ -392,9 +477,9 @@ export const WheelFeatureDrawer: React.FC<WheelFeatureDrawerProps> = (props) => 
                 type="button"
                 onClick={() => {
                   setSubCat(sc);
-                  setRenderLimit(80);
+                  setRenderLimit(PAGE_SIZE);
                 }}
-                className={`w-full px-2 py-1.5 rounded-lg text-left text-[10px] font-semibold truncate cursor-pointer transition-colors ${
+                className={`w-full px-1.5 py-1.5 rounded-lg text-left text-[9.5px] font-semibold truncate cursor-pointer transition-colors ${
                   active
                     ? 'bg-teal-400/20 text-teal-200 border border-teal-400/50'
                     : 'text-zinc-400 hover:text-zinc-200 hover:bg-[#161c26]'
@@ -406,9 +491,7 @@ export const WheelFeatureDrawer: React.FC<WheelFeatureDrawerProps> = (props) => 
           })}
         </div>
 
-        {/* RIGHT COLUMN: Search + Presets / Controls */}
         <div className="flex-1 min-w-0 flex flex-col overflow-hidden bg-[#0a0d13]">
-          {/* Search Bar */}
           <div className="p-1.5 border-b border-zinc-800/70 shrink-0">
             <div className="relative flex items-center">
               <Search className="w-3 h-3 text-zinc-500 absolute left-2 pointer-events-none" />
@@ -417,7 +500,7 @@ export const WheelFeatureDrawer: React.FC<WheelFeatureDrawerProps> = (props) => 
                 value={search}
                 onChange={(e) => {
                   setSearch(e.target.value);
-                  setRenderLimit(80);
+                  setRenderLimit(PAGE_SIZE);
                 }}
                 placeholder={`Search ${category.shortLabel}...`}
                 className="w-full h-7 pl-6 pr-2 rounded-lg bg-[#131924] border border-zinc-800 text-[10.5px] text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus:border-teal-400/60"
@@ -425,56 +508,103 @@ export const WheelFeatureDrawer: React.FC<WheelFeatureDrawerProps> = (props) => 
             </div>
           </div>
 
-          {/* Scrollable Content Grid */}
           <div className="flex-1 min-h-0 overflow-y-auto p-1.5 space-y-1.5">
+            {/* 1. MEDIA + 1,260 MOTION / SPEED / FRAMING PRESETS */}
             {category.id === 'video' && (
               <>
                 <button
                   type="button"
                   onClick={props.onTriggerUploadMedia}
-                  className="w-full py-2 px-2.5 rounded-xl bg-teal-400/15 hover:bg-teal-400/25 border border-teal-400/50 text-teal-200 text-[10.5px] font-bold flex items-center justify-center gap-1.5 cursor-pointer"
+                  className="w-full py-1.5 px-2 rounded-lg bg-teal-400/15 hover:bg-teal-400/25 border border-teal-400/50 text-teal-200 text-[10px] font-bold flex items-center justify-center gap-1.5 cursor-pointer"
                 >
                   <Upload className="w-3.5 h-3.5" />
-                  <span>Open Phone / Device Gallery</span>
+                  <span>Pick Video / Photo from Device</span>
                 </button>
-                <div className="grid grid-cols-2 gap-1.5">
-                  {filteredMedia.map((m) => (
+
+                {filteredMedia.length > 0 && (activeSub === 'All' || activeSub === 'Gallery') && (
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {filteredMedia.map((m) => (
+                      <button
+                        key={m.id}
+                        type="button"
+                        onClick={() => props.onAddMediaToTimeline(m)}
+                        className="rounded-lg overflow-hidden border border-zinc-800 hover:border-teal-400 bg-[#121822] text-left cursor-pointer"
+                      >
+                        <div className="aspect-video bg-black relative">
+                          {m.thumbnailUrl || m.type === 'photo' ? (
+                            <img
+                              src={m.thumbnailUrl || m.url}
+                              alt={m.title}
+                              className="w-full h-full object-cover"
+                            />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center text-zinc-600">
+                              <Film className="w-4 h-4" />
+                            </div>
+                          )}
+                          <span className="absolute bottom-1 right-1 px-1 rounded bg-black/80 text-[8px] font-mono text-zinc-200 tabular-nums">
+                            {m.duration}
+                          </span>
+                        </div>
+                        <div className="px-1.5 py-1 flex items-center gap-1">
+                          {m.type === 'video' ? (
+                            <Film className="w-2.5 h-2.5 text-teal-400 shrink-0" />
+                          ) : (
+                            <ImageIcon className="w-2.5 h-2.5 text-amber-400 shrink-0" />
+                          )}
+                          <span className="text-[9px] text-zinc-200 truncate">{m.title}</span>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {activeSub !== 'Gallery' && (
+                  <>
                     <button
-                      key={m.id}
                       type="button"
-                      onClick={() => props.onAddMediaToTimeline(m)}
-                      className="rounded-lg overflow-hidden border border-zinc-800 hover:border-teal-400 bg-[#121822] text-left cursor-pointer"
+                      onClick={() => props.onApplyMediaMotionPreset(null)}
+                      className="w-full py-1 rounded-lg border border-zinc-800 bg-[#161b24] text-zinc-300 text-[9.5px] font-semibold cursor-pointer"
                     >
-                      <div className="aspect-video bg-black relative">
-                        {m.thumbnailUrl || m.type === 'photo' ? (
-                          <img
-                            src={m.thumbnailUrl || m.url}
-                            alt={m.title}
-                            className="w-full h-full object-cover"
-                          />
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center text-zinc-600">
-                            <Film className="w-5 h-5" />
-                          </div>
-                        )}
-                        <span className="absolute bottom-1 right-1 px-1 rounded bg-black/80 text-[8.5px] font-mono text-zinc-200 tabular-nums">
-                          {m.duration}
-                        </span>
-                      </div>
-                      <div className="px-1.5 py-1 flex items-center gap-1">
-                        {m.type === 'video' ? (
-                          <Film className="w-2.5 h-2.5 text-teal-400 shrink-0" />
-                        ) : (
-                          <ImageIcon className="w-2.5 h-2.5 text-amber-400 shrink-0" />
-                        )}
-                        <span className="text-[9.5px] text-zinc-200 truncate">{m.title}</span>
-                      </div>
+                      Reset Motion & Speed (1.0x)
                     </button>
-                  ))}
-                </div>
+                    <div className="space-y-1">
+                      {filteredMediaMotions.slice(0, renderLimit).map((mm) => {
+                        const active = props.activeMotionPresetId === mm.id;
+                        return (
+                          <button
+                            key={mm.id}
+                            type="button"
+                            onClick={() => props.onApplyMediaMotionPreset(mm)}
+                            className={`w-full p-1.5 rounded-lg border text-left cursor-pointer ${
+                              active
+                                ? 'border-teal-400 bg-teal-950/30 text-white'
+                                : 'border-zinc-800 bg-[#121721] text-zinc-200 hover:border-zinc-600'
+                            }`}
+                          >
+                            <div className="text-[10px] font-semibold truncate">{mm.name}</div>
+                            <div className="text-[8.5px] text-zinc-400 truncate">
+                              {mm.category} · {mm.speed}x · {Math.round(mm.zoomScale * 100)}%
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {filteredMediaMotions.length > renderLimit && (
+                      <button
+                        type="button"
+                        onClick={() => setRenderLimit((n) => n + 100)}
+                        className="w-full py-1.5 rounded-lg bg-[#161e2b] text-teal-300 text-[10px] font-bold cursor-pointer"
+                      >
+                        Load More ({filteredMediaMotions.length - renderLimit} left)
+                      </button>
+                    )}
+                  </>
+                )}
               </>
             )}
 
+            {/* 2. FILTERS & COLOR GRADES */}
             {category.id === 'filters' && filterMode === 'filters' && (
               <>
                 <div className="grid grid-cols-2 gap-1.5">
@@ -491,7 +621,7 @@ export const WheelFeatureDrawer: React.FC<WheelFeatureDrawerProps> = (props) => 
                             : 'border-zinc-800 bg-[#121721] hover:border-zinc-600'
                         }`}
                       >
-                        <div className="h-12 w-full bg-black relative overflow-hidden">
+                        <div className="h-11 w-full bg-black relative overflow-hidden">
                           <img
                             src={f.thumbnail}
                             alt={f.name}
@@ -505,9 +635,7 @@ export const WheelFeatureDrawer: React.FC<WheelFeatureDrawerProps> = (props) => 
                           )}
                         </div>
                         <div className="p-1">
-                          <div className="text-[9.5px] font-semibold text-zinc-100 truncate">
-                            {f.name}
-                          </div>
+                          <div className="text-[9px] font-semibold text-zinc-100 truncate">{f.name}</div>
                           <div className="text-[8px] text-zinc-500 truncate">{f.category}</div>
                         </div>
                       </button>
@@ -542,13 +670,8 @@ export const WheelFeatureDrawer: React.FC<WheelFeatureDrawerProps> = (props) => 
                             : 'border-zinc-800 bg-[#121721] hover:border-zinc-600'
                         }`}
                       >
-                        <div
-                          className="h-7 rounded mb-1"
-                          style={{ background: cg.swatchGradient }}
-                        />
-                        <div className="text-[9.5px] font-semibold text-zinc-100 truncate">
-                          {cg.name}
-                        </div>
+                        <div className={`h-6 rounded mb-1 bg-gradient-to-r ${cg.swatchGradient}`} />
+                        <div className="text-[9px] font-semibold text-zinc-100 truncate">{cg.name}</div>
                         <div className="text-[8px] text-zinc-500 truncate">{cg.category}</div>
                       </button>
                     );
@@ -566,6 +689,7 @@ export const WheelFeatureDrawer: React.FC<WheelFeatureDrawerProps> = (props) => 
               </>
             )}
 
+            {/* 3 & 4. AUDIO SFX (1,350) & MUSIC BGM (1,350) */}
             {(category.id === 'audio' || category.id === 'music') && (
               <>
                 <button
@@ -584,9 +708,7 @@ export const WheelFeatureDrawer: React.FC<WheelFeatureDrawerProps> = (props) => 
                       <div
                         key={a.id}
                         className={`p-1.5 rounded-lg border flex items-center justify-between gap-1.5 ${
-                          active
-                            ? 'border-emerald-400 bg-emerald-950/30'
-                            : 'border-zinc-800 bg-[#121721]'
+                          active ? 'border-emerald-400 bg-emerald-950/30' : 'border-zinc-800 bg-[#121721]'
                         }`}
                       >
                         <button
@@ -594,9 +716,7 @@ export const WheelFeatureDrawer: React.FC<WheelFeatureDrawerProps> = (props) => 
                           onClick={() => props.onSelectAudio(a)}
                           className="flex-1 min-w-0 text-left cursor-pointer"
                         >
-                          <div className="text-[10px] font-semibold text-zinc-100 truncate">
-                            {a.title}
-                          </div>
+                          <div className="text-[10px] font-semibold text-zinc-100 truncate">{a.title}</div>
                           <div className="text-[8.5px] text-zinc-400 truncate">
                             {a.category} · {a.duration}
                           </div>
@@ -625,44 +745,83 @@ export const WheelFeatureDrawer: React.FC<WheelFeatureDrawerProps> = (props) => 
               </>
             )}
 
+            {/* 5. DIALOGUES (1,260 PRESETS + CUSTOM WRITER) */}
             {category.id === 'dialogues' && (
-              <div className="space-y-2 p-1">
-                <input
-                  type="text"
-                  value={props.dialogueSpeaker}
-                  onChange={(e) => props.onChangeDialogueSpeaker(e.target.value)}
-                  placeholder="Speaker (e.g. Hero)"
-                  className="w-full h-7 px-2 rounded-lg bg-[#131924] border border-zinc-800 text-[10.5px] text-white"
-                />
-                <textarea
-                  rows={2}
-                  value={props.dialogueText}
-                  onChange={(e) => props.onChangeDialogueText(e.target.value)}
-                  placeholder="Dialogue line..."
-                  className="w-full p-2 rounded-lg bg-[#131924] border border-zinc-800 text-[10.5px] text-white resize-none"
-                />
-                <div className="flex items-center justify-between text-[10px] text-zinc-300">
-                  <span>Duration</span>
-                  <span className="font-mono tabular-nums">{props.dialogueDur}s</span>
-                </div>
-                <input
-                  type="range"
-                  min={2}
-                  max={20}
-                  value={props.dialogueDur}
-                  onChange={(e) => props.onChangeDialogueDur(Number(e.target.value))}
-                  className="w-full accent-amber-400"
-                />
-                <button
-                  type="button"
-                  onClick={props.onApplyDialogue}
-                  className="w-full py-2 rounded-lg bg-amber-400 text-black text-[10.5px] font-extrabold cursor-pointer"
-                >
-                  Apply Dialogue to Timeline
-                </button>
+              <div className="space-y-2">
+                {activeSub === 'Custom Line' ? (
+                  <div className="space-y-1.5 p-1">
+                    <input
+                      type="text"
+                      value={props.dialogueSpeaker}
+                      onChange={(e) => props.onChangeDialogueSpeaker(e.target.value)}
+                      placeholder="Speaker (e.g. Hero)"
+                      className="w-full h-7 px-2 rounded-lg bg-[#131924] border border-zinc-800 text-[10.5px] text-white"
+                    />
+                    <textarea
+                      rows={2}
+                      value={props.dialogueText}
+                      onChange={(e) => props.onChangeDialogueText(e.target.value)}
+                      placeholder="Dialogue line..."
+                      className="w-full p-2 rounded-lg bg-[#131924] border border-zinc-800 text-[10.5px] text-white resize-none"
+                    />
+                    <div className="flex items-center justify-between text-[10px] text-zinc-300">
+                      <span>Duration</span>
+                      <span className="font-mono tabular-nums">{props.dialogueDur}s</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={2}
+                      max={20}
+                      value={props.dialogueDur}
+                      onChange={(e) => props.onChangeDialogueDur(Number(e.target.value))}
+                      className="w-full accent-amber-400"
+                    />
+                    <button
+                      type="button"
+                      onClick={props.onApplyDialogue}
+                      className="w-full py-2 rounded-lg bg-amber-400 text-black text-[10.5px] font-extrabold cursor-pointer"
+                    >
+                      Apply Dialogue to Timeline
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-1">
+                    {filteredDialogues.slice(0, renderLimit).map((dl) => {
+                      const active = props.activeDialoguePresetId === dl.id && !isMutedOrOff;
+                      return (
+                        <button
+                          key={dl.id}
+                          type="button"
+                          onClick={() => props.onApplyDialoguePreset(dl)}
+                          className={`w-full p-1.5 rounded-lg border text-left cursor-pointer ${
+                            active
+                              ? 'border-amber-400 bg-amber-950/30 text-white'
+                              : 'border-zinc-800 bg-[#121721] text-zinc-200 hover:border-amber-400/60'
+                          }`}
+                        >
+                          <div className="text-[10px] font-bold truncate">{dl.name}</div>
+                          <div className="text-[8.5px] text-zinc-300 truncate">{dl.line}</div>
+                          <div className="text-[8px] text-zinc-500 truncate">
+                            {dl.category} · {dl.durationSec}s
+                          </div>
+                        </button>
+                      );
+                    })}
+                    {filteredDialogues.length > renderLimit && (
+                      <button
+                        type="button"
+                        onClick={() => setRenderLimit((n) => n + 100)}
+                        className="w-full py-1.5 rounded-lg bg-[#161e2b] text-amber-300 text-[10px] font-bold cursor-pointer"
+                      >
+                        Load More ({filteredDialogues.length - renderLimit} left)
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 
+            {/* 6. TITLES (1,280 PRESETS + CUSTOM + ANIMATION) */}
             {category.id === 'titles' && (
               <div className="space-y-2">
                 {activeSub === 'Custom Text' ? (
@@ -725,9 +884,9 @@ export const WheelFeatureDrawer: React.FC<WheelFeatureDrawerProps> = (props) => 
                         onClick={() => props.onApplyTitlePreset(t)}
                         className="w-full p-1.5 rounded-lg border border-zinc-800 hover:border-amber-400 bg-[#121721] text-left cursor-pointer"
                       >
-                        <div className="text-[10px] font-bold text-zinc-100 truncate">{t.titleText}</div>
+                        <div className="text-[10px] font-bold text-zinc-100 truncate">{t.name}</div>
                         <div className="text-[8.5px] text-zinc-400 truncate">
-                          {t.category} · {t.name}
+                          {t.category} · {t.subtitleText}
                         </div>
                       </button>
                     ))}
@@ -745,6 +904,7 @@ export const WheelFeatureDrawer: React.FC<WheelFeatureDrawerProps> = (props) => 
               </div>
             )}
 
+            {/* 7. STICKERS (1,280) */}
             {category.id === 'stickers' && (
               <>
                 <div className="grid grid-cols-3 gap-1.5">
@@ -756,7 +916,7 @@ export const WheelFeatureDrawer: React.FC<WheelFeatureDrawerProps> = (props) => 
                       className="p-1.5 rounded-lg border border-zinc-800 hover:border-sky-400 bg-[#121721] flex flex-col items-center gap-0.5 cursor-pointer"
                     >
                       <span className="text-lg leading-none">{s.emoji}</span>
-                      <span className="text-[8.5px] text-zinc-300 truncate w-full text-center">
+                      <span className="text-[8px] text-zinc-300 truncate w-full text-center">
                         {s.name}
                       </span>
                     </button>
@@ -774,6 +934,7 @@ export const WheelFeatureDrawer: React.FC<WheelFeatureDrawerProps> = (props) => 
               </>
             )}
 
+            {/* 8. ACTION VFX (1,280) */}
             {category.id === 'vfx' && (
               <div className="space-y-1">
                 {filteredVfx.slice(0, renderLimit).map((v) => (
@@ -802,154 +963,237 @@ export const WheelFeatureDrawer: React.FC<WheelFeatureDrawerProps> = (props) => 
               </div>
             )}
 
+            {/* 9. TRAILER CARDS & FRAMES (1,260 PRESETS + DESIGNER) */}
             {category.id === 'card' && (
-              <div className="space-y-2 p-1">
-                <input
-                  type="text"
-                  value={props.draftCardTitle}
-                  onChange={(e) => props.onChangeDraftCardTitle(e.target.value)}
-                  placeholder="Card Title"
-                  className="w-full h-7 px-2 rounded-lg bg-[#131924] border border-zinc-800 text-[10.5px] text-white"
-                />
-                <input
-                  type="text"
-                  value={props.draftCardSubtitle}
-                  onChange={(e) => props.onChangeDraftCardSubtitle(e.target.value)}
-                  placeholder="Card Subtitle"
-                  className="w-full h-7 px-2 rounded-lg bg-[#131924] border border-zinc-800 text-[10.5px] text-white"
-                />
-                <div className="grid grid-cols-2 gap-1">
-                  {TRAILER_CARD_THEMES.map((th) => (
-                    <button
-                      key={th.id}
-                      type="button"
-                      onClick={() => props.onChangeDraftCardTheme(th.id)}
-                      className={`p-1 rounded border text-[9px] font-semibold cursor-pointer ${
-                        props.draftCardTheme === th.id
-                          ? 'border-amber-400 text-white bg-[#231d12]'
-                          : 'border-zinc-800 text-zinc-300 bg-[#121721]'
-                      }`}
-                    >
-                      {th.name}
-                    </button>
-                  ))}
-                </div>
-                <div className="grid grid-cols-2 gap-1">
-                  {TRAILER_CARD_ANIMATIONS.map((an) => (
-                    <button
-                      key={an.id}
-                      type="button"
-                      onClick={() => props.onChangeDraftCardAnim(an.id)}
-                      className={`p-1 rounded border text-[9px] font-semibold cursor-pointer ${
-                        props.draftCardAnim === an.id
-                          ? 'border-teal-400 text-white bg-[#132429]'
-                          : 'border-zinc-800 text-zinc-300 bg-[#121721]'
-                      }`}
-                    >
-                      {an.name}
-                    </button>
-                  ))}
-                </div>
-                <div className="grid grid-cols-2 gap-1.5">
-                  <button
-                    type="button"
-                    onClick={props.onPickTrailerCardMedia}
-                    className="py-1.5 rounded-lg bg-[#18202c] border border-zinc-700 text-zinc-200 text-[10px] font-semibold cursor-pointer"
-                  >
-                    Pick Poster Media
-                  </button>
-                  <button
-                    type="button"
-                    onClick={props.onAddTrailerCard}
-                    className="py-1.5 rounded-lg bg-amber-400 text-black text-[10px] font-extrabold cursor-pointer"
-                  >
-                    + Add Card
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {category.id === 'chroma' && (
-              <div className="space-y-2 p-1">
-                <button
-                  type="button"
-                  onClick={() => props.onUpdateChromaConfig((p) => ({ ...p, enabled: !p.enabled }))}
-                  className={`w-full py-1.5 rounded-lg border text-[10px] font-bold cursor-pointer ${
-                    props.chromaConfig.enabled
-                      ? 'bg-emerald-400 text-black border-emerald-200'
-                      : 'bg-[#141a24] text-emerald-300 border-emerald-500/40'
-                  }`}
-                >
-                  {props.chromaConfig.enabled ? 'Chroma Key Active' : 'Enable Chroma Key'}
-                </button>
-                <div className="grid grid-cols-2 gap-1">
-                  {(['green', 'neon_green', 'blue', 'cyan'] as ChromaKeyColorPreset[]).map((preset) => (
-                    <button
-                      key={preset}
-                      type="button"
-                      onClick={() =>
-                        props.onUpdateChromaConfig((p) => ({ ...p, enabled: true, colorPreset: preset }))
-                      }
-                      className={`py-1.5 rounded-lg border text-[9.5px] font-semibold capitalize cursor-pointer ${
-                        props.chromaConfig.colorPreset === preset
-                          ? 'border-emerald-400 bg-emerald-950/40 text-white'
-                          : 'border-zinc-800 bg-[#121721] text-zinc-300'
-                      }`}
-                    >
-                      {preset.replace('_', ' ')}
-                    </button>
-                  ))}
-                </div>
-                <div className="grid grid-cols-2 gap-1">
-                  {(['studio_teal', 'sunset_gold', 'cyber_grid', 'black'] as ChromaBgMode[]).map((bg) => (
-                    <button
-                      key={bg}
-                      type="button"
-                      onClick={() => props.onUpdateChromaConfig((p) => ({ ...p, enabled: true, bgMode: bg }))}
-                      className={`py-1.5 rounded-lg border text-[9px] font-semibold capitalize cursor-pointer ${
-                        props.chromaConfig.bgMode === bg
-                          ? 'border-teal-400 bg-teal-950/40 text-white'
-                          : 'border-zinc-800 bg-[#121721] text-zinc-300'
-                      }`}
-                    >
-                      {bg.replace('_', ' ')}
-                    </button>
-                  ))}
-                </div>
-                <button
-                  type="button"
-                  onClick={props.onPickChromaBg}
-                  className="w-full py-1.5 rounded-lg bg-[#161e2b] border border-zinc-700 text-zinc-200 text-[10px] font-semibold cursor-pointer"
-                >
-                  Pick Custom Background Photo/Video
-                </button>
-                <div className="space-y-1 text-[9.5px] text-zinc-300">
-                  <div className="flex justify-between">
-                    <span>Similarity</span>
-                    <span className="font-mono">{props.chromaConfig.similarity}%</span>
+              <div className="space-y-2">
+                {activeSub === 'Custom Card' ? (
+                  <div className="space-y-2 p-1">
+                    <input
+                      type="text"
+                      value={props.draftCardTitle}
+                      onChange={(e) => props.onChangeDraftCardTitle(e.target.value)}
+                      placeholder="Card Title"
+                      className="w-full h-7 px-2 rounded-lg bg-[#131924] border border-zinc-800 text-[10.5px] text-white"
+                    />
+                    <input
+                      type="text"
+                      value={props.draftCardSubtitle}
+                      onChange={(e) => props.onChangeDraftCardSubtitle(e.target.value)}
+                      placeholder="Card Subtitle"
+                      className="w-full h-7 px-2 rounded-lg bg-[#131924] border border-zinc-800 text-[10.5px] text-white"
+                    />
+                    <div className="grid grid-cols-2 gap-1">
+                      {TRAILER_CARD_THEMES.map((th) => (
+                        <button
+                          key={th.id}
+                          type="button"
+                          onClick={() => props.onChangeDraftCardTheme(th.id)}
+                          className={`p-1 rounded border text-[9px] font-semibold cursor-pointer ${
+                            props.draftCardTheme === th.id
+                              ? 'border-amber-400 text-white bg-[#231d12]'
+                              : 'border-zinc-800 text-zinc-300 bg-[#121721]'
+                          }`}
+                        >
+                          {th.name}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="grid grid-cols-2 gap-1">
+                      {TRAILER_CARD_ANIMATIONS.map((an) => (
+                        <button
+                          key={an.id}
+                          type="button"
+                          onClick={() => props.onChangeDraftCardAnim(an.id)}
+                          className={`p-1 rounded border text-[9px] font-semibold cursor-pointer ${
+                            props.draftCardAnim === an.id
+                              ? 'border-teal-400 text-white bg-[#132429]'
+                              : 'border-zinc-800 text-zinc-300 bg-[#121721]'
+                          }`}
+                        >
+                          {an.name}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <button
+                        type="button"
+                        onClick={props.onPickTrailerCardMedia}
+                        className="py-1.5 rounded-lg bg-[#18202c] border border-zinc-700 text-zinc-200 text-[10px] font-semibold cursor-pointer"
+                      >
+                        Pick Poster Media
+                      </button>
+                      <button
+                        type="button"
+                        onClick={props.onAddTrailerCard}
+                        className="py-1.5 rounded-lg bg-amber-400 text-black text-[10px] font-extrabold cursor-pointer"
+                      >
+                        + Add Card
+                      </button>
+                    </div>
                   </div>
-                  <input
-                    type="range"
-                    min={10}
-                    max={90}
-                    value={props.chromaConfig.similarity}
-                    onChange={(e) =>
-                      props.onUpdateChromaConfig((p) => ({
-                        ...p,
-                        enabled: true,
-                        similarity: Number(e.target.value),
-                      }))
-                    }
-                    className="w-full accent-emerald-400"
-                  />
-                </div>
+                ) : (
+                  <div className="space-y-1">
+                    {filteredCards.slice(0, renderLimit).map((card) => {
+                      const active = props.activeCardPresetId === card.id && !isMutedOrOff;
+                      return (
+                        <button
+                          key={card.id}
+                          type="button"
+                          onClick={() => props.onApplyTrailerCardPreset(card)}
+                          className={`w-full p-1.5 rounded-lg border text-left cursor-pointer ${
+                            active
+                              ? 'border-amber-400 bg-amber-950/30 text-white'
+                              : 'border-zinc-800 bg-[#121721] text-zinc-200 hover:border-amber-400/60'
+                          }`}
+                        >
+                          <div className="text-[10px] font-bold truncate">{card.name}</div>
+                          <div className="text-[8.5px] text-zinc-400 truncate">
+                            {card.category} · {card.durationSec}s
+                          </div>
+                        </button>
+                      );
+                    })}
+                    {filteredCards.length > renderLimit && (
+                      <button
+                        type="button"
+                        onClick={() => setRenderLimit((n) => n + 100)}
+                        className="w-full py-1.5 rounded-lg bg-[#161e2b] text-amber-300 text-[10px] font-bold cursor-pointer"
+                      >
+                        Load More ({filteredCards.length - renderLimit} left)
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 
+            {/* 10. CHROMA KEY & BACKGROUNDS (1,260 PRESETS + CUSTOM KEY) */}
+            {category.id === 'chroma' && (
+              <div className="space-y-2">
+                {activeSub === 'Custom Key' ? (
+                  <div className="space-y-2 p-1">
+                    <button
+                      type="button"
+                      onClick={() => props.onUpdateChromaConfig((p) => ({ ...p, enabled: !p.enabled }))}
+                      className={`w-full py-1.5 rounded-lg border text-[10px] font-bold cursor-pointer ${
+                        props.chromaConfig.enabled
+                          ? 'bg-emerald-400 text-black border-emerald-200'
+                          : 'bg-[#141a24] text-emerald-300 border-emerald-500/40'
+                      }`}
+                    >
+                      {props.chromaConfig.enabled ? 'Chroma Key Active' : 'Enable Chroma Key'}
+                    </button>
+                    <div className="grid grid-cols-2 gap-1">
+                      {(['green', 'neon_green', 'blue', 'cyan'] as ChromaKeyColorPreset[]).map((preset) => (
+                        <button
+                          key={preset}
+                          type="button"
+                          onClick={() =>
+                            props.onUpdateChromaConfig((p) => ({ ...p, enabled: true, colorPreset: preset }))
+                          }
+                          className={`py-1.5 rounded-lg border text-[9.5px] font-semibold capitalize cursor-pointer ${
+                            props.chromaConfig.colorPreset === preset
+                              ? 'border-emerald-400 bg-emerald-950/40 text-white'
+                              : 'border-zinc-800 bg-[#121721] text-zinc-300'
+                          }`}
+                        >
+                          {preset.replace('_', ' ')}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="grid grid-cols-2 gap-1">
+                      {(['studio_teal', 'sunset_gold', 'cyber_grid', 'black'] as ChromaBgMode[]).map((bg) => (
+                        <button
+                          key={bg}
+                          type="button"
+                          onClick={() => props.onUpdateChromaConfig((p) => ({ ...p, enabled: true, bgMode: bg }))}
+                          className={`py-1.5 rounded-lg border text-[9px] font-semibold capitalize cursor-pointer ${
+                            props.chromaConfig.bgMode === bg
+                              ? 'border-teal-400 bg-teal-950/40 text-white'
+                              : 'border-zinc-800 bg-[#121721] text-zinc-300'
+                          }`}
+                        >
+                          {bg.replace('_', ' ')}
+                        </button>
+                      ))}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={props.onPickChromaBg}
+                      className="w-full py-1.5 rounded-lg bg-[#161e2b] border border-zinc-700 text-zinc-200 text-[10px] font-semibold cursor-pointer"
+                    >
+                      Pick Custom Background Photo/Video
+                    </button>
+                    <div className="space-y-1 text-[9.5px] text-zinc-300">
+                      <div className="flex justify-between">
+                        <span>Similarity</span>
+                        <span className="font-mono">{props.chromaConfig.similarity}%</span>
+                      </div>
+                      <input
+                        type="range"
+                        min={10}
+                        max={90}
+                        value={props.chromaConfig.similarity}
+                        onChange={(e) =>
+                          props.onUpdateChromaConfig((p) => ({
+                            ...p,
+                            enabled: true,
+                            similarity: Number(e.target.value),
+                          }))
+                        }
+                        className="w-full accent-emerald-400"
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      onClick={props.onPickChromaBg}
+                      className="w-full py-1.5 rounded-lg bg-emerald-400/15 border border-emerald-400/40 text-emerald-200 text-[10px] font-bold cursor-pointer"
+                    >
+                      + Custom Background Photo/Video
+                    </button>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      {filteredChroma.slice(0, renderLimit).map((ch) => {
+                        const active = props.activeChromaPresetId === ch.id && props.chromaConfig.enabled;
+                        return (
+                          <button
+                            key={ch.id}
+                            type="button"
+                            onClick={() => props.onApplyChromaPreset(ch)}
+                            className={`rounded-lg p-1.5 border text-left cursor-pointer ${
+                              active
+                                ? 'border-emerald-400 bg-emerald-950/35'
+                                : 'border-zinc-800 bg-[#121721] hover:border-zinc-600'
+                            }`}
+                          >
+                            <div className={`h-6 rounded mb-1 bg-gradient-to-r ${ch.swatchClass}`} />
+                            <div className="text-[9px] font-semibold text-zinc-100 truncate">{ch.name}</div>
+                            <div className="text-[8px] text-zinc-500 truncate">{ch.category}</div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {filteredChroma.length > renderLimit && (
+                      <button
+                        type="button"
+                        onClick={() => setRenderLimit((n) => n + 100)}
+                        className="w-full py-1.5 rounded-lg bg-[#161e2b] text-emerald-300 text-[10px] font-bold cursor-pointer"
+                      >
+                        Load More ({filteredChroma.length - renderLimit} left)
+                      </button>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
+
+            {/* 11. SPLIT SCREEN & COLLAGE (1,260 PRESETS + PICK CLIPS + DIVIDER) */}
             {category.id === 'split' && (
-              <div className="space-y-2 p-1">
+              <div className="space-y-2">
                 {activeSub === 'Pick Clips' ? (
-                  <div className="space-y-1.5">
+                  <div className="space-y-1.5 p-1">
                     <button
                       type="button"
                       onClick={props.onAutoJoinSplitClips}
@@ -975,7 +1219,7 @@ export const WheelFeatureDrawer: React.FC<WheelFeatureDrawerProps> = (props) => 
                     </div>
                   </div>
                 ) : activeSub === 'Divider' ? (
-                  <div className="space-y-2">
+                  <div className="space-y-2 p-1">
                     <div className="bg-[#141a24] p-2 rounded-lg border border-zinc-800 space-y-1">
                       <div className="flex justify-between text-[9.5px] text-zinc-300 font-semibold">
                         <span>Split Ratio</span>
@@ -1053,7 +1297,7 @@ export const WheelFeatureDrawer: React.FC<WheelFeatureDrawerProps> = (props) => 
                               layout: lay.id,
                             }))
                           }
-                          className={`p-1.5 rounded-lg border text-[9.5px] font-semibold cursor-pointer ${
+                          className={`p-1 rounded border text-[9px] font-semibold cursor-pointer ${
                             props.splitScreenConfig.enabled && props.splitScreenConfig.layout === lay.id
                               ? 'border-cyan-400 bg-cyan-950/40 text-white'
                               : 'border-zinc-800 bg-[#121721] text-zinc-300'
@@ -1063,24 +1307,61 @@ export const WheelFeatureDrawer: React.FC<WheelFeatureDrawerProps> = (props) => 
                         </button>
                       ))}
                     </div>
+                    <div className="space-y-1 pt-1">
+                      {filteredSplit.slice(0, renderLimit).map((sp) => {
+                        const active = props.activeSplitPresetId === sp.id && props.splitScreenConfig.enabled;
+                        return (
+                          <button
+                            key={sp.id}
+                            type="button"
+                            onClick={() => props.onApplySplitPreset(sp)}
+                            className={`w-full p-1.5 rounded-lg border text-left cursor-pointer ${
+                              active
+                                ? 'border-cyan-400 bg-cyan-950/30 text-white'
+                                : 'border-zinc-800 bg-[#121721] text-zinc-200'
+                            }`}
+                          >
+                            <div className="text-[10px] font-semibold truncate">{sp.name}</div>
+                            <div className="text-[8.5px] text-zinc-400 truncate">
+                              {sp.category} · {sp.splitRatio}% / {sp.gapPx}px
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {filteredSplit.length > renderLimit && (
+                      <button
+                        type="button"
+                        onClick={() => setRenderLimit((n) => n + 100)}
+                        className="w-full py-1.5 rounded-lg bg-[#161e2b] text-cyan-300 text-[10px] font-bold cursor-pointer"
+                      >
+                        Load More ({filteredSplit.length - renderLimit} left)
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
             )}
 
+            {/* 12. TRANSITIONS (1,280) */}
             {category.id === 'transitions' && (
               <div className="space-y-1">
+                <button
+                  type="button"
+                  onClick={() => props.onSelectTransition(null)}
+                  className="w-full py-1 rounded-lg border border-zinc-800 bg-[#161b24] text-zinc-300 text-[9.5px] font-semibold cursor-pointer"
+                >
+                  Clear Seam Transition
+                </button>
                 {filteredTransitions.slice(0, renderLimit).map((tr) => {
                   const active = props.selectedTransitionId === tr.id && !isMutedOrOff;
                   return (
                     <button
                       key={tr.id}
                       type="button"
-                      onClick={() => props.onSelectTransition(tr)}
+                      onClick={() => props.onSelectTransition(active ? null : tr)}
                       className={`w-full p-1.5 rounded-lg border flex items-center justify-between text-left cursor-pointer ${
-                        active
-                          ? 'border-amber-400 bg-amber-950/30 text-white'
-                          : 'border-zinc-800 bg-[#121721] text-zinc-200'
+                        active ? 'border-amber-400 bg-amber-950/30 text-white' : 'border-zinc-800 bg-[#121721] text-zinc-200'
                       }`}
                     >
                       <div className="min-w-0">
@@ -1105,6 +1386,7 @@ export const WheelFeatureDrawer: React.FC<WheelFeatureDrawerProps> = (props) => 
               </div>
             )}
 
+            {/* 13. VISUAL EFFECTS (1,280) */}
             {category.id === 'effects' && (
               <div className="space-y-1">
                 <button
@@ -1122,9 +1404,7 @@ export const WheelFeatureDrawer: React.FC<WheelFeatureDrawerProps> = (props) => 
                       type="button"
                       onClick={() => props.onSelectEffect(active ? null : fx)}
                       className={`w-full p-1.5 rounded-lg border text-left cursor-pointer ${
-                        active
-                          ? 'border-purple-400 bg-purple-950/30 text-white'
-                          : 'border-zinc-800 bg-[#121721] text-zinc-200'
+                        active ? 'border-purple-400 bg-purple-950/30 text-white' : 'border-zinc-800 bg-[#121721] text-zinc-200'
                       }`}
                     >
                       <div className="text-[10px] font-semibold truncate">{fx.name}</div>
@@ -1144,6 +1424,7 @@ export const WheelFeatureDrawer: React.FC<WheelFeatureDrawerProps> = (props) => 
               </div>
             )}
 
+            {/* 14. TEMPLATES (1,280 + TRAILER PACKS) */}
             {category.id === 'templates' && (
               <div className="space-y-1.5">
                 {activeSub === 'Trailer Packs' ? (
@@ -1193,6 +1474,6 @@ export const WheelFeatureDrawer: React.FC<WheelFeatureDrawerProps> = (props) => 
           </div>
         </div>
       </div>
-    </div>
+    </aside>
   );
-};
+});

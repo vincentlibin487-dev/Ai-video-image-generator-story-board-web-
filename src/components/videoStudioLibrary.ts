@@ -4,6 +4,9 @@
 // 1,200 Titles, 1,200 Templates, 1,200 Stickers, 1,200 Color LUTs, 1,200 VFX.
 // =========================================================================
 
+import type { AudioSynthKind } from '../lib/comedyAudioSynth';
+export * from '../lib/studioPresetCatalogs';
+
 export interface FilterItem {
   id: string;
   name: string;
@@ -22,19 +25,7 @@ export interface AudioItem {
   bpm: number;
   mood: string;
   description: string;
-  synthPreset:
-    | 'comedy'
-    | 'meme_boom'
-    | 'cinematic'
-    | 'lofi'
-    | 'trailer'
-    | 'electronic'
-    | 'upbeat'
-    | 'sfx_whoosh'
-    | 'sfx_glass_break'
-    | 'sfx_fire_burn'
-    | 'sfx_punch_impact'
-    | 'sfx_gunshot';
+  synthPreset: AudioSynthKind;
   url?: string;
 }
 
@@ -296,29 +287,31 @@ const RAW_FILTER_DEFINITIONS: Array<{
   { name: 'Disco 70s Sunset Film', cat: 'Retro', css: 'sepia(28%) saturate(144%) contrast(116%) brightness(103%)', desc: 'Groovy 70s warm flare film tone for music edits', thumbIdx: 2 },
 ];
 
-const FILTER_TIER_NAMES = [
-  'I',
-  'II',
-  'Soft',
-  'Deep',
-  'Pro',
-  'Studio',
-  'Cinema',
-  'IMAX',
-  'HDR',
-  'Matte',
-  '4K',
-  'Master',
-  'Filmic',
-  'Prime',
+const FILTER_FINISHES = [
+  '2383 Print',
+  '35mm Grain',
   'Anamorphic',
-  'Grade',
-  'Tone',
-  'Ultra',
-  'Pure',
-  'Plus',
-  'Elite',
-  'Director',
+  'Matte Roll',
+  'Daylight LUT',
+  'Night Grade',
+  'Sunset Haze',
+  'Velvet Shadow',
+  'Crisp Digital',
+  'Polaroid Tone',
+  'Studio Skin',
+  'IMAX Curve',
+  'Indigo Lift',
+  'Amber Glow',
+  'Silver Halide',
+  'High Key',
+  'Low Key',
+  'Teal Split',
+  'Film Lab',
+  'Raw Balance',
+  'Prism Wash',
+  'Cinema Scope',
+  'Editorial Soft',
+  'Golden Rim',
 ];
 
 export const FILTERS_LIST: FilterItem[] = [
@@ -330,109 +323,192 @@ export const FILTERS_LIST: FilterItem[] = [
     thumbnail: FILTER_THUMBS[0],
     description: 'Unfiltered original video & photo colors with zero LUT adjustment.',
   },
-  ...Array.from({ length: 1199 }, (_, idx) => {
+  ...Array.from({ length: 1299 }, (_, idx) => {
     const base = RAW_FILTER_DEFINITIONS[idx % RAW_FILTER_DEFINITIONS.length];
     const cycle = Math.floor(idx / RAW_FILTER_DEFINITIONS.length);
-    const factor = 0.84 + (cycle % 10) * 0.04;
-    const tierTag = FILTER_TIER_NAMES[cycle % FILTER_TIER_NAMES.length];
+    const finish = FILTER_FINISHES[(cycle + Math.floor(idx / 11)) % FILTER_FINISHES.length];
+    const hueShift = ((cycle % 5) - 2) * 4;
+    const factor = 0.84 + (cycle % 9) * 0.04;
+    const tweakedCss = base.css.replace(/(\d+)%/g, (_, n) => `${Math.round(Number(n) * factor)}%`);
+    const finalCss = hueShift !== 0 && !tweakedCss.includes('grayscale(100%)') && !tweakedCss.includes('hue-rotate')
+      ? `${tweakedCss} hue-rotate(${hueShift}deg)`
+      : tweakedCss;
     return {
       id: `flt_${idx + 1}`,
-      name: cycle === 0 ? base.name : `${base.name} · ${tierTag} ${cycle + 1}`,
+      name: cycle === 0 ? base.name : `${base.name} · ${finish}`,
       category: base.cat,
-      cssFilter: base.css.replace(/(\d+)%/g, (_, n) => `${Math.round(Number(n) * factor)}%`),
-      thumbnail: FILTER_THUMBS[base.thumbIdx % FILTER_THUMBS.length],
-      description: `${base.desc} · ${Math.round(factor * 100)}% (${base.cat})`,
+      cssFilter: finalCss,
+      thumbnail: FILTER_THUMBS[(base.thumbIdx + cycle) % FILTER_THUMBS.length],
+      description: `${base.desc} · ${finish} (${Math.round(factor * 100)}%)`,
     };
   }),
 ];
 
 export const AUDIO_CATEGORIES = [
+  'Comedy Stings',
   'Funny & Meme SFX',
-  'Comedy Tracks',
-  'Cinematic Score',
-  'Trailer Hits',
-  'Background Music',
-  'Upbeat Beat',
-  'Lo-Fi Chill',
-  'Electronic',
-  'Sound Effects',
+  'Cat & Funny Animals',
+  'Bird Calls & Nature',
+  'Thunder & Rain SFX',
+  'Cartoon & Slapstick',
+  'Long Comedy BGM',
+  'Action & Impact SFX',
 ] as const;
 
 // -------------------------------------------------------------------------
-// 2. AUDIO & BACKGROUND MUSIC LIBRARY (600 Tracks + Funny/Meme SFX)
+// 2. 1,500 FUNNY, COMEDY, ANIMAL, BIRD, NATURE & SOUND EFFECT PRESETS
 // -------------------------------------------------------------------------
-const RAW_FUNNY_MEME_SFX: Array<{
+const RAW_FUNNY_AUDIO_BASES: Array<{
   title: string;
-  cat: string;
-  dur: string;
+  cat: (typeof AUDIO_CATEGORIES)[number];
   sec: number;
   bpm: number;
   mood: string;
   desc: string;
-  synth: AudioItem['synthPreset'];
+  synth: AudioSynthKind;
 }> = [
-  { title: '😂 Meme Laugh Track (HaHaHa Comedy)', cat: 'Funny & Meme SFX', dur: '00:06', sec: 6, bpm: 120, mood: 'Hilarious', desc: 'Classic audience laugh burst for comic punchlines', synth: 'comedy' },
-  { title: '🤣 Wheezing Laugh Out Loud (Meme Guy)', cat: 'Funny & Meme SFX', dur: '00:08', sec: 8, bpm: 128, mood: 'Viral Meme', desc: 'Infectious wheezing laugh track for reaction edits', synth: 'comedy' },
-  { title: '🎵 Sad Violin Meme (Crying Moment)', cat: 'Funny & Meme SFX', dur: '00:15', sec: 15, bpm: 72, mood: 'Dramatic Sad', desc: 'Melodramatic slow violin cue for funny fail moments', synth: 'lofi' },
-  { title: '🤭 Oh No No No Laugh Meme', cat: 'Funny & Meme SFX', dur: '00:12', sec: 12, bpm: 130, mood: 'Prank', desc: 'Viral prank buildup before unexpected twist', synth: 'comedy' },
-  { title: '🗿 Bruh Sound Effect #2 Bass Boosted', cat: 'Funny & Meme SFX', dur: '00:03', sec: 3, bpm: 95, mood: 'Deadpan', desc: 'Deep bass-boosted comedic pause hit', synth: 'meme_boom' },
-  { title: '🍌 Cartoon Banana Slip & Fall', cat: 'Funny & Meme SFX', dur: '00:04', sec: 4, bpm: 140, mood: 'Slapstick', desc: 'Slide whistle upward + cartoon thud impact', synth: 'sfx_whoosh' },
-  { title: '🔨 Bonk Sound (Comic Hit)', cat: 'Funny & Meme SFX', dur: '00:02', sec: 2, bpm: 110, mood: 'Comic', desc: 'Crisp wooden bonk hit for meme edits', synth: 'meme_boom' },
-  { title: '📉 Funny Whistle Slide Down (Fail Drop)', cat: 'Funny & Meme SFX', dur: '00:04', sec: 4, bpm: 100, mood: 'Fail', desc: 'Descending slide whistle for comic fails', synth: 'sfx_whoosh' },
-  { title: '🥁 Ba-Dum-Tss Comedy Standup Kick', cat: 'Funny & Meme SFX', dur: '00:03', sec: 3, bpm: 115, mood: 'Punchline', desc: 'Snare rimshot & cymbal sting after jokes', synth: 'comedy' },
-  { title: '🦆 Funny Quack Duck Comic Sound', cat: 'Funny & Meme SFX', dur: '00:03', sec: 3, bpm: 125, mood: 'Silly', desc: 'Playful double duck quack censor/reaction SFX', synth: 'comedy' },
-  { title: '🎺 Clown Horn Honk Honk', cat: 'Funny & Meme SFX', dur: '00:03', sec: 3, bpm: 132, mood: 'Circus', desc: 'Classic circus horn double honk cue', synth: 'comedy' },
-  { title: '😮 Anime Wow Reaction Sound', cat: 'Funny & Meme SFX', dur: '00:03', sec: 3, bpm: 110, mood: 'Amazed', desc: 'Sparkling reaction sting for surprise reveals', synth: 'upbeat' },
-  { title: '💿 DJ Record Scratch Freeze Frame', cat: 'Funny & Meme SFX', dur: '00:03', sec: 3, bpm: 120, mood: 'Freeze', desc: 'Vinyl record stop scratch for freeze-frame narration', synth: 'sfx_whoosh' },
-  { title: '😱 Suspense Dun-Dun-Dun Dramatic Sting', cat: 'Funny & Meme SFX', dur: '00:05', sec: 5, bpm: 88, mood: 'Shock', desc: 'Three-note dramatic shock chord for plot twists', synth: 'trailer' },
-  { title: '💥 Vine Boom Deep Shock Sound', cat: 'Funny & Meme SFX', dur: '00:03', sec: 3, bpm: 90, mood: 'Impact', desc: 'Heavy sub-bass cinematic meme boom hit', synth: 'meme_boom' },
-  { title: '🎷 Benny Hill Crazy Chase Saxophone', cat: 'Comedy Tracks', dur: '00:25', sec: 25, bpm: 165, mood: 'Fast Chase', desc: 'High-speed comical chase sax melody for fast-forward clips', synth: 'comedy' },
-  { title: '🕵️ Sneaky Cartoon Detective Marimba', cat: 'Comedy Tracks', dur: '00:24', sec: 24, bpm: 108, mood: 'Sneaky', desc: 'Tip-toe pizzicato marimba groove for stealth & pranks', synth: 'comedy' },
-  { title: '🪕 Quirky Ukulele Whistling Comedy', cat: 'Comedy Tracks', dur: '00:22', sec: 22, bpm: 124, mood: 'Cheerful', desc: 'Upbeat acoustic ukulele with playful whistling lead', synth: 'upbeat' },
-  { title: '🎹 Funny Ragtime Saloon Piano', cat: 'Comedy Tracks', dur: '00:20', sec: 20, bpm: 138, mood: 'Slapstick', desc: 'Bouncy silent-film era slapstick piano loop', synth: 'comedy' },
-  { title: '🎮 8-Bit Retro Game Over Fail', cat: 'Comedy Tracks', dur: '00:16', sec: 16, bpm: 116, mood: 'Retro', desc: 'Chiptune retro game melody for gaming & meme clips', synth: 'electronic' },
+  // Comedy Stings
+  { title: '😂 Sitcom Audience Laugh Burst', cat: 'Comedy Stings', sec: 5, bpm: 120, mood: 'Hilarious', desc: 'Crisp studio sitcom audience laugh reaction', synth: 'laugh_burst' },
+  { title: '🥁 Ba-Dum-Tss Rimshot Punchline', cat: 'Comedy Stings', sec: 3, bpm: 118, mood: 'Punchline', desc: 'Snare drum rimshot and cymbal sting after a joke', synth: 'comedy' },
+  { title: '🎺 Sad Trombone Wah-Wah-Waaah', cat: 'Comedy Stings', sec: 4, bpm: 92, mood: 'Fail', desc: 'Classic descending brass fail sting for awkward moments', synth: 'trombone_fail' },
+  { title: '🎻 Dramatic Sad Violin Meme Cry', cat: 'Comedy Stings', sec: 8, bpm: 70, mood: 'Overdramatic', desc: 'Melodramatic crying violin solo for tiny mistakes', synth: 'sad_violin' },
+  { title: '😮 Anime Wow Sparkle Sting', cat: 'Comedy Stings', sec: 3, bpm: 115, mood: 'Amazed', desc: 'Bright comical surprise reveal sting', synth: 'upbeat' },
+  { title: '😱 Dun-Dun-Dun Plot Twist Chord', cat: 'Comedy Stings', sec: 4, bpm: 88, mood: 'Shock', desc: 'Three-beat dramatic shock sting for funny twists', synth: 'trailer' },
+  { title: '🤭 Contagious Wheezing Giggle', cat: 'Comedy Stings', sec: 6, bpm: 126, mood: 'Giggle', desc: 'High-energy snickering chuckle burst', synth: 'giggle_chuckle' },
+  { title: '💿 Record Scratch Freeze Cut', cat: 'Comedy Stings', sec: 2, bpm: 120, mood: 'Record Stop', desc: 'Vinyl scratch halt for freeze-frame narration', synth: 'sfx_whoosh' },
+  { title: '🔔 Correct Ding Quiz Bell', cat: 'Comedy Stings', sec: 2, bpm: 110, mood: 'Cheerful', desc: 'Bright game-show bell ping for win moments', synth: 'pop_cork' },
+
+  // Funny & Meme SFX
+  { title: '💥 Deep Vine Boom Shock Hit', cat: 'Funny & Meme SFX', sec: 3, bpm: 90, mood: 'Meme Boom', desc: 'Heavy sub-bass comedic zoom boom', synth: 'meme_boom' },
+  { title: '🗿 Deadpan Bruh Bass Drop', cat: 'Funny & Meme SFX', sec: 2, bpm: 95, mood: 'Deadpan', desc: 'Dry comedic pause thump', synth: 'meme_boom' },
+  { title: '🤪 Goofy Giggle Snort Reaction', cat: 'Funny & Meme SFX', sec: 4, bpm: 130, mood: 'Silly', desc: 'Playful goofy giggle for prank clips', synth: 'giggle_chuckle' },
+  { title: '🤣 Crowd Roar Comedy Club', cat: 'Funny & Meme SFX', sec: 7, bpm: 124, mood: 'Roaring', desc: 'Warm comedy club crowd burst', synth: 'laugh_burst' },
+  { title: '📢 Squeaky Toy Panic Press', cat: 'Funny & Meme SFX', sec: 2, bpm: 140, mood: 'Squeak', desc: 'Rubber squeak toy double chirp', synth: 'cartoon_boing' },
+  { title: '🚨 Meme Siren Alert Gag', cat: 'Funny & Meme SFX', sec: 4, bpm: 132, mood: 'Alert', desc: 'Exaggerated comedy alarm sting', synth: 'clown_horn' },
+  { title: '🍾 Champagne Cork Pop Reaction', cat: 'Funny & Meme SFX', sec: 2, bpm: 116, mood: 'Snappy', desc: 'Tight hollow pop for surprise reveals', synth: 'pop_cork' },
+  { title: '🤡 Awkward Cricket Silence + Chirp', cat: 'Funny & Meme SFX', sec: 6, bpm: 78, mood: 'Awkward', desc: 'Dry punchline crickets after a bad joke', synth: 'bird_chirp' },
+  { title: '🫣 Embarrassed Sad Bow Tie Cue', cat: 'Funny & Meme SFX', sec: 5, bpm: 74, mood: 'Cringe', desc: 'Slow drooping comic violin drop', synth: 'sad_violin' },
+
+  // Cat & Funny Animals
+  { title: '🐱 Hungry Cat Loud Meow', cat: 'Cat & Funny Animals', sec: 3, bpm: 105, mood: 'Cute Meow', desc: 'Expressive rising-falling house cat meow', synth: 'cat_meow' },
+  { title: '😿 Crying Kitten Sad Meow Sob', cat: 'Cat & Funny Animals', sec: 5, bpm: 84, mood: 'Crying Cat', desc: 'Tremulous pleading kitten cry for funny sad edits', synth: 'cat_cry' },
+  { title: '😾 Grumpy Cat Dramatic Yowl', cat: 'Cat & Funny Animals', sec: 4, bpm: 96, mood: 'Dramatic Cat', desc: 'Low complain-yowl from an annoyed cat', synth: 'cat_cry' },
+  { title: '😸 Happy Cat Cozy Purr Loop', cat: 'Cat & Funny Animals', sec: 12, bpm: 68, mood: 'Cozy Purr', desc: 'Rhythmic warm cat purr rumble', synth: 'cat_purr' },
+  { title: '🐈 Alley Cat Question Meow', cat: 'Cat & Funny Animals', sec: 3, bpm: 112, mood: 'Curious', desc: 'Short inquisitive high meow chirp', synth: 'cat_meow' },
+  { title: '🐶 Silly Puppy Excited Bark', cat: 'Cat & Funny Animals', sec: 4, bpm: 132, mood: 'Playful Dog', desc: 'Energetic double-triple puppy woof', synth: 'dog_bark' },
+  { title: '🦆 Funny Duck Quack Quack Censor', cat: 'Cat & Funny Animals', sec: 3, bpm: 126, mood: 'Quack', desc: 'Comedic pond duck quacks for funny censors', synth: 'duck_quack' },
+  { title: '🐐 Viral Screaming Goat Yell', cat: 'Cat & Funny Animals', sec: 4, bpm: 138, mood: 'Viral Scream', desc: 'Hilarious wobbling goat yell reaction', synth: 'goat_scream' },
+  { title: '🐓 Morning Rooster Wake-Up Crow', cat: 'Cat & Funny Animals', sec: 4, bpm: 122, mood: 'Farm Wakeup', desc: 'Cock-a-doodle-doo farm morning call', synth: 'rooster_crow' },
+  { title: '🐸 Marsh Frog Ribbit Croak', cat: 'Cat & Funny Animals', sec: 4, bpm: 98, mood: 'Swamp', desc: 'Deep comical ribbit croak', synth: 'frog_croak' },
+  { title: '🐱 Twin Kittens Meowing Chorus', cat: 'Cat & Funny Animals', sec: 6, bpm: 110, mood: 'Playful Cats', desc: 'Alternating high kitten meows', synth: 'cat_meow' },
+  { title: '😿 Heartbroken Cat Violin + Meow', cat: 'Cat & Funny Animals', sec: 7, bpm: 76, mood: 'Sad Meme Cat', desc: 'Long wobbling sad cat wail', synth: 'cat_cry' },
+
+  // Bird Calls & Nature
+  { title: '🐦 Morning Sparrow Cheerful Chirp', cat: 'Bird Calls & Nature', sec: 8, bpm: 128, mood: 'Morning', desc: 'Bright backyard songbird chirping calls', synth: 'bird_chirp' },
+  { title: '🦉 Midnight Forest Owl Hoot', cat: 'Bird Calls & Nature', sec: 6, bpm: 70, mood: 'Nocturnal', desc: 'Hollow spooky owl hoo-hoooo echo', synth: 'bird_owl' },
+  { title: '🕊️ Spring Cuckoo Clock Bird Call', cat: 'Bird Calls & Nature', sec: 5, bpm: 100, mood: 'Cuckoo', desc: 'Crisp two-tone cuckoo call in woods', synth: 'bird_cuckoo' },
+  { title: '🐦‍⬛ Sarcastic Crow Caw Caw', cat: 'Bird Calls & Nature', sec: 4, bpm: 94, mood: 'Dry Humor', desc: 'Raspy crow caws for awkward silence gags', synth: 'bird_crow' },
+  { title: '🦜 Tropical Jungle Birds Chorus', cat: 'Bird Calls & Nature', sec: 16, bpm: 118, mood: 'Jungle', desc: 'Lush multi-bird canopy chirps & trills', synth: 'bird_jungle' },
+  { title: '🌳 Dawn Garden Songbirds Loop', cat: 'Bird Calls & Nature', sec: 24, bpm: 108, mood: 'Peaceful', desc: 'Gentle sunrise bird calls and garden ambience', synth: 'bird_chirp' },
+  { title: '🦉 Haunted Woods Twin Owls', cat: 'Bird Calls & Nature', sec: 10, bpm: 66, mood: 'Mysterious', desc: 'Deep distant night owl calls', synth: 'bird_owl' },
+  { title: '🐤 Tiny Chick Tweet Tweet', cat: 'Bird Calls & Nature', sec: 4, bpm: 136, mood: 'Cute', desc: 'Rapid high baby bird peeps', synth: 'bird_chirp' },
+
+  // Thunder & Rain SFX
+  { title: '⛈️ Sudden Lightning Thunder Crack', cat: 'Thunder & Rain SFX', sec: 5, bpm: 72, mood: 'Dramatic Storm', desc: 'Sharp lightning snap into rolling thunder boom', synth: 'thunder_crack' },
+  { title: '🌧️ Heavy Monsoon Rain Downpour', cat: 'Thunder & Rain SFX', sec: 30, bpm: 64, mood: 'Rainy Mood', desc: 'Steady rich tropical rain wash', synth: 'rain_downpour' },
+  { title: '🌩️ Distant Rolling Storm Thunder', cat: 'Thunder & Rain SFX', sec: 12, bpm: 60, mood: 'Rumble', desc: 'Deep low thunder rumble across hills', synth: 'thunder_crack' },
+  { title: '💨 Howling Mountain Night Wind', cat: 'Thunder & Rain SFX', sec: 18, bpm: 68, mood: 'Windy', desc: 'Sweeping gusty wind whistle ambience', synth: 'wind_howl' },
+  { title: '🌧️ Rain on Tin Roof Ambience', cat: 'Thunder & Rain SFX', sec: 45, bpm: 70, mood: 'Cozy Rain', desc: 'Long soothing tin-roof rainfall bed', synth: 'rain_downpour' },
+  { title: '⚡ Close Cloudburst Thunder Smash', cat: 'Thunder & Rain SFX', sec: 6, bpm: 80, mood: 'Storm Hit', desc: 'Heavy overhead thunder clap for scary gags', synth: 'thunder_crack' },
+  { title: '🌬️ Ghostly Haunted Corridor Wind', cat: 'Thunder & Rain SFX', sec: 14, bpm: 62, mood: 'Spooky', desc: 'Eerie whistling draft for comedy horror', synth: 'wind_howl' },
+
+  // Cartoon & Slapstick
+  { title: '🌀 Elastic Spring Boing Bounce', cat: 'Cartoon & Slapstick', sec: 2, bpm: 136, mood: 'Bouncy', desc: 'Classic wobbling cartoon spring boing', synth: 'cartoon_boing' },
+  { title: '🍌 Banana Peel Slide Whistle Fall', cat: 'Cartoon & Slapstick', sec: 3, bpm: 142, mood: 'Slapstick', desc: 'Up-and-down slide whistle slip effect', synth: 'cartoon_slip' },
+  { title: '🔨 Hollow Wooden Head Bonk', cat: 'Cartoon & Slapstick', sec: 2, bpm: 120, mood: 'Bonk', desc: 'Snappy hollow cartoon knock bonk', synth: 'cartoon_bonk' },
+  { title: '📯 Circus Clown Horn Honk Honk', cat: 'Cartoon & Slapstick', sec: 3, bpm: 132, mood: 'Circus', desc: 'Double rubber-bulb clown horn squeeze', synth: 'clown_horn' },
+  { title: '🫧 Cartoon Bubble Pop Burst', cat: 'Cartoon & Slapstick', sec: 2, bpm: 124, mood: 'Pop', desc: 'Crisp bubbly mouth-pop sting', synth: 'pop_cork' },
+  { title: '📉 Zip-Down Fail Whistle Drop', cat: 'Cartoon & Slapstick', sec: 3, bpm: 112, mood: 'Fail Drop', desc: 'Fast downward pitch whistle gag', synth: 'cartoon_slip' },
+  { title: '🥊 Rubber Frying Pan Clang Bonk', cat: 'Cartoon & Slapstick', sec: 2, bpm: 128, mood: 'Knockout', desc: 'Punchy comic slapstick pan bonk', synth: 'cartoon_bonk' },
+  { title: '🦘 Mega Trampoline Super Boing', cat: 'Cartoon & Slapstick', sec: 3, bpm: 130, mood: 'Jump', desc: 'Deep bouncy launch spring', synth: 'cartoon_boing' },
+  { title: '🎈 Squeaky Balloon Deflate Gag', cat: 'Cartoon & Slapstick', sec: 4, bpm: 134, mood: 'Wacky', desc: 'Spinning balloon flutter whistle', synth: 'cartoon_slip' },
+
+  // Long Comedy BGM (60s - 210s up to a few minutes!)
+  { title: '🎷 Crazy Slapstick Chase Sax Loop', cat: 'Long Comedy BGM', sec: 120, bpm: 162, mood: 'Fast Chase', desc: '2-minute high-speed comedic chase groove', synth: 'comedy_chase' },
+  { title: '🪕 Sunny Ukulele & Whistle Vlog', cat: 'Long Comedy BGM', sec: 150, bpm: 122, mood: 'Cheerful', desc: '2.5-minute happy whistling comedy background', synth: 'comedy_whistle' },
+  { title: '🕵️ Sneaky Tip-Toe Detective Loop', cat: 'Long Comedy BGM', sec: 135, bpm: 108, mood: 'Mischievous', desc: '2m15s playful tip-toe prank background', synth: 'comedy' },
+  { title: '🎹 Silent-Film Ragtime Slapstick', cat: 'Long Comedy BGM', sec: 180, bpm: 140, mood: 'Vintage Gag', desc: '3-minute bouncy silent-comedy chase track', synth: 'comedy_chase' },
+  { title: '🎪 Goofy Circus Parade Walk', cat: 'Long Comedy BGM', sec: 110, bpm: 128, mood: 'Circus Fun', desc: 'Upbeat carnival background music for skits', synth: 'comedy_ukulele' },
+  { title: '☕ Chill Sarcastic Lo-Fi Comedy', cat: 'Long Comedy BGM', sec: 165, bpm: 84, mood: 'Deadpan Chill', desc: 'Nearly 3-minute relaxed deadpan commentary bed', synth: 'lofi' },
+  { title: '🌴 Happy Tropical Island Prank Bed', cat: 'Long Comedy BGM', sec: 140, bpm: 116, mood: 'Upbeat Fun', desc: 'Bright comedy vlog underscore', synth: 'upbeat' },
+  { title: '🌧️ Long Cozy Monsoon & Thunder Bed', cat: 'Long Comedy BGM', sec: 210, bpm: 64, mood: '3.5m Storm', desc: '3.5-minute continuous rain & storm background', synth: 'rain_downpour' },
+  { title: '🐦 Extended Morning Birds & Breeze', cat: 'Long Comedy BGM', sec: 195, bpm: 96, mood: '3m Nature', desc: 'Over 3 minutes of natural birdsong ambience', synth: 'bird_jungle' },
+  { title: '🚶 Quirky Whistling Street Stroll', cat: 'Long Comedy BGM', sec: 95, bpm: 114, mood: 'Carefree', desc: 'Cheerful whistling comedy theme', synth: 'comedy_whistle' },
+  { title: '🎮 Retro 8-Bit Funny Fail Parade', cat: 'Long Comedy BGM', sec: 105, bpm: 132, mood: 'Retro Comedy', desc: 'Playful arcade-style comedic montage track', synth: 'electronic' },
+  { title: '🎬 Blockbuster Mockumentary Bed', cat: 'Long Comedy BGM', sec: 125, bpm: 98, mood: 'Mock Epic', desc: 'Over-the-top serious-sounding funny score', synth: 'cinematic' },
+
+  // Action & Impact SFX
+  { title: '💨 Fast Air Swipe Whoosh', cat: 'Action & Impact SFX', sec: 2, bpm: 130, mood: 'Transition', desc: 'Clean high-speed air whip for scene cuts', synth: 'sfx_whoosh' },
+  { title: '🪟 Window Glass Shatter Crash', cat: 'Action & Impact SFX', sec: 3, bpm: 122, mood: 'Shatter', desc: 'Sharp crystalline window break SFX', synth: 'sfx_glass_break' },
+  { title: '🥊 Heavy Action Chest Punch Thud', cat: 'Action & Impact SFX', sec: 2, bpm: 134, mood: 'Fight Hit', desc: 'Low-end body slam punch impact', synth: 'sfx_punch_impact' },
+  { title: '🔫 Pistol Shot + Canyon Echo', cat: 'Action & Impact SFX', sec: 3, bpm: 140, mood: 'Gunfire', desc: 'Sharp firearm crack with reverberant tail', synth: 'sfx_gunshot' },
+  { title: '🔥 Match Strike & Flame Roar', cat: 'Action & Impact SFX', sec: 4, bpm: 110, mood: 'Fire', desc: 'Sudden flame whoosh & crackling fire burn', synth: 'sfx_fire_burn' },
+  { title: '🪞 Mirror Break + Shards Scatter', cat: 'Action & Impact SFX', sec: 3, bpm: 120, mood: 'Crash', desc: 'Crisp glass smash impact', synth: 'sfx_glass_break' },
+  { title: '💣 Mega Cinematic Explosion Boom', cat: 'Action & Impact SFX', sec: 4, bpm: 95, mood: 'Blast', desc: 'Deep earth-shaking explosion hit', synth: 'meme_boom' },
+  { title: '🌀 Ninja Whip Swoosh Cut', cat: 'Action & Impact SFX', sec: 2, bpm: 145, mood: 'Whip', desc: 'Tight rapid transition swoosh', synth: 'sfx_whoosh' },
 ];
 
-const RAW_CINEMATIC_AUDIO: typeof RAW_FUNNY_MEME_SFX = [
-  { title: 'Cinematic Trailer Score (Stereo 48kHz)', cat: 'Cinematic Score', dur: '00:21', sec: 21, bpm: 92, mood: 'Epic', desc: 'Sweeping strings & brass trailer score with rising climax', synth: 'cinematic' },
-  { title: 'Epic Orchestral Rising Symphony', cat: 'Cinematic Score', dur: '00:30', sec: 30, bpm: 96, mood: 'Heroic', desc: 'Full symphony orchestra swell for movie openers', synth: 'cinematic' },
-  { title: 'Interstellar Organ Horizon', cat: 'Cinematic Score', dur: '00:32', sec: 32, bpm: 78, mood: 'Emotional', desc: 'Deep cathedral pipe organ & cosmic synth pad', synth: 'cinematic' },
-  { title: 'Oppenheimer Countdown Ticking', cat: 'Cinematic Score', dur: '00:22', sec: 22, bpm: 126, mood: 'Tense', desc: 'Accelerating string pulse & clockwork tension', synth: 'trailer' },
-  { title: 'Dramatic Action Impact Hits', cat: 'Trailer Hits', dur: '00:15', sec: 15, bpm: 110, mood: 'Power', desc: 'Heavy percussion hits & low brass booms for action cuts', synth: 'trailer' },
-  { title: 'Heavy Taiko War Drum Barrage', cat: 'Trailer Hits', dur: '00:18', sec: 18, bpm: 132, mood: 'Intense', desc: 'Tribal taiko drum cadence for fast montage edits', synth: 'trailer' },
-  { title: 'Golden Morning Acoustic Travel', cat: 'Background Music', dur: '00:28', sec: 28, bpm: 105, mood: 'Warm', desc: 'Soft acoustic guitar & warm pad for travel vlogs', synth: 'upbeat' },
-  { title: 'Emotional Piano Memory BGM', cat: 'Background Music', dur: '00:34', sec: 34, bpm: 70, mood: 'Touching', desc: 'Gentle felt piano arpeggios for storytelling & reels', synth: 'lofi' },
-  { title: 'Peaceful Flute & Rain Ambience', cat: 'Background Music', dur: '00:30', sec: 30, bpm: 68, mood: 'Calm', desc: 'Serene bansuri flute over gentle monsoon rain', synth: 'lofi' },
-  { title: 'Summer Funk Island Groove', cat: 'Upbeat Beat', dur: '00:24', sec: 24, bpm: 118, mood: 'Energetic', desc: 'Bright bassline and tropical claps for lifestyle reels', synth: 'upbeat' },
-  { title: 'Rain on Window Lo-Fi Study', cat: 'Lo-Fi Chill', dur: '00:30', sec: 30, bpm: 80, mood: 'Chill', desc: 'Warm vinyl crackle Rhodes chords and relaxed beat', synth: 'lofi' },
-  { title: 'Dark Synthwave 80s Pulse', cat: 'Electronic', dur: '00:24', sec: 24, bpm: 122, mood: 'Cyber', desc: 'Analog arpeggio bass & neon synth lead', synth: 'electronic' },
-  { title: 'Subtle Cinematic Whoosh / Swish', cat: 'Sound Effects', dur: '00:03', sec: 3, bpm: 100, mood: 'Transition', desc: 'Clean air whoosh ideal for slide & whip transitions', synth: 'sfx_whoosh' },
-  { title: '🪟 Window Glass Shatter & Crash (ചില്ല് പൊട്ടുന്ന ശബ്ദം)', cat: 'Sound Effects', dur: '00:03', sec: 3, bpm: 120, mood: 'Action Impact', desc: 'Crisp high-frequency glass crash & tumbling crystal shards SFX', synth: 'sfx_glass_break' },
-  { title: '🪞 Mirror Shatter & Hammer Smash SFX', cat: 'Sound Effects', dur: '00:03', sec: 3, bpm: 118, mood: 'Thrill Impact', desc: 'Heavy glass crack + scattering shards for action & horror scenes', synth: 'sfx_glass_break' },
-  { title: '🍾 Bottle Crash Shatter SFX', cat: 'Sound Effects', dur: '00:02', sec: 2, bpm: 125, mood: 'Smash', desc: 'Sharp glass bottle smash & floor ring impact sound', synth: 'sfx_glass_break' },
-  { title: '🔥 Matchstick Strike & Ignite Burst (തീപ്പെട്ടി ഉരയ്ക്കുന്ന ശബ്ദം)', cat: 'Sound Effects', dur: '00:04', sec: 4, bpm: 110, mood: 'Ignition', desc: 'Friction match strike followed by sudden flame ignition roar', synth: 'sfx_fire_burn' },
-  { title: '🏚️ Building Inferno Fire Roar & Crackle', cat: 'Sound Effects', dur: '00:10', sec: 10, bpm: 92, mood: 'Inferno', desc: 'Towering building fire blaze crackle and deep flame roar', synth: 'sfx_fire_burn' },
-  { title: '🥊 Heavy Action Punch & Crash Impact', cat: 'Sound Effects', dur: '00:02', sec: 2, bpm: 130, mood: 'Fight', desc: 'Deep chest thud + sonic crack for fight choreography', synth: 'sfx_punch_impact' },
-  { title: '🔫 Pistol Gunshot & Echo Tail SFX', cat: 'Sound Effects', dur: '00:03', sec: 3, bpm: 140, mood: 'Gunfire', desc: 'Sharp 9mm gunshot crack with metallic echo tail', synth: 'sfx_gunshot' },
-  { title: 'Thunderstorm & Rain Ambience', cat: 'Sound Effects', dur: '00:14', sec: 14, bpm: 65, mood: 'Atmosphere', desc: 'Deep rolling thunder rumble for moody night scenes', synth: 'meme_boom' },
+const AUDIO_STYLE_SUFFIXES = [
+  'Original Mix',
+  'Punchy Edit',
+  'Loud Meme Cut',
+  'Soft Room',
+  'Echo Hall',
+  'Fast Tempo',
+  'Slow-Mo Pitch',
+  'Bass Boosted',
+  'Clean Studio',
+  'Reels Cut',
+  'Shorts Snap',
+  'Cartoon Pop',
+  'Close Mic',
+  'Distant Ambience',
+  'Extended Take',
+  'Double Hit',
+  'High Pitch',
+  'Deep Tone',
+  'Stereo Wide',
+  'Podcast Clean',
 ];
 
-const ALL_RAW_AUDIO = [...RAW_FUNNY_MEME_SFX, ...RAW_CINEMATIC_AUDIO];
-const AUDIO_STYLE_TAGS = ['Studio Master', 'Reels Cut', 'Dolby Mix', 'Bass Boost', 'Acoustic', 'Extended', 'Vlog Edit', '4K Surround'];
+function formatAudioSec(sec: number): string {
+  const safe = Math.max(1, Math.round(sec));
+  const m = Math.floor(safe / 60);
+  const s = safe % 60;
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
 
-export const AUDIO_LIST: AudioItem[] = Array.from({ length: 1200 }, (_, i) => {
-  const base = ALL_RAW_AUDIO[i % ALL_RAW_AUDIO.length];
-  const cycle = Math.floor(i / ALL_RAW_AUDIO.length);
-  const tag = AUDIO_STYLE_TAGS[i % AUDIO_STYLE_TAGS.length];
+export const AUDIO_LIST: AudioItem[] = Array.from({ length: 1500 }, (_, i) => {
+  const base = RAW_FUNNY_AUDIO_BASES[i % RAW_FUNNY_AUDIO_BASES.length];
+  const cycle = Math.floor(i / RAW_FUNNY_AUDIO_BASES.length);
+  const suffix = AUDIO_STYLE_SUFFIXES[cycle % AUDIO_STYLE_SUFFIXES.length];
+  const rawSec = Number(base.sec) || 4;
+  // Vary durations naturally (long comedy BGM tracks scale up to ~240s = 4 minutes)
+  const durFactor =
+    suffix === 'Extended Take' ? 1.25 : suffix === 'Shorts Snap' ? 0.75 : 1 + ((cycle % 5) - 2) * 0.08;
+  const finalSec = Math.max(2, Math.min(240, Math.round(rawSec * durFactor)));
+  const setNum = Math.floor(cycle / AUDIO_STYLE_SUFFIXES.length) + 1;
+  const variantLabel =
+    cycle === 0 ? base.title : setNum > 1 ? `${base.title} · ${suffix} ${setNum}` : `${base.title} · ${suffix}`;
   return {
     id: `aud_${i + 1}`,
-    title: cycle === 0 ? base.title : `${base.title} · ${tag} #${i + 1}`,
+    title: variantLabel,
     category: base.cat,
-    duration: base.dur,
-    durationSec: base.sec,
-    bpm: base.bpm + (i % 7) - 3,
+    duration: formatAudioSec(finalSec),
+    durationSec: finalSec,
+    bpm: Math.max(55, base.bpm + ((cycle % 7) - 3) * 3),
     mood: base.mood,
-    description: `${base.desc} (${base.bpm} BPM · ${base.mood})`,
+    description: `${base.desc} · ${suffix} (${formatAudioSec(finalSec)})`,
     synthPreset: base.synth,
   };
 });
@@ -498,25 +574,49 @@ const TRANSITION_DEFS: Array<{
 
 export const TRANSITION_CATEGORIES = TRANSITION_DEFS.map((d) => d.cat);
 
-export const TRANSITIONS_LIST: TransitionItem[] = Array.from({ length: 1200 }, (_, i) => {
+const TRANSITION_CURVES = [
+  'Ease Smooth',
+  'Snap Cut',
+  'Optical Blur',
+  'Cinema Beat',
+  'Flash Pulse',
+  'Feather Glide',
+  'Elastic Bounce',
+  'Quick Whip',
+  'Slow Cross',
+  'Tight Frame',
+  'Shutter Sweep',
+  'Rhythm Sync',
+  'Soft Feather',
+  'Edge Blend',
+  'Momentum Cut',
+  'Hyper Curve',
+  'Radial Ease',
+  'Frame Slam',
+  'Light Spill',
+  'Dream Drift',
+];
+
+export const TRANSITIONS_LIST: TransitionItem[] = Array.from({ length: 1280 }, (_, i) => {
   const def = TRANSITION_DEFS[i % TRANSITION_DEFS.length];
   const baseName = def.names[Math.floor(i / TRANSITION_DEFS.length) % def.names.length];
-  const vol = Math.floor(i / (TRANSITION_DEFS.length * def.names.length)) + 1;
+  const cycle = Math.floor(i / (TRANSITION_DEFS.length * def.names.length));
+  const curve = TRANSITION_CURVES[(cycle + i) % TRANSITION_CURVES.length];
   const code = `TR${String(i + 1).padStart(4, '0')}`;
-  const dur = Number((0.6 + (i % 5) * 0.15).toFixed(2));
+  const dur = Number((0.4 + (i % 7) * 0.15).toFixed(2));
   return {
     id: `tr_${i + 1}`,
-    name: vol === 1 ? baseName : `${baseName} Pro v${vol}`,
+    name: cycle === 0 ? baseName : `${baseName} · ${curve}`,
     category: def.cat,
     icon: code,
     effectType: def.effectType,
     durationSec: dur,
-    description: `${def.desc} (${dur}s duration · ${def.cat})`,
+    description: `${def.desc} (${dur}s · ${curve})`,
   };
 });
 
 // -------------------------------------------------------------------------
-// 4. EFFECTS & VFX OVERLAYS LIBRARY (600 Live Canvas VFX Overlays)
+// 4. EFFECTS & VFX OVERLAYS LIBRARY (1,280 Diverse Canvas Overlays)
 // -------------------------------------------------------------------------
 const EFFECT_DEFS: Array<{
   cat: string;
@@ -585,23 +685,54 @@ const EFFECT_DEFS: Array<{
 
 export const EFFECT_CATEGORIES = EFFECT_DEFS.map((d) => d.cat);
 
-export const EFFECTS_LIST: EffectItem[] = Array.from({ length: 1200 }, (_, i) => {
+const EFFECT_SHADES = [
+  'Subtle Wash',
+  'Warm Rim',
+  'Cool Drift',
+  'Soft Focus',
+  'Heavy Texture',
+  'Night Pulse',
+  'Golden Edge',
+  'Prism Split',
+  'Velvet Glow',
+  'Studio Mist',
+  'High Shimmer',
+  'Deep Vignette',
+  'Clean Spark',
+  'Vintage Gate',
+  'Ambient Veil',
+  'Dual Tint',
+  'Radial Halo',
+  'Micro Dust',
+  'Motion Streak',
+  'Crisp Overlay',
+  'Dream Blur',
+  'Cinema Burn',
+  'Midnight Frost',
+  'Solar Wash',
+  'Static Sweep',
+  'Light Bloom',
+  'Shadow Grain',
+];
+
+export const EFFECTS_LIST: EffectItem[] = Array.from({ length: 1280 }, (_, i) => {
   const def = EFFECT_DEFS[i % EFFECT_DEFS.length];
   const baseName = def.names[Math.floor(i / EFFECT_DEFS.length) % def.names.length];
-  const tier = Math.floor(i / (EFFECT_DEFS.length * def.names.length)) + 1;
+  const cycle = Math.floor(i / (EFFECT_DEFS.length * def.names.length));
+  const shade = EFFECT_SHADES[(cycle + i * 3) % EFFECT_SHADES.length];
   return {
     id: `eff_${i + 1}`,
-    name: tier === 1 ? baseName : `${baseName} FX #${i + 1}`,
+    name: cycle === 0 ? baseName : `${baseName} · ${shade}`,
     category: def.cat,
     overlayClass: 'mix-blend-screen opacity-80 pointer-events-none',
     effectType: def.effectType,
     accentColor: def.accent,
-    description: `${def.desc} (Layer: ${def.cat})`,
+    description: `${def.desc} · ${shade}`,
   };
 });
 
 // -------------------------------------------------------------------------
-// 5. TITLES & TYPOGRAPHY LIBRARY (600 Lower Thirds & Openers)
+// 5. TITLES & TYPOGRAPHY LIBRARY (1,280 Diverse Titles & Openers)
 // -------------------------------------------------------------------------
 export const TITLE_CATEGORIES = [
   'Cinematic Openers',
@@ -610,35 +741,84 @@ export const TITLE_CATEGORIES = [
   'Minimal Titles',
   'Social & Vlog',
   'Retro & Movie',
+  'Action & Trailer',
+  'Comedy & Reaction',
 ];
 
-const BASE_TITLES = [
-  { name: 'IMPACT HOLLYWOOD OPENER', sub: 'SUMMER BLOCKBUSTER 2026', style: 'font-black tracking-widest text-white uppercase', desc: 'Bold widescreen theatrical movie opener title' },
-  { name: 'CYBERPUNK NEON GLOW 3D', sub: 'NIGHT CITY ADVENTURE', style: 'font-mono text-cyan-400 drop-shadow-[0_0_15px_rgba(56,189,248,0.9)]', desc: 'Glowing cyan neon monospace cyber title card' },
-  { name: 'MINIMAL MODERN LOWER THIRD', sub: 'DIRECTOR & CINEMATOGRAPHER', style: 'font-semibold tracking-wide text-zinc-100 text-sm', desc: 'Clean documentary lower-third name & role plate' },
-  { name: 'ELEGANT GOLDEN SCRIPT', sub: 'A CINEMATIC MASTERPIECE', style: 'font-serif italic text-amber-300 drop-shadow', desc: 'Luxury serif golden title for weddings & drama' },
-  { name: 'YOUTUBE BOLD VLOG TITLE', sub: 'DON’T FORGET TO SUBSCRIBE', style: 'font-black text-amber-400 bg-black/60 px-2 rounded', desc: 'High-retention creator callout banner' },
-  { name: 'RETRO 80S SYNTHWAVE TITLE', sub: 'OUTRUN RETROGRADE', style: 'font-extrabold text-pink-500 drop-shadow-[0_0_12px_rgba(236,72,153,0.8)]', desc: 'Vibrant 80s neon pink synthwave headline' },
-  { name: 'BREAKING NEWS TICKER', sub: 'LIVE EXCLUSIVE UPDATE', style: 'font-black text-rose-400 uppercase tracking-wider', desc: 'Broadcast headline bar for news & commentary' },
-  { name: 'DOCUMENTARY CHAPTER', sub: 'PART I · THE BEGINNING', style: 'font-serif tracking-[0.25em] text-zinc-200 uppercase', desc: 'Wide-tracked cinematic chapter divider' },
+const TITLE_WORDS_A = [
+  'MIDNIGHT',
+  'GOLDEN',
+  'SILENT',
+  'ELECTRIC',
+  'BROKEN',
+  'CRIMSON',
+  'SUMMER',
+  'NEON',
+  'HIDDEN',
+  'FINAL',
+  'INFINITE',
+  'WILD',
 ];
 
-export const TITLES_LIST: TitleItem[] = Array.from({ length: 1200 }, (_, i) => {
-  const base = BASE_TITLES[i % BASE_TITLES.length];
+const TITLE_WORDS_B = [
+  'HORIZON',
+  'CHAPTER',
+  'SIGNAL',
+  'STORY',
+  'ESCAPE',
+  'LEGEND',
+  'CHRONICLE',
+  'MOMENT',
+  'VERDICT',
+  'JOURNEY',
+  'TWIST',
+  'EDITION',
+];
+
+const TITLE_SUBTITLES = [
+  'A CINEMA ORIGINAL FEATURE',
+  'DIRECTED & CUT IN 4K',
+  'EXCLUSIVE BEHIND THE SCENES',
+  'WATCH UNTIL THE VERY END',
+  'EPISODE RECAP & HIGHLIGHTS',
+  'SEASON FINALE SPECIAL',
+  'DOCUMENTARY FIELD NOTES',
+  'COMEDY EDITION · FULL CUT',
+  'NIGHT CITY SOUNDTRACK',
+  'LIMITED FESTIVAL RELEASE',
+];
+
+const TITLE_STYLES = [
+  'font-black tracking-widest text-white uppercase',
+  'font-mono text-cyan-400 drop-shadow-[0_0_15px_rgba(56,189,248,0.9)]',
+  'font-semibold tracking-wide text-zinc-100 text-sm',
+  'font-serif italic text-amber-300 drop-shadow',
+  'font-black text-amber-400 bg-black/60 px-2 rounded',
+  'font-extrabold text-pink-500 drop-shadow-[0_0_12px_rgba(236,72,153,0.8)]',
+  'font-black text-rose-400 uppercase tracking-wider',
+  'font-serif tracking-[0.25em] text-zinc-200 uppercase',
+];
+
+export const TITLES_LIST: TitleItem[] = Array.from({ length: 1280 }, (_, i) => {
   const cat = TITLE_CATEGORIES[i % TITLE_CATEGORIES.length];
+  const a = TITLE_WORDS_A[(i * 7) % TITLE_WORDS_A.length];
+  const b = TITLE_WORDS_B[(i * 5 + Math.floor(i / 12)) % TITLE_WORDS_B.length];
+  const sub = TITLE_SUBTITLES[(i * 3 + Math.floor(i / 18)) % TITLE_SUBTITLES.length];
+  const style = TITLE_STYLES[i % TITLE_STYLES.length];
+  const badge = ['Opener', 'Lower Third', 'Chapter', 'Headline', 'Stamp', 'Credit', 'Hook', 'Banner', 'Title Plate', 'Callout'][Math.floor(i / 144) % 10];
   return {
     id: `title_${i + 1}`,
-    name: `${base.name.slice(0, 20)} #${i + 1}`,
+    name: `${a} ${b} · ${badge}`,
     category: cat,
-    titleText: i < BASE_TITLES.length ? base.name : `${base.name} ${Math.floor(i / BASE_TITLES.length) + 1}`,
-    subtitleText: base.sub,
-    styleClass: base.style,
-    description: `${base.desc} (${cat})`,
+    titleText: `${a} ${b}`,
+    subtitleText: sub,
+    styleClass: style,
+    description: `${cat} · ${badge} typography preset`,
   };
 });
 
 // -------------------------------------------------------------------------
-// 6. VIDEO TEMPLATES LIBRARY (1,200 Motion Templates)
+// 6. VIDEO TEMPLATES LIBRARY (1,280 Diverse Motion Templates)
 // -------------------------------------------------------------------------
 export const TEMPLATE_CATEGORIES = [
   'Cinematic Intro',
@@ -651,23 +831,69 @@ export const TEMPLATE_CATEGORIES = [
   'Comedy & Meme',
 ];
 
-export const TEMPLATES_LIST: TemplateItem[] = Array.from({ length: 1200 }, (_, i) => {
+const TEMPLATE_ADJS = [
+  'Blockbuster',
+  'Urban',
+  'Velvet',
+  'Turbo',
+  'Sunset',
+  'Neon',
+  'Nordic',
+  'Retro',
+  'Dynamic',
+  'Minimal',
+  'Punchy',
+  'Golden',
+];
+
+const TEMPLATE_THEMES = [
+  'Opener',
+  'Storyline',
+  'Highlight Reel',
+  'Showreel',
+  'Countdown',
+  'Vlog Cut',
+  'Recap',
+  'Montage',
+  'Showcase',
+  'Title Sequence',
+  'Spotlight',
+  'Teaser',
+];
+
+const TEMPLATE_EDITIONS = [
+  'Widescreen',
+  'Fast Rhythm',
+  'Clean Cut',
+  'Director Mix',
+  '4K Master',
+  'Creator Kit',
+  'Festival Cut',
+  'Night Tone',
+  'Bright Pop',
+];
+
+export const TEMPLATES_LIST: TemplateItem[] = Array.from({ length: 1280 }, (_, i) => {
   const cat = TEMPLATE_CATEGORIES[i % TEMPLATE_CATEGORIES.length];
-  const dur = 10 + (i % 25);
+  const adj = TEMPLATE_ADJS[(i * 5) % TEMPLATE_ADJS.length];
+  const thm = TEMPLATE_THEMES[(i * 3 + Math.floor(i / 12)) % TEMPLATE_THEMES.length];
+  const ed = TEMPLATE_EDITIONS[(i * 7 + Math.floor(i / 144)) % TEMPLATE_EDITIONS.length];
+  const dur = 8 + (i % 28);
   const ss = String(dur).padStart(2, '0');
   const thumb = FILTER_THUMBS[i % FILTER_THUMBS.length];
+  const title = `${adj} ${thm} · ${ed}`;
   return {
     id: `tpl_${i + 1}`,
-    title: `${cat} Pack #${i + 1}`,
+    title,
     duration: `00:${ss}`,
     durationSec: dur,
     category: cat,
     thumbnail: thumb,
-    movieTitle: `${cat.toUpperCase()} #${i + 1}`,
-    subtitle: `PRODUCE | CineStudio 4K · ${cat}`,
-    director: `DIRECTOR | CineStudio Pro`,
+    movieTitle: `${adj.toUpperCase()} ${thm.toUpperCase()}`,
+    subtitle: `${cat.toUpperCase()} · ${ed.toUpperCase()}`,
+    director: `CUT BY CINESTUDIO`,
     bgUrl: thumb,
-    description: `Applies pre-styled ${cat} title typography, subtitle & director credits (${dur}s layout).`,
+    description: `${cat} · Applies ${adj} ${thm} typography, subtitle & ${ed} pacing (${dur}s).`,
   };
 });
 
@@ -677,7 +903,7 @@ export const TEMPLATES_LIST: TemplateItem[] = Array.from({ length: 1200 }, (_, i
 export const INITIAL_MEDIA_GALLERY: MediaItem[] = [];
 
 // -------------------------------------------------------------------------
-// 8. STICKERS & BADGES LIBRARY (600 Graphic Canvas Stickers)
+// 8. STICKERS & BADGES LIBRARY (1,280 Diverse Canvas Stickers)
 // -------------------------------------------------------------------------
 export const STICKER_CATEGORIES = [
   'Subscribe & Social',
@@ -687,40 +913,78 @@ export const STICKER_CATEGORIES = [
   'Emoji & Reactions',
   'Meme & Comedy Stickers',
   'Gaming & Stream',
+  'Weather & Nature',
 ];
 
-const RAW_STICKERS = [
-  { name: 'YouTube Subscribe', cat: 'Subscribe & Social', badge: 'SUBSCRIBE', emoji: '🔴', color: 'bg-red-600 text-white', desc: 'Red subscribe call-to-action pill badge' },
-  { name: 'Bell Notification', cat: 'Subscribe & Social', badge: 'NOTIFY ME', emoji: '🔔', color: 'bg-amber-500 text-black', desc: 'Golden bell reminder badge for viewers' },
-  { name: 'Like Thumbs Up', cat: 'Subscribe & Social', badge: 'LIKE', emoji: '👍', color: 'bg-blue-600 text-white', desc: 'Blue thumbs-up engagement sticker' },
-  { name: 'Instagram Heart', cat: 'Subscribe & Social', badge: 'LOVE', emoji: '❤️', color: 'bg-pink-600 text-white', desc: 'Heart reaction overlay badge' },
-  { name: 'Follow Music Note', cat: 'Subscribe & Social', badge: 'FOLLOW', emoji: '🎵', color: 'bg-cyan-500 text-black', desc: 'Reels & shorts follow prompt sticker' },
-  { name: 'Share Arrow', cat: 'Arrows & Pointers', badge: 'SHARE NOW', emoji: '↗️', color: 'bg-emerald-600 text-white', desc: 'Pointing share prompt graphic' },
-  { name: '4K Ultra HD Badge', cat: 'Badges & Seals', badge: '4K ULTRA HD', emoji: '🎬', color: 'bg-amber-400 text-black font-black', desc: 'Cinema 4K resolution corner seal' },
-  { name: 'Top Rated Trophy', cat: 'Badges & Seals', badge: 'TOP RATED', emoji: '🏆', color: 'bg-emerald-400 text-black font-bold', desc: 'Gold award ribbon badge' },
-  { name: 'Pro VIP Crown', cat: 'Badges & Seals', badge: 'PRO VIP', emoji: '👑', color: 'bg-yellow-500 text-black font-extrabold', desc: 'Royal crown premium stamp' },
-  { name: 'Laughing Doge Meme', cat: 'Meme & Comedy Stickers', badge: 'MUCH WOW', emoji: '🐕', color: 'bg-yellow-400 text-black font-black', desc: 'Classic viral doge comedy sticker' },
-  { name: 'Gigachad Stare', cat: 'Meme & Comedy Stickers', badge: 'BASED', emoji: '🗿', color: 'bg-zinc-800 text-teal-300 font-bold', desc: 'Moai stone face meme reaction stamp' },
-  { name: 'Crying Laughing Emoji', cat: 'Meme & Comedy Stickers', badge: 'LMAO', emoji: '🤣', color: 'bg-amber-400 text-black', desc: 'Comedy highlight reaction badge' },
-  { name: 'Cat Vibing Jam', cat: 'Meme & Comedy Stickers', badge: 'VIBING', emoji: '🐱', color: 'bg-purple-600 text-white', desc: 'Music beat vibing cat overlay' },
-  { name: 'Popcat Open Mouth', cat: 'Meme & Comedy Stickers', badge: 'POP!', emoji: '😺', color: 'bg-rose-500 text-white', desc: 'Surprised comedy popcat sticker' },
-  { name: 'Fire Flame Lit', cat: 'Emoji & Reactions', badge: 'FIRE!', emoji: '🔥', color: 'bg-orange-500 text-white', desc: 'Hype flame reaction sticker' },
-  { name: 'Mind Blown Explode', cat: 'Emoji & Reactions', badge: 'MIND BLOWN', emoji: '🤯', color: 'bg-purple-600 text-white', desc: 'Shock plot-twist reaction sticker' },
-  { name: '100 Percent Score', cat: 'Emoji & Reactions', badge: '100%', emoji: '💯', color: 'bg-red-600 text-white', desc: 'Perfect score stamp overlay' },
-  { name: 'Cool Sunglasses Swag', cat: 'Gaming & Stream', badge: 'GG EZ', emoji: '😎', color: 'bg-zinc-800 text-white', desc: 'Cool sunglasses gaming win badge' },
+const RAW_STICKER_BASES: Array<{
+  cat: string;
+  emoji: string;
+  badge: string;
+  label: string;
+  color: string;
+}> = [
+  { cat: 'Subscribe & Social', emoji: '🔴', badge: 'SUBSCRIBE', label: 'Subscribe CTA', color: 'bg-red-600 text-white' },
+  { cat: 'Subscribe & Social', emoji: '🔔', badge: 'NOTIFY', label: 'Bell Alert', color: 'bg-amber-500 text-black' },
+  { cat: 'Subscribe & Social', emoji: '👍', badge: 'LIKE', label: 'Thumbs Up', color: 'bg-blue-600 text-white' },
+  { cat: 'Subscribe & Social', emoji: '❤️', badge: 'LOVE', label: 'Heart Pop', color: 'bg-pink-600 text-white' },
+  { cat: 'Subscribe & Social', emoji: '💬', badge: 'COMMENT', label: 'Comment Prompt', color: 'bg-teal-500 text-black' },
+  { cat: 'Badges & Seals', emoji: '🎬', badge: '4K CINEMA', label: 'Cinema Seal', color: 'bg-amber-400 text-black' },
+  { cat: 'Badges & Seals', emoji: '🏆', badge: 'WINNER', label: 'Gold Trophy', color: 'bg-emerald-400 text-black' },
+  { cat: 'Badges & Seals', emoji: '👑', badge: 'VIP', label: 'Royal Crown', color: 'bg-yellow-500 text-black' },
+  { cat: 'Badges & Seals', emoji: '⭐', badge: 'FEATURED', label: 'Star Badge', color: 'bg-amber-400 text-black' },
+  { cat: 'Arrows & Pointers', emoji: '↗️', badge: 'LOOK HERE', label: 'Corner Arrow', color: 'bg-emerald-600 text-white' },
+  { cat: 'Arrows & Pointers', emoji: '👇', badge: 'BELOW', label: 'Link Pointer', color: 'bg-cyan-500 text-black' },
+  { cat: 'Arrows & Pointers', emoji: '🎯', badge: 'TARGET', label: 'Focus Bullseye', color: 'bg-rose-600 text-white' },
+  { cat: 'Cinema Icons', emoji: '🎥', badge: 'ROLLING', label: 'Camera Slate', color: 'bg-zinc-800 text-white' },
+  { cat: 'Cinema Icons', emoji: '🍿', badge: 'MOVIE TIME', label: 'Cinema Popcorn', color: 'bg-red-500 text-white' },
+  { cat: 'Cinema Icons', emoji: '🎞️', badge: '35MM', label: 'Film Strip', color: 'bg-amber-500 text-black' },
+  { cat: 'Emoji & Reactions', emoji: '🔥', badge: 'FIRE', label: 'Flame Hype', color: 'bg-orange-500 text-white' },
+  { cat: 'Emoji & Reactions', emoji: '🤯', badge: 'SHOCK', label: 'Mind Blown', color: 'bg-purple-600 text-white' },
+  { cat: 'Emoji & Reactions', emoji: '💯', badge: '100%', label: 'Perfect Stamp', color: 'bg-red-600 text-white' },
+  { cat: 'Emoji & Reactions', emoji: '😂', badge: 'HAHA', label: 'Comedy Tears', color: 'bg-amber-400 text-black' },
+  { cat: 'Meme & Comedy Stickers', emoji: '🐱', badge: 'MEOW', label: 'Vibing Cat', color: 'bg-purple-600 text-white' },
+  { cat: 'Meme & Comedy Stickers', emoji: '😿', badge: 'SAD CAT', label: 'Crying Kitten', color: 'bg-sky-600 text-white' },
+  { cat: 'Meme & Comedy Stickers', emoji: '🗿', badge: 'BRUH', label: 'Stone Stare', color: 'bg-zinc-800 text-teal-300' },
+  { cat: 'Meme & Comedy Stickers', emoji: '🤡', badge: 'WHOOPS', label: 'Circus Fail', color: 'bg-rose-600 text-white' },
+  { cat: 'Meme & Comedy Stickers', emoji: '🦆', badge: 'QUACK', label: 'Censor Duck', color: 'bg-emerald-500 text-black' },
+  { cat: 'Gaming & Stream', emoji: '🎮', badge: 'GG EZ', label: 'Win Stamp', color: 'bg-indigo-600 text-white' },
+  { cat: 'Gaming & Stream', emoji: '⚡', badge: 'CLUTCH', label: 'Bolt Play', color: 'bg-cyan-500 text-black' },
+  { cat: 'Weather & Nature', emoji: '⛈️', badge: 'STORM', label: 'Thunder Cloud', color: 'bg-slate-700 text-white' },
+  { cat: 'Weather & Nature', emoji: '🦉', badge: 'NIGHT', label: 'Forest Owl', color: 'bg-amber-700 text-white' },
 ];
 
-export const STICKERS_LIST: StickerItem[] = Array.from({ length: 1200 }, (_, i) => {
-  const base = RAW_STICKERS[i % RAW_STICKERS.length];
-  const cat = STICKER_CATEGORIES[i % STICKER_CATEGORIES.length];
+const STICKER_PLACEMENTS = [
+  'Top Left',
+  'Top Right',
+  'Center Pop',
+  'Bottom Stamp',
+  'Corner Seal',
+  'Floating Glow',
+  'Bounce Cut',
+  'Pulse Pop',
+  'Micro Tag',
+  'Bold Overlay',
+  'Soft Sticker',
+  'Neon Outline',
+  'Shadow Badge',
+  'Clean Stamp',
+  'Tilt Sticker',
+  'Wide Tag',
+];
+
+export const STICKERS_LIST: StickerItem[] = Array.from({ length: 1280 }, (_, i) => {
+  const base = RAW_STICKER_BASES[i % RAW_STICKER_BASES.length];
+  const cycle = Math.floor(i / RAW_STICKER_BASES.length);
+  const place = STICKER_PLACEMENTS[(cycle + i * 3) % STICKER_PLACEMENTS.length];
+  const altTag = Math.floor(cycle / STICKER_PLACEMENTS.length);
   return {
     id: `stk_${i + 1}`,
-    name: `${base.name} #${i + 1}`,
-    category: cat,
+    name: cycle === 0 ? base.label : `${base.label} · ${place}${altTag > 0 ? ` ${['Clean', 'Glow', 'Bold'][altTag % 3]}` : ''}`,
+    category: base.cat,
     badgeText: base.badge,
     emoji: base.emoji,
     colorClass: base.color,
-    description: `${base.desc} · Click to show/hide on preview screen`,
+    description: `${base.cat} · ${place} sticker overlay`,
   };
 });
 
@@ -802,13 +1066,35 @@ const RAW_COLOR_GRADES: Array<{
   { name: 'Archival Sepia Noir', cat: 'Monochrome', b: 0, c: 28, s: -100, ex: 0, w: 28, t: 0, hi: 8, sh: -14, v: 36, grad: 'from-amber-200 to-stone-900', desc: 'Warm antique silver-sepia monochrome grade' },
 ];
 
-export const COLOR_GRADES_LIST: ColorGradePreset[] = Array.from({ length: 1200 }, (_, i) => {
+const GRADE_PROFILES = [
+  'Theater Print',
+  'Highlight Roll',
+  'Deep Shadow',
+  'Warm Skin',
+  'Steel Matte',
+  'Golden Rim',
+  'Film Curve',
+  'Velvet Contrast',
+  'Rich Chroma',
+  'Soft Lift',
+  'Crisp Tone',
+  'Night Depth',
+  'Sunlit Balance',
+  'Indigo Midtone',
+  'Amber Push',
+  'Raw Dynamic',
+  'Neutral LUT',
+  'Editorial Finish',
+];
+
+export const COLOR_GRADES_LIST: ColorGradePreset[] = Array.from({ length: 1260 }, (_, i) => {
   const base = RAW_COLOR_GRADES[i % RAW_COLOR_GRADES.length];
   const cycle = Math.floor(i / RAW_COLOR_GRADES.length);
   const delta = (cycle % 11) - 5;
+  const profile = GRADE_PROFILES[(cycle + i * 2) % GRADE_PROFILES.length];
   return {
     id: `cg_${i + 1}`,
-    name: cycle === 0 ? base.name : `${base.name} · v${cycle + 1}`,
+    name: cycle === 0 ? base.name : `${base.name} · ${profile}`,
     category: base.cat,
     brightness: Math.max(-60, Math.min(60, base.b + delta * 2)),
     contrast: Math.max(-50, Math.min(80, base.c + delta * 3)),
@@ -820,7 +1106,7 @@ export const COLOR_GRADES_LIST: ColorGradePreset[] = Array.from({ length: 1200 }
     shadows: base.sh,
     vignette: Math.max(0, Math.min(85, base.v + delta * 2)),
     swatchGradient: base.grad,
-    description: `${base.desc} · C:${base.c + delta * 3}% S:${base.s}%`,
+    description: `${base.desc} · ${profile} (C:${base.c + delta * 3}%)`,
   };
 });
 
@@ -1096,26 +1382,36 @@ const RAW_CINEMA_VFX: Array<{
 ];
 
 const VFX_VARIANTS = [
-  'Pro',
-  'IMAX 4K',
-  'Slow-Mo',
-  'Heavy',
-  'Ultra Crisp',
+  '4K Burst',
+  'Slow-Mo Trail',
+  'Heavy Impact',
+  'Crisp Sparks',
   'Dark Noir',
   'High Velocity',
   'Raw Action',
-  'Close-Up',
-  'Wide Shot',
+  'Close-Up Flare',
+  'Wide Blast',
+  'Amber Glow',
+  'Deep Smoke',
+  'Fast Strike',
+  'Radial Wave',
+  'Night Flash',
+  'Extended Burn',
+  'Clean Vector',
+  'Theater Mix',
+  'Storm Edge',
+  'Rapid Cut',
+  'Cinema Scale',
 ];
 
-export const VFX_LIST: CinemaVfxItem[] = Array.from({ length: 1200 }, (_, i) => {
+export const VFX_LIST: CinemaVfxItem[] = Array.from({ length: 1280 }, (_, i) => {
   const base = RAW_CINEMA_VFX[i % RAW_CINEMA_VFX.length];
-  const variant = VFX_VARIANTS[Math.floor(i / RAW_CINEMA_VFX.length) % VFX_VARIANTS.length];
-  const tier = Math.floor(i / (RAW_CINEMA_VFX.length * VFX_VARIANTS.length)) + 1;
+  const cycle = Math.floor(i / RAW_CINEMA_VFX.length);
+  const variant = VFX_VARIANTS[(cycle + i * 3) % VFX_VARIANTS.length];
   const durMod = Number((base.dur + (i % 5) * 0.25).toFixed(2));
   return {
     id: `cvfx_${i + 1}`,
-    name: i < RAW_CINEMA_VFX.length ? base.name : `${base.name} (${variant} #${i + 1})`,
+    name: cycle === 0 ? base.name : `${base.name} · ${variant}`,
     category: base.cat,
     kind: base.kind,
     hasMotionRoute: base.route,
@@ -1123,7 +1419,7 @@ export const VFX_LIST: CinemaVfxItem[] = Array.from({ length: 1200 }, (_, i) => 
     secondaryColor: base.c2,
     defaultDurationSec: durMod,
     emoji: base.emoji,
-    description: `${base.desc} · Variant: ${variant} (Set ${tier}) · Duration ${durMod}s`,
+    description: `${base.desc} · ${variant} (${durMod}s)`,
   };
 });
 

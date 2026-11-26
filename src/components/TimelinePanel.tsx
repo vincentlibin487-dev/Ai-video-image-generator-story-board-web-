@@ -20,6 +20,7 @@ import {
   Scissors,
 } from 'lucide-react';
 import type { WheelCategoryItem } from './CircularToolWheel';
+import type { TransitionItem } from './videoStudioLibrary';
 
 export interface TimelineClipItem {
   id: string;
@@ -31,6 +32,7 @@ export interface TimelineClipItem {
   thumbnailUrl?: string;
   type: 'video' | 'photo';
   isProcessing?: boolean;
+  transitionOut?: TransitionItem | null;
 }
 
 export interface TimelineOverlayBlock {
@@ -66,6 +68,8 @@ interface TimelinePanelProps {
   onOpenActiveCategoryPanel: () => void;
   onToggleCategoryMute: (category: WheelCategoryItem) => void;
   onSplitAtPlayhead: () => void;
+  activeTransitionSeamClipId?: string | null;
+  onSelectTransitionSeam: (clipIndex: number) => void;
   timelineScrollRef: React.RefObject<HTMLDivElement | null>;
   playheadLineRef: React.RefObject<HTMLDivElement | null>;
   redBadgeTimeRef: React.RefObject<HTMLSpanElement | null>;
@@ -105,7 +109,7 @@ const TRACK_ICON_MAP: Record<string, React.ComponentType<{ className?: string }>
   templates: Layers,
 };
 
-export const TimelinePanel: React.FC<TimelinePanelProps> = ({
+export const TimelinePanel: React.FC<TimelinePanelProps> = React.memo(({
   clips,
   activeClipIndex,
   isTimelineSelectionActive,
@@ -125,6 +129,8 @@ export const TimelinePanel: React.FC<TimelinePanelProps> = ({
   onOpenActiveCategoryPanel,
   onToggleCategoryMute,
   onSplitAtPlayhead,
+  activeTransitionSeamClipId,
+  onSelectTransitionSeam,
   timelineScrollRef,
   playheadLineRef,
   redBadgeTimeRef,
@@ -354,64 +360,99 @@ export const TimelinePanel: React.FC<TimelinePanelProps> = ({
                 />
               ))}
 
-            {clipSegments.map(({ clip, index, startSec, durationSec }) => {
+            {clipSegments.map(({ clip, index, startSec, endSec, durationSec }) => {
               const leftPx = LEAD_PX + startSec * pxPerSec;
               const widthPx = Math.max(26, durationSec * pxPerSec);
               const isSelected = isTimelineSelectionActive && index === activeClipIndex;
+              const hasNext = index < clipSegments.length - 1;
+              const seamPx = LEAD_PX + endSec * pxPerSec;
+              const seamTrans = clip.transitionOut;
+              const isSeamSelected = activeTransitionSeamClipId === clip.id;
+              const transMuted = disabledCategoryIds.includes('transitions');
 
               return (
-                <button
-                  key={clip.id}
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onSelectClip(index);
-                  }}
-                  style={{
-                    left: `${leftPx}px`,
-                    width: `${widthPx}px`,
-                  }}
-                  className={`absolute top-1 bottom-1 rounded-md overflow-hidden border text-left cursor-pointer transition-colors ${
-                    isSelected
-                      ? 'border-amber-400 ring-1 ring-amber-400/70 bg-[#182230] z-10'
-                      : 'border-teal-500/45 bg-[#121923] hover:border-teal-400/80'
-                  }`}
-                  title={`${clip.title} (${durationSec.toFixed(1)}s)`}
-                >
-                  {/* Filmstrip thumbnail background */}
-                  {clip.thumbnailUrl ? (
-                    <img
-                      src={clip.thumbnailUrl}
-                      alt={clip.title}
-                      draggable={false}
-                      className="absolute inset-0 w-full h-full object-cover opacity-55 pointer-events-none"
-                    />
-                  ) : clip.type === 'photo' && clip.url ? (
-                    <img
-                      src={clip.url}
-                      alt={clip.title}
-                      draggable={false}
-                      className="absolute inset-0 w-full h-full object-cover opacity-55 pointer-events-none"
-                    />
-                  ) : null}
+                <React.Fragment key={clip.id}>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onSelectClip(index);
+                    }}
+                    style={{
+                      left: `${leftPx}px`,
+                      width: `${widthPx}px`,
+                    }}
+                    className={`absolute top-1 bottom-1 rounded-md overflow-hidden border text-left cursor-pointer transition-colors ${
+                      isSelected
+                        ? 'border-amber-400 ring-1 ring-amber-400/70 bg-[#182230] z-10'
+                        : 'border-teal-500/45 bg-[#121923] hover:border-teal-400/80'
+                    }`}
+                    title={`${clip.title} (${durationSec.toFixed(1)}s)`}
+                  >
+                    {/* Filmstrip thumbnail background */}
+                    {clip.thumbnailUrl ? (
+                      <img
+                        src={clip.thumbnailUrl}
+                        alt={clip.title}
+                        draggable={false}
+                        className="absolute inset-0 w-full h-full object-cover opacity-55 pointer-events-none"
+                      />
+                    ) : clip.type === 'photo' && clip.url ? (
+                      <img
+                        src={clip.url}
+                        alt={clip.title}
+                        draggable={false}
+                        className="absolute inset-0 w-full h-full object-cover opacity-55 pointer-events-none"
+                      />
+                    ) : null}
 
-                  <div className="relative h-full w-full px-1.5 py-0.5 flex flex-col justify-between bg-gradient-to-r from-black/75 via-black/35 to-black/75 pointer-events-none">
-                    <div className="flex items-center justify-between gap-1 min-w-0">
-                      <span className="text-[9.5px] font-semibold text-white truncate">
-                        {clip.title}
-                      </span>
-                      {clip.isProcessing && (
-                        <Loader2 className="w-2.5 h-2.5 text-amber-300 animate-spin shrink-0" />
-                      )}
+                    <div className="relative h-full w-full px-1.5 py-0.5 flex flex-col justify-between bg-gradient-to-r from-black/75 via-black/35 to-black/75 pointer-events-none">
+                      <div className="flex items-center justify-between gap-1 min-w-0">
+                        <span className="text-[9.5px] font-semibold text-white truncate">
+                          {clip.title}
+                        </span>
+                        {clip.isProcessing && (
+                          <Loader2 className="w-2.5 h-2.5 text-amber-300 animate-spin shrink-0" />
+                        )}
+                      </div>
+                      <div className="flex items-center justify-between gap-1 text-[8px] font-mono text-zinc-200 tabular-nums">
+                        <span>{clip.isProcessing ? 'Sync...' : `${durationSec.toFixed(1)}s`}</span>
+                        {widthPx > 86 && (
+                          <span className="text-zinc-400">{formatRulerTime(startSec)}</span>
+                        )}
+                      </div>
                     </div>
-                    <div className="flex items-center justify-between gap-1 text-[8px] font-mono text-zinc-200 tabular-nums">
-                      <span>{clip.isProcessing ? 'Sync...' : `${durationSec.toFixed(1)}s`}</span>
-                      {widthPx > 86 && (
-                        <span className="text-zinc-400">{formatRulerTime(startSec)}</span>
-                      )}
-                    </div>
-                  </div>
-                </button>
+                  </button>
+
+                  {/* COMPACT SEAM TRANSITION TRIGGER BETWEEN ADJACENT CLIPS */}
+                  {hasNext && (
+                    <button
+                      type="button"
+                      onPointerDown={(e) => e.stopPropagation()}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onSelectTransitionSeam(index);
+                      }}
+                      style={{ left: `${seamPx}px` }}
+                      className={`absolute top-1/2 -translate-x-1/2 -translate-y-1/2 z-20 w-[22px] h-[22px] rounded-md border flex items-center justify-center cursor-pointer transition-all shadow-md active:scale-90 ${
+                        seamTrans && !transMuted
+                          ? isSeamSelected
+                            ? 'bg-amber-400 border-white text-black ring-2 ring-amber-300/70'
+                            : 'bg-[#2a1d06] border-amber-400 text-amber-300 hover:bg-amber-400 hover:text-black'
+                          : isSeamSelected
+                          ? 'bg-teal-400 border-white text-black'
+                          : 'bg-[#17202e] border-zinc-400/70 text-zinc-200 hover:bg-amber-400 hover:text-black hover:border-amber-200'
+                      }`}
+                      title={
+                        seamTrans
+                          ? `Transition: ${seamTrans.name} (${seamTrans.durationSec}s) — Tap to change`
+                          : 'Add transition between clips'
+                      }
+                    >
+                      <SlidersHorizontal className="w-3 h-3" />
+                    </button>
+                  )}
+                </React.Fragment>
               );
             })}
           </div>
@@ -498,4 +539,5 @@ export const TimelinePanel: React.FC<TimelinePanelProps> = ({
       </div>
     </div>
   );
-};
+});
+
