@@ -330,8 +330,8 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
   const [dynamicCategoryItems, setDynamicCategoryItems] = useState<DynamicCategoryItem[]>(
     DEFAULT_MUSIC_LYRICS_SEED
   );
-  const [selectedWheelCategoryId, setSelectedWheelCategoryId] = useState<string>('video');
-  const [isWheelFeaturePanelOpen, setIsWheelFeaturePanelOpen] = useState<boolean>(false);
+  const [selectedWheelCategoryId, setSelectedWheelCategoryId] = useState<string>('filters');
+  const [isWheelFeaturePanelOpen, setIsWheelFeaturePanelOpen] = useState<boolean>(true);
   const [isInspectorOpen, setIsInspectorOpen] = useState<boolean>(false);
   const [disabledCategoryIds, setDisabledCategoryIds] = useState<string[]>([]);
 
@@ -2705,8 +2705,14 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
           </div>
         </div>
 
-        {/* 2. CENTER: 16:9 VIDEO PREVIEW CANVAS + CIRCLED PLAYER SCRUB SLIDER */}
-        <div className="flex-1 min-w-[160px] flex flex-col bg-[#06080c] p-1.5 justify-between overflow-hidden">
+        {/* 2. CENTER: VIDEO PREVIEW CANVAS + CIRCLED PLAYER SCRUB SLIDER */}
+        <div
+          className={`${
+            isWheelFeaturePanelOpen
+              ? 'w-[34%] max-w-[340px] min-w-[160px] shrink-0'
+              : 'flex-1 min-w-[180px]'
+          } flex flex-col bg-[#06080c] p-1.5 justify-between overflow-hidden border-r border-zinc-800/80 transition-[width] duration-150`}
+        >
           <div
             className="flex-1 min-h-0 flex items-center justify-center relative overflow-hidden"
             style={{ containerType: 'size' }}
@@ -2728,36 +2734,36 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
           </div>
 
           {/* COMPACT PLAYER CONTROL BAR WITH FINGER-DRAGGABLE CIRCLED SLIDER */}
-          <div className="h-8 mt-1 px-2 rounded-lg bg-[#0d121a] border border-zinc-800/80 flex items-center gap-1.5 shrink-0">
+          <div className="h-8 mt-1 px-1.5 rounded-lg bg-[#0d121a] border border-zinc-800/80 flex items-center gap-1 shrink-0 overflow-hidden">
             <button
               type="button"
               onClick={() => seekToTime(Math.max(0, currentTimeRef.current - 1), true)}
-              className="w-6 h-6 rounded hover:bg-zinc-800 text-zinc-300 flex items-center justify-center cursor-pointer shrink-0"
+              className="w-5 h-5 rounded hover:bg-zinc-800 text-zinc-300 flex items-center justify-center cursor-pointer shrink-0"
               title="Step Back 1s"
             >
-              <SkipBack className="w-3.5 h-3.5" />
+              <SkipBack className="w-3 h-3" />
             </button>
 
             <button
               type="button"
               onClick={handleTogglePlayPause}
-              className="w-6 h-6 rounded-full bg-teal-400 text-black flex items-center justify-center cursor-pointer shrink-0"
+              className="w-5 h-5 rounded-full bg-teal-400 text-black flex items-center justify-center cursor-pointer shrink-0"
               title={isPlaying ? 'Pause' : 'Play'}
             >
               {isPlaying ? (
-                <Pause className="w-3 h-3 fill-current" />
+                <Pause className="w-2.5 h-2.5 fill-current" />
               ) : (
-                <Play className="w-3 h-3 fill-current ml-0.5" />
+                <Play className="w-2.5 h-2.5 fill-current ml-0.5" />
               )}
             </button>
 
             <button
               type="button"
               onClick={() => seekToTime(Math.min(totalDuration, currentTimeRef.current + 1), true)}
-              className="w-6 h-6 rounded hover:bg-zinc-800 text-zinc-300 flex items-center justify-center cursor-pointer shrink-0"
+              className="w-5 h-5 rounded hover:bg-zinc-800 text-zinc-300 flex items-center justify-center cursor-pointer shrink-0"
               title="Step Forward 1s"
             >
-              <SkipForward className="w-3.5 h-3.5" />
+              <SkipForward className="w-3 h-3" />
             </button>
 
             {/* Interactive Circled Scrub Slider */}
@@ -2767,7 +2773,7 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
               onPointerMove={handleSliderPointerMove}
               onPointerUp={handleSliderPointerUp}
               onPointerCancel={handleSliderPointerUp}
-              className="relative flex-1 h-6 flex items-center cursor-pointer touch-none"
+              className="relative flex-1 h-6 flex items-center cursor-pointer touch-none min-w-[50px]"
               title="Drag slider to scrub video"
             >
               <div className="w-full h-1.5 rounded-full bg-zinc-800 overflow-hidden">
@@ -2786,7 +2792,7 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
 
             <span
               ref={playerTimeLabelRef}
-              className="text-[9.5px] font-mono text-zinc-300 tabular-nums shrink-0"
+              className="text-[8.5px] font-mono text-zinc-300 tabular-nums shrink-0"
             >
               {formatTimecodeShort(currentTimeSec)} / {formatTimecodeShort(totalDuration)}
             </span>
@@ -2794,15 +2800,364 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
             <button
               type="button"
               onClick={() => setIsMuted((m) => !m)}
-              className="w-6 h-6 rounded hover:bg-zinc-800 text-zinc-300 flex items-center justify-center cursor-pointer shrink-0"
+              className="w-5 h-5 rounded hover:bg-zinc-800 text-zinc-300 flex items-center justify-center cursor-pointer shrink-0"
               title={isMuted ? 'Unmute' : 'Mute'}
             >
-              {isMuted ? <VolumeX className="w-3.5 h-3.5 text-red-400" /> : <Volume2 className="w-3.5 h-3.5" />}
+              {isMuted ? <VolumeX className="w-3 h-3 text-red-400" /> : <Volume2 className="w-3 h-3" />}
             </button>
           </div>
         </div>
 
-        {/* 3. INSPECTOR (Sits cleanly beside the Wheel when toggled) */}
+        {/* 3. MIDDLE CATEGORIES / OPTIONS PANEL (Touches video on left and circular wheel on right edge-to-edge, zero gap) */}
+        {isWheelFeaturePanelOpen && (
+          <div
+            className="flex-1 min-w-[210px] h-full bg-[#0b0f16] border-r border-zinc-800/80 flex flex-col overflow-hidden z-10 transition-all"
+          >
+              <WheelFeatureDrawer
+                category={activeWheelCategory}
+                categoryItems={dynamicCategoryItems}
+                isMutedOrOff={disabledCategoryIds.includes(activeWheelCategory.id)}
+                onBack={() => setIsWheelFeaturePanelOpen(false)}
+                onToggleMuteOrOff={() => handleToggleCategoryMute(activeWheelCategory)}
+                isCssRotatedLandscape={isCssRotatedLandscape}
+                mediaGallery={mediaGallery}
+                activeMotionPresetId={activeMotionPreset?.id || null}
+                onTriggerUploadMedia={() => multiFileInputRef.current?.click()}
+                onAddMediaToTimeline={(item) => {
+                  pushUndoCheckpoint();
+                  getOrLoadSource(item.url, item.type);
+                  setTimelineClips((prev) => [
+                    ...prev,
+                    {
+                      id: `clip_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`,
+                      mediaId: item.id,
+                      title: item.title,
+                      durationSec: item.durationSec,
+                      sourceStartSec: 0,
+                      url: item.url,
+                      thumbnailUrl: item.thumbnailUrl,
+                      type: item.type,
+                    },
+                  ]);
+                  setIsTimelineSelectionActive(true);
+                }}
+                onApplyMediaMotionPreset={(mm) => {
+                  if (!mm) {
+                    setActiveMotionPreset(null);
+                    setPlaybackSpeed(1);
+                    return;
+                  }
+                  setActiveMotionPreset(mm);
+                  setPlaybackSpeed(mm.speed);
+                  if (mm.aspectRatio) {
+                    setSelectedAspectRatio(mm.aspectRatio);
+                  }
+                }}
+                activeFilter={activeFilter}
+                onSelectFilter={(f) => {
+                  pushUndoCheckpoint();
+                  setDisabledCategoryIds((p) => p.filter((x) => x !== 'filters'));
+                  setActiveFilter(f);
+                }}
+                activeColorGradeId={activeColorGradeId}
+                onSelectColorGrade={(cg: ColorGradePreset | null) => {
+                  pushUndoCheckpoint();
+                  setDisabledCategoryIds((p) => p.filter((x) => x !== 'filters'));
+                  if (!cg) {
+                    setActiveColorGradeId(null);
+                    setColorAdjust({ brightness: 100, contrast: 100, saturation: 100, warmth: 0, vignette: 12 });
+                  } else {
+                    setActiveColorGradeId(cg.id);
+                    setColorAdjust({
+                      brightness: Math.max(40, Math.min(180, 100 + cg.brightness)),
+                      contrast: Math.max(40, Math.min(200, 100 + cg.contrast)),
+                      saturation: Math.max(0, Math.min(200, 100 + cg.saturation)),
+                      warmth: cg.warmth,
+                      vignette: cg.vignette,
+                    });
+                  }
+                }}
+                userAudioLibrary={userAudioLibrary}
+                activeAudio={activeAudio}
+                previewingAudioId={previewingAudioId}
+                onSelectAudio={(a) => {
+                  setDisabledCategoryIds((p) => p.filter((x) => x !== 'audio' && x !== 'music'));
+                  setHasUserPickedAudio(true);
+                  if (a.url) {
+                    setActiveAudio(a);
+                    if (!bgMusicElRef.current) bgMusicElRef.current = new Audio();
+                    bgMusicElRef.current.src = a.url;
+                    bgMusicElRef.current.loop = true;
+                    return;
+                  }
+                  setActiveAudio(a);
+                  const seed = parseInt(a.id.replace(/\D/g, ''), 10) || 1;
+                  void getOrRenderPresetWavUrl(a.synthPreset, a.durationSec, seed).then((wavUrl) => {
+                    if (!wavUrl) return;
+                    setActiveAudio((cur) => (cur.id === a.id ? { ...cur, url: wavUrl } : cur));
+                    if (!bgMusicElRef.current) bgMusicElRef.current = new Audio();
+                    bgMusicElRef.current.src = wavUrl;
+                    bgMusicElRef.current.loop = true;
+                    if (isPlayingRef.current && !isMuted) {
+                      bgMusicElRef.current.play().catch(() => {});
+                    }
+                  });
+                }}
+                onToggleAudioPreview={handleToggleAudioPreview}
+                onTriggerUploadAudio={() => userAudioInputRef.current?.click()}
+                dialogueSpeaker={dialogueSpeakerInput}
+                dialogueText={dialogueTextInput}
+                dialogueDur={dialogueDurInput}
+                activeDialoguePresetId={activeDialoguePresetId}
+                onChangeDialogueSpeaker={setDialogueSpeakerInput}
+                onChangeDialogueText={setDialogueTextInput}
+                onChangeDialogueDur={setDialogueDurInput}
+                onApplyDialogue={() => {
+                  setDisabledCategoryIds((p) => p.filter((x) => x !== 'dialogues'));
+                  setActiveDialoguePresetId(null);
+                  setActiveDialogue({
+                    id: `dlg_${Date.now()}`,
+                    speaker: dialogueSpeakerInput || 'Speaker',
+                    text: dialogueTextInput || 'Line',
+                    durationSec: dialogueDurInput,
+                  });
+                }}
+                onApplyDialoguePreset={(dl: DialoguePresetItem) => {
+                  setDisabledCategoryIds((p) => p.filter((x) => x !== 'dialogues'));
+                  setActiveDialoguePresetId(dl.id);
+                  setDialogueSpeakerInput(dl.speaker);
+                  setDialogueTextInput(dl.line);
+                  setDialogueDurInput(dl.durationSec);
+                  setActiveDialogue({
+                    id: dl.id,
+                    speaker: dl.speaker,
+                    text: dl.line,
+                    durationSec: dl.durationSec,
+                  });
+                }}
+                showTitleOverlay={showTitleOverlay}
+                movieTitle={movieTitle}
+                subtitle={subtitle}
+                titleAnimType={titleAnimType}
+                titleThemeType={titleThemeType}
+                onApplyTitlePreset={(preset: TitleItem) => {
+                  pushUndoCheckpoint();
+                  setDisabledCategoryIds((p) => p.filter((x) => x !== 'titles'));
+                  setMovieTitle(preset.titleText);
+                  setSubtitle(preset.subtitleText);
+                  setShowTitleOverlay(true);
+                }}
+                onUpdateTitleText={(t, sub) => {
+                  setDisabledCategoryIds((p) => p.filter((x) => x !== 'titles'));
+                  setMovieTitle(t);
+                  setSubtitle(sub);
+                  setShowTitleOverlay(Boolean(t.trim() || sub.trim()));
+                }}
+                onChangeTitleAnim={setTitleAnimType}
+                onChangeTitleTheme={setTitleThemeType}
+                onAddSticker={(st) => {
+                  pushUndoCheckpoint();
+                  setDisabledCategoryIds((p) => p.filter((x) => x !== 'stickers'));
+                  setLastAddedSticker(st);
+                  setActiveStickers((prev) => [
+                    ...prev,
+                    {
+                      id: `st_${Date.now()}`,
+                      sticker: st,
+                      startTimeSec: currentTimeRef.current,
+                      durationSec: 3,
+                      xPct: 50,
+                      yPct: 50,
+                      scale: 1,
+                      rotation: 0,
+                      opacity: 100,
+                    },
+                  ]);
+                }}
+                onAddVfx={(v) => {
+                  pushUndoCheckpoint();
+                  setDisabledCategoryIds((p) => p.filter((x) => x !== 'vfx'));
+                  setLastAddedVfx(v);
+                  setVfxLayers((prev) => [
+                    ...prev,
+                    {
+                      id: `vfx_${Date.now()}`,
+                      vfx: v,
+                      startTimeSec: currentTimeRef.current,
+                      durationSec: v.defaultDurationSec,
+                      startXPct: 35,
+                      startYPct: 55,
+                      endXPct: 68,
+                      endYPct: 45,
+                      scale: 1,
+                      opacity: 100,
+                      speed: 1,
+                      includeImpactBlood: true,
+                    },
+                  ]);
+                }}
+                draftCardTitle={draftCardTitle}
+                draftCardSubtitle={draftCardSubtitle}
+                draftCardTheme={draftCardTheme}
+                draftCardAnim={draftCardAnim}
+                activeCardPresetId={activeCardPresetId}
+                onChangeDraftCardTitle={setDraftCardTitle}
+                onChangeDraftCardSubtitle={setDraftCardSubtitle}
+                onChangeDraftCardTheme={setDraftCardTheme}
+                onChangeDraftCardAnim={setDraftCardAnim}
+                onPickTrailerCardMedia={() => trailerCardInputRef.current?.click()}
+                onAddTrailerCard={() => {
+                  setDisabledCategoryIds((p) => p.filter((x) => x !== 'card'));
+                  setTrailerCardLayers((prev) => [
+                    ...prev,
+                    {
+                      id: `card_${Date.now()}`,
+                      imageUrl: draftCardImageUrl || timelineClips[0]?.url || '',
+                      mediaType: draftCardImageUrl ? draftCardMediaType : timelineClips[0]?.type || 'photo',
+                      title: draftCardTitle,
+                      subtitle: draftCardSubtitle,
+                      badgeText: 'TRAILER',
+                      theme: draftCardTheme,
+                      animation: draftCardAnim,
+                      startTimeSec: currentTimeRef.current,
+                      durationSec: 4,
+                      scale: 1,
+                      xPct: 50,
+                      yPct: 50,
+                      opacity: 100,
+                    },
+                  ]);
+                }}
+                onApplyTrailerCardPreset={(card: TrailerCardPresetItem) => {
+                  setDisabledCategoryIds((p) => p.filter((x) => x !== 'card'));
+                  setActiveCardPresetId(card.id);
+                  setDraftCardTitle(card.title);
+                  setDraftCardSubtitle(card.subtitle);
+                  setDraftCardTheme(card.theme);
+                  setDraftCardAnim(card.animation);
+                  setTrailerCardLayers((prev) => [
+                    ...prev,
+                    {
+                      id: `card_${Date.now()}`,
+                      imageUrl: draftCardImageUrl || timelineClips[0]?.url || '',
+                      mediaType: draftCardImageUrl ? draftCardMediaType : timelineClips[0]?.type || 'photo',
+                      title: card.title,
+                      subtitle: card.subtitle,
+                      badgeText: card.badgeText,
+                      theme: card.theme,
+                      animation: card.animation,
+                      startTimeSec: currentTimeRef.current,
+                      durationSec: card.durationSec,
+                      scale: 1,
+                      xPct: 50,
+                      yPct: 50,
+                      opacity: 100,
+                    },
+                  ]);
+                }}
+                chromaConfig={chromaConfig}
+                activeChromaPresetId={activeChromaPresetId}
+                onUpdateChromaConfig={(updater) => {
+                  setDisabledCategoryIds((p) => p.filter((x) => x !== 'chroma'));
+                  setChromaConfig(updater);
+                }}
+                onPickChromaBg={() => chromaBgInputRef.current?.click()}
+                onApplyChromaPreset={(ch: ChromaPresetItem) => {
+                  setDisabledCategoryIds((p) => p.filter((x) => x !== 'chroma'));
+                  setActiveChromaPresetId(ch.id);
+                  setChromaConfig((p) => ({
+                    ...p,
+                    enabled: true,
+                    colorPreset: ch.colorPreset,
+                    bgMode: ch.bgMode,
+                    similarity: ch.similarity,
+                    smoothness: ch.smoothness,
+                  }));
+                }}
+                splitScreenConfig={splitScreenConfig}
+                activeSplitPresetId={activeSplitPresetId}
+                onUpdateSplitScreenConfig={(updater) => {
+                  setDisabledCategoryIds((p) => p.filter((x) => x !== 'split'));
+                  setSplitScreenConfig(updater);
+                }}
+                onPickSplitSide={(side) => {
+                  if (side === 'left') splitLeftInputRef.current?.click();
+                  else splitRightInputRef.current?.click();
+                }}
+                onAutoJoinSplitClips={() => {
+                  setDisabledCategoryIds((p) => p.filter((x) => x !== 'split'));
+                  if (timelineClips.length >= 2) {
+                    setSplitScreenConfig((p) => ({
+                      ...p,
+                      enabled: true,
+                      leftMediaUrl: timelineClips[0].url,
+                      leftMediaType: timelineClips[0].type,
+                      leftLabel: timelineClips[0].title,
+                      rightMediaUrl: timelineClips[1].url,
+                      rightMediaType: timelineClips[1].type,
+                      rightLabel: timelineClips[1].title,
+                    }));
+                  }
+                }}
+                onApplySplitPreset={(sp: SplitLayoutPresetItem) => {
+                  setDisabledCategoryIds((p) => p.filter((x) => x !== 'split'));
+                  setActiveSplitPresetId(sp.id);
+                  setSplitScreenConfig((p) => ({
+                    ...p,
+                    enabled: true,
+                    layout: sp.layout,
+                    splitRatio: sp.splitRatio,
+                    leftMediaUrl: p.leftMediaUrl || timelineClips[0]?.url || '',
+                    rightMediaUrl: p.rightMediaUrl || timelineClips[1]?.url || timelineClips[0]?.url || '',
+                  }));
+                }}
+                selectedTransitionId={selectedTransitionId}
+                activeTransitionObj={selectedTransitionObj}
+                onSelectTransition={(tr) => {
+                  pushUndoCheckpoint();
+                  setDisabledCategoryIds((p) => p.filter((x) => x !== 'transitions'));
+                  if (!tr) {
+                    setSelectedTransitionId(null);
+                    setSelectedTransitionObj(null);
+                  } else {
+                    setSelectedTransitionId(tr.id);
+                    setSelectedTransitionObj(tr);
+                    if (timelineClips.length > 0) {
+                      const targetIdx = activeClipIndex < timelineClips.length - 1 ? activeClipIndex : 0;
+                      setActiveTransitionSeamClipId(timelineClips[targetIdx].id);
+                      setTimelineClips((prev) =>
+                        prev.map((c, idx) => (idx === targetIdx ? { ...c, transitionOut: tr } : c))
+                      );
+                    }
+                  }
+                }}
+                activeEffect={activeEffect}
+                onSelectEffect={(fx) => {
+                  pushUndoCheckpoint();
+                  setDisabledCategoryIds((p) => p.filter((x) => x !== 'effects'));
+                  setActiveEffect(fx);
+                }}
+                activeTemplateId={activeTemplate?.id || null}
+                activeTemplateObj={activeTemplate}
+                onApplyTemplate={(tm) => {
+                  pushUndoCheckpoint();
+                  setDisabledCategoryIds((p) => p.filter((x) => x !== 'templates'));
+                  setActiveTemplate(tm);
+                }}
+                onApplyTrailerPack={(packId) => {
+                  const pack = TRAILER_PRESET_PACKS.find((p) => p.id === packId);
+                  if (pack && timelineClips.length > 0) {
+                    pushUndoCheckpoint();
+                    setMovieTitle(pack.title);
+                    setSubtitle(pack.subtitle);
+                    setShowTitleOverlay(true);
+                  }
+                }}
+              />
+          </div>
+        )}
+
+        {/* 4. INSPECTOR (Sits beside Options when toggled) */}
 
         {isInspectorOpen && (
           <aside className="w-[216px] sm:w-[258px] shrink-0 h-full bg-[#0b0f16] border-l border-zinc-800 flex flex-col overflow-hidden z-20">
@@ -2906,11 +3261,11 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
           </aside>
         )}
 
-        {/* 4. RIGHT SIDE: CIRCULAR TOOL WHEEL (Always uncovered & interactive) */}
+        {/* 5. RIGHT SIDE: CIRCULAR TOOL WHEEL (Always uncovered & interactive on the right) */}
         <div
           className={`relative ${
-            isCompactLandscape ? 'w-[202px]' : 'w-[234px] sm:w-[266px]'
-          } shrink-0 bg-[#0b0e13] border-l border-zinc-800/80 flex flex-col items-center justify-center overflow-hidden`}
+            isCompactLandscape ? 'w-[195px]' : 'w-[215px] sm:w-[235px]'
+          } shrink-0 bg-[#0b0e13] flex flex-col items-center justify-center overflow-hidden`}
         >
           <CircularToolWheel
             categories={wheelCategories}
@@ -2935,450 +3290,58 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
             aspectRatio={selectedAspectRatio}
             compact={isCompactLandscape}
           />
-
-          <div className="mt-0.5 text-[9px] font-mono text-zinc-400 tabular-nums">
-            {selectedAspectRatio} · {activeWheelCategory.shortLabel}
-            {disabledCategoryIds.includes(activeWheelCategory.id) ? ' (Muted)' : ''}
-          </div>
         </div>
       </div>
 
-      {/* LOWER DOCK: Clean Bottom Category Cards/Boxes when a Wheel category is open, else Compact Timeline */}
-      <div className="h-[124px] sm:h-[144px] shrink-0 flex flex-col">
-        {isWheelFeaturePanelOpen ? (
-          <WheelFeatureDrawer
-            category={activeWheelCategory}
-            categoryItems={dynamicCategoryItems}
-            isMutedOrOff={disabledCategoryIds.includes(activeWheelCategory.id)}
-            onBack={() => setIsWheelFeaturePanelOpen(false)}
-            onToggleMuteOrOff={() => handleToggleCategoryMute(activeWheelCategory)}
-            mediaGallery={mediaGallery}
-            activeMotionPresetId={activeMotionPreset?.id || null}
-            onTriggerUploadMedia={() => multiFileInputRef.current?.click()}
-            onAddMediaToTimeline={(item) => {
-              pushUndoCheckpoint();
-              getOrLoadSource(item.url, item.type);
-              setTimelineClips((prev) => [
-                ...prev,
-                {
-                  id: `clip_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`,
-                  mediaId: item.id,
-                  title: item.title,
-                  durationSec: item.durationSec,
-                  sourceStartSec: 0,
-                  url: item.url,
-                  thumbnailUrl: item.thumbnailUrl,
-                  type: item.type,
-                },
-              ]);
-              setIsTimelineSelectionActive(true);
-            }}
-            onApplyMediaMotionPreset={(mm) => {
-              if (!mm) {
-                setActiveMotionPreset(null);
-                setPlaybackSpeed(1);
-                return;
-              }
-              setActiveMotionPreset(mm);
-              setPlaybackSpeed(mm.speed);
-              if (mm.aspectRatio) {
-                setSelectedAspectRatio(mm.aspectRatio);
-              }
-            }}
-            activeFilter={activeFilter}
-            onSelectFilter={(f) => {
-              pushUndoCheckpoint();
-              setDisabledCategoryIds((p) => p.filter((x) => x !== 'filters'));
-              setActiveFilter(f);
-            }}
-            activeColorGradeId={activeColorGradeId}
-            onSelectColorGrade={(cg: ColorGradePreset | null) => {
-              pushUndoCheckpoint();
-              setDisabledCategoryIds((p) => p.filter((x) => x !== 'filters'));
-              if (!cg) {
-                setActiveColorGradeId(null);
-                setColorAdjust({ brightness: 100, contrast: 100, saturation: 100, warmth: 0, vignette: 12 });
-              } else {
-                setActiveColorGradeId(cg.id);
-                setColorAdjust({
-                  brightness: Math.max(40, Math.min(180, 100 + cg.brightness)),
-                  contrast: Math.max(40, Math.min(200, 100 + cg.contrast)),
-                  saturation: Math.max(0, Math.min(200, 100 + cg.saturation)),
-                  warmth: cg.warmth,
-                  vignette: cg.vignette,
-                });
-              }
-            }}
-            userAudioLibrary={userAudioLibrary}
-            activeAudio={activeAudio}
-            previewingAudioId={previewingAudioId}
-            onSelectAudio={(a) => {
-              setDisabledCategoryIds((p) => p.filter((x) => x !== 'audio' && x !== 'music'));
-              setHasUserPickedAudio(true);
-              if (a.url) {
-                setActiveAudio(a);
-                if (!bgMusicElRef.current) bgMusicElRef.current = new Audio();
-                bgMusicElRef.current.src = a.url;
-                bgMusicElRef.current.loop = true;
-                return;
-              }
-              setActiveAudio(a);
-              const seed = parseInt(a.id.replace(/\D/g, ''), 10) || 1;
-              void getOrRenderPresetWavUrl(a.synthPreset, a.durationSec, seed).then((wavUrl) => {
-                if (!wavUrl) return;
-                setActiveAudio((cur) => (cur.id === a.id ? { ...cur, url: wavUrl } : cur));
-                if (!bgMusicElRef.current) bgMusicElRef.current = new Audio();
-                bgMusicElRef.current.src = wavUrl;
-                bgMusicElRef.current.loop = true;
-                if (isPlayingRef.current && !isMuted) {
-                  bgMusicElRef.current.play().catch(() => {});
-                }
-              });
-            }}
-            onToggleAudioPreview={handleToggleAudioPreview}
-            onTriggerUploadAudio={() => userAudioInputRef.current?.click()}
-            dialogueSpeaker={dialogueSpeakerInput}
-            dialogueText={dialogueTextInput}
-            dialogueDur={dialogueDurInput}
-            activeDialoguePresetId={activeDialoguePresetId}
-            onChangeDialogueSpeaker={setDialogueSpeakerInput}
-            onChangeDialogueText={setDialogueTextInput}
-            onChangeDialogueDur={setDialogueDurInput}
-            onApplyDialogue={() => {
-              setDisabledCategoryIds((p) => p.filter((x) => x !== 'dialogues'));
-              setActiveDialoguePresetId(null);
-              setActiveDialogue({
-                id: `dlg_${Date.now()}`,
-                speaker: dialogueSpeakerInput || 'Speaker',
-                text: dialogueTextInput || 'Line',
-                durationSec: dialogueDurInput,
-              });
-            }}
-            onApplyDialoguePreset={(dl: DialoguePresetItem) => {
-              setDisabledCategoryIds((p) => p.filter((x) => x !== 'dialogues'));
-              setActiveDialoguePresetId(dl.id);
-              setDialogueSpeakerInput(dl.speaker);
-              setDialogueTextInput(dl.line);
-              setDialogueDurInput(dl.durationSec);
-              setActiveDialogue({
-                id: dl.id,
-                speaker: dl.speaker,
-                text: dl.line,
-                durationSec: dl.durationSec,
-              });
-            }}
-            showTitleOverlay={showTitleOverlay}
-            movieTitle={movieTitle}
-            subtitle={subtitle}
-            titleAnimType={titleAnimType}
-            titleThemeType={titleThemeType}
-            onApplyTitlePreset={(preset: TitleItem) => {
-              pushUndoCheckpoint();
-              setDisabledCategoryIds((p) => p.filter((x) => x !== 'titles'));
-              setMovieTitle(preset.titleText);
-              setSubtitle(preset.subtitleText);
-              setShowTitleOverlay(true);
-            }}
-            onUpdateTitleText={(t, sub) => {
-              setDisabledCategoryIds((p) => p.filter((x) => x !== 'titles'));
-              setMovieTitle(t);
-              setSubtitle(sub);
-              setShowTitleOverlay(Boolean(t.trim() || sub.trim()));
-            }}
-            onChangeTitleAnim={setTitleAnimType}
-            onChangeTitleTheme={setTitleThemeType}
-            onAddSticker={(st) => {
-              pushUndoCheckpoint();
-              setDisabledCategoryIds((p) => p.filter((x) => x !== 'stickers'));
-              setLastAddedSticker(st);
-              setActiveStickers((prev) => [
-                ...prev,
-                {
-                  id: `st_${Date.now()}`,
-                  sticker: st,
-                  startTimeSec: currentTimeRef.current,
-                  durationSec: 3,
-                  xPct: 50,
-                  yPct: 50,
-                  scale: 1,
-                  rotation: 0,
-                  opacity: 100,
-                },
-              ]);
-            }}
-            onAddVfx={(v) => {
-              pushUndoCheckpoint();
-              setDisabledCategoryIds((p) => p.filter((x) => x !== 'vfx'));
-              setLastAddedVfx(v);
-              setVfxLayers((prev) => [
-                ...prev,
-                {
-                  id: `vfx_${Date.now()}`,
-                  vfx: v,
-                  startTimeSec: currentTimeRef.current,
-                  durationSec: v.defaultDurationSec,
-                  startXPct: 35,
-                  startYPct: 55,
-                  endXPct: 68,
-                  endYPct: 45,
-                  scale: 1,
-                  opacity: 100,
-                  speed: 1,
-                  includeImpactBlood: true,
-                },
-              ]);
-            }}
-            draftCardTitle={draftCardTitle}
-            draftCardSubtitle={draftCardSubtitle}
-            draftCardTheme={draftCardTheme}
-            draftCardAnim={draftCardAnim}
-            activeCardPresetId={activeCardPresetId}
-            onChangeDraftCardTitle={setDraftCardTitle}
-            onChangeDraftCardSubtitle={setDraftCardSubtitle}
-            onChangeDraftCardTheme={setDraftCardTheme}
-            onChangeDraftCardAnim={setDraftCardAnim}
-            onPickTrailerCardMedia={() => trailerCardInputRef.current?.click()}
-            onAddTrailerCard={() => {
-              setDisabledCategoryIds((p) => p.filter((x) => x !== 'card'));
-              setTrailerCardLayers((prev) => [
-                ...prev,
-                {
-                  id: `card_${Date.now()}`,
-                  imageUrl: draftCardImageUrl || timelineClips[0]?.url || '',
-                  mediaType: draftCardImageUrl ? draftCardMediaType : timelineClips[0]?.type || 'photo',
-                  title: draftCardTitle,
-                  subtitle: draftCardSubtitle,
-                  badgeText: 'TRAILER',
-                  theme: draftCardTheme,
-                  animation: draftCardAnim,
-                  startTimeSec: currentTimeRef.current,
-                  durationSec: 4,
-                  scale: 1,
-                  xPct: 50,
-                  yPct: 50,
-                  opacity: 100,
-                },
-              ]);
-            }}
-            onApplyTrailerCardPreset={(card: TrailerCardPresetItem) => {
-              setDisabledCategoryIds((p) => p.filter((x) => x !== 'card'));
-              setActiveCardPresetId(card.id);
-              setDraftCardTitle(card.title);
-              setDraftCardSubtitle(card.subtitle);
-              setDraftCardTheme(card.theme);
-              setDraftCardAnim(card.animation);
-              setTrailerCardLayers((prev) => [
-                ...prev,
-                {
-                  id: `card_${Date.now()}`,
-                  imageUrl: draftCardImageUrl || timelineClips[0]?.url || '',
-                  mediaType: draftCardImageUrl ? draftCardMediaType : timelineClips[0]?.type || 'photo',
-                  title: card.title,
-                  subtitle: card.subtitle,
-                  badgeText: card.badgeText,
-                  theme: card.theme,
-                  animation: card.animation,
-                  startTimeSec: currentTimeRef.current,
-                  durationSec: card.durationSec,
-                  scale: 1,
-                  xPct: 50,
-                  yPct: 50,
-                  opacity: 100,
-                },
-              ]);
-            }}
-            chromaConfig={chromaConfig}
-            activeChromaPresetId={activeChromaPresetId}
-            onUpdateChromaConfig={(updater) => {
-              setDisabledCategoryIds((p) => p.filter((x) => x !== 'chroma'));
-              setChromaConfig(updater);
-            }}
-            onPickChromaBg={() => chromaBgInputRef.current?.click()}
-            onApplyChromaPreset={(ch: ChromaPresetItem) => {
-              setDisabledCategoryIds((p) => p.filter((x) => x !== 'chroma'));
-              setActiveChromaPresetId(ch.id);
-              setChromaConfig((p) => ({
-                ...p,
-                enabled: true,
-                colorPreset: ch.colorPreset,
-                bgMode: ch.bgMode,
-                similarity: ch.similarity,
-                smoothness: ch.smoothness,
-              }));
-            }}
-            splitScreenConfig={splitScreenConfig}
-            activeSplitPresetId={activeSplitPresetId}
-            onUpdateSplitScreenConfig={(updater) => {
-              setDisabledCategoryIds((p) => p.filter((x) => x !== 'split'));
-              setSplitScreenConfig(updater);
-            }}
-            onPickSplitSide={(side) => {
-              if (side === 'left') splitLeftInputRef.current?.click();
-              else splitRightInputRef.current?.click();
-            }}
-            onAutoJoinSplitClips={() => {
-              setDisabledCategoryIds((p) => p.filter((x) => x !== 'split'));
-              const c1 = timelineClips[0];
-              const c2 = timelineClips[1] || timelineClips[0];
-              setSplitScreenConfig((p) => ({
-                ...p,
-                enabled: true,
-                leftMediaUrl: c1?.url || p.leftMediaUrl,
-                leftMediaType: c1?.type || p.leftMediaType,
-                rightMediaUrl: c2?.url || p.rightMediaUrl,
-                rightMediaType: c2?.type || p.rightMediaType,
-              }));
-            }}
-            onApplySplitPreset={(sp: SplitLayoutPresetItem) => {
-              setDisabledCategoryIds((p) => p.filter((x) => x !== 'split'));
-              setActiveSplitPresetId(sp.id);
-              const c1 = timelineClips[0];
-              const c2 = timelineClips[1] || timelineClips[0];
-              setSplitScreenConfig((p) => ({
-                ...p,
-                enabled: true,
-                layout: sp.layout,
-                splitRatio: sp.splitRatio,
-                gapPx: sp.gapPx,
-                leftMediaUrl: p.leftMediaUrl || c1?.url || '',
-                leftMediaType: p.leftMediaUrl ? p.leftMediaType : c1?.type || 'photo',
-                rightMediaUrl: p.rightMediaUrl || c2?.url || '',
-                rightMediaType: p.rightMediaUrl ? p.rightMediaType : c2?.type || 'photo',
-              }));
-            }}
-            selectedTransitionId={selectedTransitionId}
-            activeTransitionObj={selectedTransitionObj}
-            onSelectTransition={(tr) => {
-              setDisabledCategoryIds((p) => p.filter((x) => x !== 'transitions'));
-              if (!tr) {
-                setSelectedTransitionId(null);
-                setSelectedTransitionObj(null);
-                if (activeTransitionSeamClipId) {
-                  pushUndoCheckpoint();
-                  setTimelineClips((prev) =>
-                    prev.map((c) => (c.id === activeTransitionSeamClipId ? { ...c, transitionOut: null } : c))
-                  );
-                }
-                return;
-              }
-              setSelectedTransitionId(tr.id);
-              setSelectedTransitionObj(tr);
-              setActiveTransitionStartSec(currentTimeRef.current);
-              if (timelineClips.length >= 2) {
-                pushUndoCheckpoint();
-                const seamIdx = activeTransitionSeamClipId
-                  ? timelineClips.findIndex((c) => c.id === activeTransitionSeamClipId)
-                  : Math.min(timelineClips.length - 2, Math.max(0, activeClipIndex));
-                const validIdx = seamIdx >= 0 && seamIdx < timelineClips.length - 1 ? seamIdx : 0;
-                const targetId = timelineClips[validIdx]?.id;
-                if (targetId) {
-                  setActiveTransitionSeamClipId(targetId);
-                  setTimelineClips((prev) =>
-                    prev.map((c) => (c.id === targetId ? { ...c, transitionOut: tr } : c))
-                  );
-                  if (!isPlayingRef.current) {
-                    let seamSec = 0;
-                    for (let i = 0; i <= validIdx; i += 1) {
-                      seamSec += Math.max(0.2, timelineClips[i].durationSec || 4);
-                    }
-                    seekToTime(seamSec, true);
-                  }
-                }
-              }
-            }}
-            activeEffect={activeEffect}
-            onSelectEffect={(fx) => {
-              setDisabledCategoryIds((p) => p.filter((x) => x !== 'effects'));
-              setActiveEffect(fx);
-            }}
-            activeTemplateId={activeTemplate?.id || null}
-            activeTemplateObj={activeTemplate}
-            onApplyTemplate={(tm) => {
-              setDisabledCategoryIds((p) => p.filter((x) => x !== 'templates'));
-              setActiveTemplate(tm);
-              setActiveTemplateStartSec(0);
-              setMovieTitle(tm.movieTitle);
-              setSubtitle(tm.subtitle);
-              setShowTitleOverlay(true);
-            }}
-            onApplyTrailerPack={(packId) => {
-              const pack = TRAILER_PRESET_PACKS.find((p) => p.id === packId);
-              if (!pack) return;
-              setDisabledCategoryIds((p) => p.filter((x) => x !== 'templates'));
-              setMovieTitle(pack.title);
-              setSubtitle(pack.subtitle);
-              setTitleAnimType(pack.titleAnim);
-              setTitleThemeType(pack.titleTheme);
-              setTrailerFxMode(pack.fxMode);
-              setShowTitleOverlay(true);
-              setActiveTemplateStartSec(0);
-              setActiveTemplate({
-                ...TEMPLATES_LIST[0],
-                id: `pack_${pack.id}`,
-                title: pack.name,
-                movieTitle: pack.title,
-                subtitle: pack.subtitle,
-                durationSec: Math.max(4, totalDuration || 8),
-              });
-            }}
-            primaryClipThumbUrl={seamPreviewThumbs.thumbA}
-            secondaryClipThumbUrl={seamPreviewThumbs.thumbB}
-            activeColorGradeObj={activeColorGradeObj}
-            activeMotionPresetObj={activeMotionPreset}
-            activeDialogueObj={activeDialogue}
-            activeCardPresetObj={activeCardPresetObj}
-            activeVfxObj={lastAddedVfx}
-            activeStickerObj={lastAddedSticker}
-          />
-        ) : (
-          <TimelinePanel
-            clips={timelineClips}
-            activeClipIndex={activeClipIndex}
-            isTimelineSelectionActive={isTimelineSelectionActive}
-            activeCategory={activeWheelCategory}
-            disabledCategoryIds={disabledCategoryIds}
-            currentTimeSec={currentTimeSec}
-            totalDurationSec={totalDuration}
-            pxPerSec={pxPerSec}
-            isClipAudioMuted={isMuted || disabledCategoryIds.includes('audio')}
-            isPlaying={isPlaying}
-            isCssRotatedLandscape={isCssRotatedLandscape}
-            overlayBlocks={timelineOverlayBlocks}
-            onSelectClip={(idx) => {
-              setActiveClipIndex(idx);
-              setIsTimelineSelectionActive(true);
-              setSelectedWheelCategoryId('video');
-            }}
-            onSeekToTime={(sec) => seekToTime(sec, true)}
-            onScrubStart={() => {
-              isScrubbingRef.current = true;
-              wasPlayingBeforeScrubRef.current = isPlayingRef.current;
-              if (isPlayingRef.current) setIsPlaying(false);
-            }}
-            onScrubEnd={() => {
-              isScrubbingRef.current = false;
-              if (wasPlayingBeforeScrubRef.current) setIsPlaying(true);
-            }}
-            onRequestAddMedia={() => multiFileInputRef.current?.click()}
-            onOpenActiveCategoryPanel={() => setIsWheelFeaturePanelOpen(true)}
-            onToggleCategoryMute={handleToggleCategoryMute}
-            onSplitAtPlayhead={handleSplitClipAtPlayhead}
-            activeTransitionSeamClipId={activeTransitionSeamClipId}
-            onSelectTransitionSeam={(clipIndex) => {
-              const seamClip = timelineClips[clipIndex];
-              if (!seamClip) return;
-              setActiveTransitionSeamClipId(seamClip.id);
-              setSelectedTransitionId(seamClip.transitionOut?.id || null);
-              setSelectedTransitionObj(seamClip.transitionOut || null);
-              setSelectedWheelCategoryId('transitions');
-              setIsInspectorOpen(false);
-              setIsWheelFeaturePanelOpen(true);
-            }}
-            timelineScrollRef={timelineScrollRef}
-            playheadLineRef={playheadLineRef}
-            redBadgeTimeRef={redBadgeTimeRef}
-          />
-        )}
+      {/* LOWER TIMELINE DOCK (Compact, exact ruler alignment, smooth scroll & scrubbing) */}
+      <div className="h-[112px] sm:h-[126px] shrink-0 flex flex-col">
+        <TimelinePanel
+          clips={timelineClips}
+          activeClipIndex={activeClipIndex}
+          isTimelineSelectionActive={isTimelineSelectionActive}
+          activeCategory={activeWheelCategory}
+          disabledCategoryIds={disabledCategoryIds}
+          currentTimeSec={currentTimeSec}
+          totalDurationSec={totalDuration}
+          pxPerSec={pxPerSec}
+          isClipAudioMuted={isMuted || disabledCategoryIds.includes('audio')}
+          isPlaying={isPlaying}
+          isCssRotatedLandscape={isCssRotatedLandscape}
+          overlayBlocks={timelineOverlayBlocks}
+          onSelectClip={(idx) => {
+            setActiveClipIndex(idx);
+            setIsTimelineSelectionActive(true);
+            setSelectedWheelCategoryId('video');
+          }}
+          onSeekToTime={(sec) => seekToTime(sec, true)}
+          onScrubStart={() => {
+            isScrubbingRef.current = true;
+            wasPlayingBeforeScrubRef.current = isPlayingRef.current;
+            if (isPlayingRef.current) setIsPlaying(false);
+          }}
+          onScrubEnd={() => {
+            isScrubbingRef.current = false;
+            if (wasPlayingBeforeScrubRef.current) setIsPlaying(true);
+          }}
+          onRequestAddMedia={() => multiFileInputRef.current?.click()}
+          onOpenActiveCategoryPanel={() => setIsWheelFeaturePanelOpen(true)}
+          onToggleCategoryMute={handleToggleCategoryMute}
+          onSplitAtPlayhead={handleSplitClipAtPlayhead}
+          activeTransitionSeamClipId={activeTransitionSeamClipId}
+          onSelectTransitionSeam={(clipIndex) => {
+            const seamClip = timelineClips[clipIndex];
+            if (!seamClip) return;
+            setActiveTransitionSeamClipId(seamClip.id);
+            setSelectedTransitionId(seamClip.transitionOut?.id || null);
+            setSelectedTransitionObj(seamClip.transitionOut || null);
+            setSelectedWheelCategoryId('transitions');
+            setIsInspectorOpen(false);
+            setIsWheelFeaturePanelOpen(true);
+          }}
+          timelineScrollRef={timelineScrollRef}
+          playheadLineRef={playheadLineRef}
+          redBadgeTimeRef={redBadgeTimeRef}
+        />
       </div>
 
       {/* Compact Bottom Ad Bar when vertical viewport allows */}

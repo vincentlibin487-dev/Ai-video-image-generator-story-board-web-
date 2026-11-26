@@ -20,6 +20,7 @@ import {
   LayoutGrid,
   Sliders,
   RefreshCw,
+  X,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -223,6 +224,7 @@ interface CircularToolWheelProps {
   onExport: () => void;
   aspectRatio?: string;
   compact?: boolean;
+  drawerContent?: React.ReactNode;
 }
 
 export const CircularToolWheel: React.FC<CircularToolWheelProps> = React.memo(({
@@ -241,6 +243,7 @@ export const CircularToolWheel: React.FC<CircularToolWheelProps> = React.memo(({
   onExport,
   aspectRatio = '16:9',
   compact = false,
+  drawerContent,
 }) => {
   const wheelRef = useRef<HTMLDivElement | null>(null);
   const dragStateRef = useRef<{
@@ -556,7 +559,7 @@ export const CircularToolWheel: React.FC<CircularToolWheelProps> = React.memo(({
             })}
           </div>
 
-          {/* INTERACTIVE CENTER TOGGLE BUTTON: Cycles across all dynamic wheel pages (1–7, 8–14, 15+, ...) */}
+          {/* CENTER HUB: Clean rotatable page flip button (Switch between Group 1 & Group 2 categories) */}
           <button
             type="button"
             onPointerDown={(e) => e.stopPropagation()}
