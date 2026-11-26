@@ -296,7 +296,30 @@ const RAW_FILTER_DEFINITIONS: Array<{
   { name: 'Disco 70s Sunset Film', cat: 'Retro', css: 'sepia(28%) saturate(144%) contrast(116%) brightness(103%)', desc: 'Groovy 70s warm flare film tone for music edits', thumbIdx: 2 },
 ];
 
-const FILTER_TIER_NAMES = ['I', 'II', 'Soft', 'Deep', 'Pro', 'Studio'];
+const FILTER_TIER_NAMES = [
+  'I',
+  'II',
+  'Soft',
+  'Deep',
+  'Pro',
+  'Studio',
+  'Cinema',
+  'IMAX',
+  'HDR',
+  'Matte',
+  '4K',
+  'Master',
+  'Filmic',
+  'Prime',
+  'Anamorphic',
+  'Grade',
+  'Tone',
+  'Ultra',
+  'Pure',
+  'Plus',
+  'Elite',
+  'Director',
+];
 
 export const FILTERS_LIST: FilterItem[] = [
   {
@@ -307,14 +330,14 @@ export const FILTERS_LIST: FilterItem[] = [
     thumbnail: FILTER_THUMBS[0],
     description: 'Unfiltered original video & photo colors with zero LUT adjustment.',
   },
-  ...Array.from({ length: 299 }, (_, idx) => {
+  ...Array.from({ length: 1199 }, (_, idx) => {
     const base = RAW_FILTER_DEFINITIONS[idx % RAW_FILTER_DEFINITIONS.length];
     const cycle = Math.floor(idx / RAW_FILTER_DEFINITIONS.length);
-    const factor = 0.88 + (cycle % 6) * 0.05;
+    const factor = 0.84 + (cycle % 10) * 0.04;
     const tierTag = FILTER_TIER_NAMES[cycle % FILTER_TIER_NAMES.length];
     return {
       id: `flt_${idx + 1}`,
-      name: cycle === 0 ? base.name : `${base.name} · ${tierTag}`,
+      name: cycle === 0 ? base.name : `${base.name} · ${tierTag} ${cycle + 1}`,
       category: base.cat,
       cssFilter: base.css.replace(/(\d+)%/g, (_, n) => `${Math.round(Number(n) * factor)}%`),
       thumbnail: FILTER_THUMBS[base.thumbIdx % FILTER_THUMBS.length],
@@ -322,6 +345,18 @@ export const FILTERS_LIST: FilterItem[] = [
     };
   }),
 ];
+
+export const AUDIO_CATEGORIES = [
+  'Funny & Meme SFX',
+  'Comedy Tracks',
+  'Cinematic Score',
+  'Trailer Hits',
+  'Background Music',
+  'Upbeat Beat',
+  'Lo-Fi Chill',
+  'Electronic',
+  'Sound Effects',
+] as const;
 
 // -------------------------------------------------------------------------
 // 2. AUDIO & BACKGROUND MUSIC LIBRARY (600 Tracks + Funny/Meme SFX)
@@ -461,6 +496,8 @@ const TRANSITION_DEFS: Array<{
   },
 ];
 
+export const TRANSITION_CATEGORIES = TRANSITION_DEFS.map((d) => d.cat);
+
 export const TRANSITIONS_LIST: TransitionItem[] = Array.from({ length: 1200 }, (_, i) => {
   const def = TRANSITION_DEFS[i % TRANSITION_DEFS.length];
   const baseName = def.names[Math.floor(i / TRANSITION_DEFS.length) % def.names.length];
@@ -546,6 +583,8 @@ const EFFECT_DEFS: Array<{
   },
 ];
 
+export const EFFECT_CATEGORIES = EFFECT_DEFS.map((d) => d.cat);
+
 export const EFFECTS_LIST: EffectItem[] = Array.from({ length: 1200 }, (_, i) => {
   const def = EFFECT_DEFS[i % EFFECT_DEFS.length];
   const baseName = def.names[Math.floor(i / EFFECT_DEFS.length) % def.names.length];
@@ -564,7 +603,7 @@ export const EFFECTS_LIST: EffectItem[] = Array.from({ length: 1200 }, (_, i) =>
 // -------------------------------------------------------------------------
 // 5. TITLES & TYPOGRAPHY LIBRARY (600 Lower Thirds & Openers)
 // -------------------------------------------------------------------------
-const TITLE_CATEGORIES = [
+export const TITLE_CATEGORIES = [
   'Cinematic Openers',
   'Neon 3D',
   'Lower Thirds',
@@ -601,7 +640,7 @@ export const TITLES_LIST: TitleItem[] = Array.from({ length: 1200 }, (_, i) => {
 // -------------------------------------------------------------------------
 // 6. VIDEO TEMPLATES LIBRARY (1,200 Motion Templates)
 // -------------------------------------------------------------------------
-const TEMPLATE_CATEGORIES = [
+export const TEMPLATE_CATEGORIES = [
   'Cinematic Intro',
   'Action Trailer',
   'YouTube Vlog',
@@ -640,7 +679,7 @@ export const INITIAL_MEDIA_GALLERY: MediaItem[] = [];
 // -------------------------------------------------------------------------
 // 8. STICKERS & BADGES LIBRARY (600 Graphic Canvas Stickers)
 // -------------------------------------------------------------------------
-const STICKER_CATEGORIES = [
+export const STICKER_CATEGORIES = [
   'Subscribe & Social',
   'Badges & Seals',
   'Arrows & Pointers',
@@ -763,10 +802,10 @@ const RAW_COLOR_GRADES: Array<{
   { name: 'Archival Sepia Noir', cat: 'Monochrome', b: 0, c: 28, s: -100, ex: 0, w: 28, t: 0, hi: 8, sh: -14, v: 36, grad: 'from-amber-200 to-stone-900', desc: 'Warm antique silver-sepia monochrome grade' },
 ];
 
-export const COLOR_GRADES_LIST: ColorGradePreset[] = Array.from({ length: 300 }, (_, i) => {
+export const COLOR_GRADES_LIST: ColorGradePreset[] = Array.from({ length: 1200 }, (_, i) => {
   const base = RAW_COLOR_GRADES[i % RAW_COLOR_GRADES.length];
   const cycle = Math.floor(i / RAW_COLOR_GRADES.length);
-  const delta = (cycle % 7) - 3;
+  const delta = (cycle % 11) - 5;
   return {
     id: `cg_${i + 1}`,
     name: cycle === 0 ? base.name : `${base.name} · v${cycle + 1}`,

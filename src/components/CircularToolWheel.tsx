@@ -207,7 +207,10 @@ export const WHEEL_CATEGORIES: WheelCategoryItem[] = [...WHEEL_GROUP_1, ...WHEEL
 interface CircularToolWheelProps {
   categories?: WheelCategoryItem[];
   activeCategoryId: string;
+  disabledCategoryIds?: string[];
+  activeFeatureIds?: string[];
   onSelectCategory: (category: WheelCategoryItem, openDrawer?: boolean, fromWheelTap?: boolean) => void;
+  onToggleCategoryMute?: (category: WheelCategoryItem) => void;
   isToolDrawerOpen: boolean;
   onToggleToolDrawer: () => void;
   isInspectorOpen: boolean;
@@ -222,7 +225,10 @@ interface CircularToolWheelProps {
 export const CircularToolWheel: React.FC<CircularToolWheelProps> = ({
   categories = WHEEL_CATEGORIES,
   activeCategoryId,
+  disabledCategoryIds = [],
+  activeFeatureIds = [],
   onSelectCategory,
+  onToggleCategoryMute,
   isToolDrawerOpen,
   onToggleToolDrawer,
   isInspectorOpen,
@@ -343,14 +349,13 @@ export const CircularToolWheel: React.FC<CircularToolWheelProps> = ({
     } catch {}
   };
 
-  // Enlarged KineMaster-scale wheel sizes (safe against landscape media-query inflation in compact mode)
   const outerSizeClass = compact
-    ? 'w-[190px] h-[190px]'
-    : 'w-[228px] h-[228px] sm:w-[254px] sm:h-[254px]';
+    ? 'w-[186px] h-[186px]'
+    : 'w-[224px] h-[224px] sm:w-[250px] sm:h-[250px]';
 
   const wheelSizeClass = compact
-    ? 'w-[178px] h-[178px]'
-    : 'w-[214px] h-[214px] sm:w-[238px] sm:h-[238px]';
+    ? 'w-[174px] h-[174px]'
+    : 'w-[210px] h-[210px] sm:w-[234px] sm:h-[234px]';
 
   const cornerBtnClass = compact ? 'w-8 h-8' : 'w-9 h-9';
 
@@ -382,7 +387,7 @@ export const CircularToolWheel: React.FC<CircularToolWheelProps> = ({
           <Upload className="w-4 h-4" />
         </button>
 
-        {/* BOTTOM-LEFT CORNER: Category Search / Filter Popover */}
+        {/* BOTTOM-LEFT CORNER: Feature Drawer / Toggle Grid */}
         <button
           type="button"
           onClick={onToggleToolDrawer}
@@ -391,7 +396,7 @@ export const CircularToolWheel: React.FC<CircularToolWheelProps> = ({
               ? 'bg-teal-400 text-black border-teal-200 shadow-teal-500/30'
               : 'bg-[#1a202b]/90 text-zinc-200 border-white/15 hover:border-teal-400/70 hover:text-white'
           }`}
-          title="Filter / Search Tools"
+          title="Open / Close Tool Options"
         >
           <LayoutGrid className="w-3.5 h-3.5" />
         </button>
@@ -431,6 +436,7 @@ export const CircularToolWheel: React.FC<CircularToolWheelProps> = ({
             {visibleGroupItems.map((cat, idx) => {
               const deg = (idx * 360) / visibleGroupItems.length;
               const isAct = cat.id === activeCat.id;
+              const isMutedOrOff = disabledCategoryIds.includes(cat.id);
               return (
                 <div
                   key={`tick_${cat.id}`}
@@ -439,9 +445,14 @@ export const CircularToolWheel: React.FC<CircularToolWheelProps> = ({
                 >
                   <span
                     className={`mt-1 rounded-full transition-all ${
-                      isAct ? 'w-1.5 h-1.5 shadow-[0_0_8px_currentColor]' : 'w-1 h-1 opacity-40'
+                      isAct && !isMutedOrOff
+                        ? 'w-1.5 h-1.5 shadow-[0_0_8px_currentColor]'
+                        : 'w-1 h-1 opacity-40'
                     }`}
-                    style={{ backgroundColor: isAct ? cat.accentHex : '#64748b', color: cat.accentHex }}
+                    style={{
+                      backgroundColor: isMutedOrOff ? '#ef4444' : isAct ? cat.accentHex : '#64748b',
+                      color: cat.accentHex,
+                    }}
                   />
                 </div>
               );
@@ -459,32 +470,61 @@ export const CircularToolWheel: React.FC<CircularToolWheelProps> = ({
               const radiusPct = 35.5;
               const leftPct = 50 + radiusPct * Math.cos(angleRad);
               const topPct = 50 + radiusPct * Math.sin(angleRad);
-              const isAct = cat.id === activeCat.id;
+              const isSelected = cat.id === activeCat.id;
+              const isMutedOrOff = disabledCategoryIds.includes(cat.id);
+              const hasActiveApplied = activeFeatureIds.includes(cat.id) && !isMutedOrOff;
               const IconComp = cat.icon;
+
+              const handleNodeClick = () => {
+                // If this category is already selected and has a toggle/mute handler,
+                // tapping it again toggles/mutes/disables it cleanly instead of staying stuck active.
+                if (isSelected && onToggleCategoryMute && cat.id !== 'video') {
+                  onToggleCategoryMute(cat);
+                  return;
+                }
+                onSelectCategory(cat, true, true);
+              };
 
               return (
                 <button
                   key={cat.id}
                   type="button"
                   onPointerDown={(e) => e.stopPropagation()}
-                  onClick={() => onSelectCategory(cat, false, true)}
+                  onClick={handleNodeClick}
                   style={{
                     left: `${leftPct}%`,
                     top: `${topPct}%`,
                     transform: 'translate(-50%, -50%)',
-                    borderColor: isAct ? cat.accentHex : undefined,
-                    boxShadow: isAct ? `0 0 12px ${cat.accentHex}44` : undefined,
+                    borderColor: isMutedOrOff
+                      ? 'rgba(239,68,68,0.65)'
+                      : isSelected
+                      ? cat.accentHex
+                      : hasActiveApplied
+                      ? `${cat.accentHex}88`
+                      : undefined,
+                    boxShadow:
+                      isSelected && !isMutedOrOff ? `0 0 12px ${cat.accentHex}44` : undefined,
                   }}
                   className={`absolute z-10 ${
                     compact
                       ? 'w-[42px] h-[42px] rounded-xl'
                       : 'w-[48px] h-[48px] sm:w-[52px] sm:h-[52px] rounded-2xl'
                   } flex flex-col items-center justify-center cursor-pointer transition-all active:scale-95 ${
-                    isAct
+                    isMutedOrOff
+                      ? 'bg-[#171920]/80 border text-zinc-500 opacity-65'
+                      : isSelected
                       ? 'bg-[#222b3a] border-2 text-white scale-105'
+                      : hasActiveApplied
+                      ? 'bg-[#1d2532] border text-white'
                       : 'bg-[#1a202a]/90 hover:bg-[#232b38] border border-white/10 text-zinc-200 hover:text-white'
                   }`}
-                  title={`T${cat.trackNumber} · ${cat.label}`}
+                  title={
+                    isMutedOrOff
+                      ? `${cat.label} (Muted / Off — Tap to turn on)`
+                      : isSelected && cat.id !== 'video'
+                      ? `${cat.label} (Selected — Tap again to disable/mute)`
+                      : `T${cat.trackNumber} · ${cat.label}`
+                  }
                 >
                   {/* Counter-rotate inner content so icon & label stay 100% upright during wheel spin */}
                   <div
@@ -493,9 +533,13 @@ export const CircularToolWheel: React.FC<CircularToolWheelProps> = ({
                   >
                     <IconComp
                       className={compact ? 'w-4 h-4' : 'w-4 h-4 sm:w-[18px] sm:h-[18px]'}
-                      style={{ color: cat.accentHex }}
+                      style={{ color: isMutedOrOff ? '#71717a' : cat.accentHex }}
                     />
-                    <span className={`${compact ? 'text-[8px]' : 'text-[9px] sm:text-[10px]'} font-bold leading-none whitespace-nowrap`}>
+                    <span
+                      className={`${compact ? 'text-[8px]' : 'text-[9px] sm:text-[10px]'} font-bold leading-none whitespace-nowrap ${
+                        isMutedOrOff ? 'line-through text-zinc-500' : ''
+                      }`}
+                    >
                       {cat.shortLabel}
                     </span>
                   </div>
