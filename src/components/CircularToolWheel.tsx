@@ -21,6 +21,8 @@ import {
   Sliders,
   RefreshCw,
   X,
+  Film,
+  Shield,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -203,9 +205,29 @@ export const WHEEL_GROUP_2: WheelCategoryItem[] = [
     accentHex: '#2dd4bf',
     icon: Layers,
   },
+  {
+    id: 'action_reel',
+    label: 'Action Video',
+    shortLabel: 'ActVid',
+    tab: 'Media',
+    trackNumber: 15,
+    trackName: 'Action Reel',
+    accentHex: '#f97316',
+    icon: Film,
+  },
+  {
+    id: 'emblem_trailer',
+    label: 'Emblem Trailer',
+    shortLabel: 'Emblem',
+    tab: 'Trailer',
+    trackNumber: 16,
+    trackName: 'Emblem',
+    accentHex: '#eab308',
+    icon: Shield,
+  },
 ];
 
-// Combined 14 Categories (7 + 7)
+// Combined 16 Categories (8 + 8)
 export const WHEEL_CATEGORIES: WheelCategoryItem[] = [...WHEEL_GROUP_1, ...WHEEL_GROUP_2];
 
 interface CircularToolWheelProps {
@@ -255,7 +277,7 @@ export const CircularToolWheel: React.FC<CircularToolWheelProps> = React.memo(({
     startY: number;
   } | null>(null);
 
-  const ITEMS_PER_PAGE = 7;
+  const ITEMS_PER_PAGE = 8;
   const pageCount = Math.max(1, Math.ceil(categories.length / ITEMS_PER_PAGE));
 
   const [wheelPage, setWheelPage] = useState<number>(() => {
@@ -482,7 +504,7 @@ export const CircularToolWheel: React.FC<CircularToolWheelProps> = React.memo(({
             {visibleGroupItems.map((cat, idx) => {
               const itemCount = Math.max(1, visibleGroupItems.length);
               const angleRad = ((-90 + (idx * 360) / itemCount) * Math.PI) / 180;
-              const radiusPct = 35.5;
+              const radiusPct = itemCount > 7 ? 36.5 : 35.5;
               const leftPct = 50 + radiusPct * Math.cos(angleRad);
               const topPct = 50 + radiusPct * Math.sin(angleRad);
               const isSelected = activeCat ? cat.id === activeCat.id : false;

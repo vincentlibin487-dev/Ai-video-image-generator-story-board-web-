@@ -407,7 +407,7 @@ service cloud.firestore {
         && data.clipCount <= 500
         && data.resolution is string
         && data.resolution.size() <= 10
-        && data.resolution in ['720p', '1080p', '4K']
+        && data.resolution in ['420p', '720p', '1080p']
         && data.aspectRatio is string
         && data.aspectRatio.size() <= 10
         && data.aspectRatio in ['16:9', '9:16', '1:1', '4:5', '21:9', '4:3']

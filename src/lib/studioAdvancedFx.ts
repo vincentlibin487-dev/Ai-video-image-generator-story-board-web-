@@ -101,7 +101,55 @@ export type TitleThemeType =
   | 'crimson_horror'
   | 'cyber_neon'
   | 'hollywood_chrome'
-  | 'hero_impact';
+  | 'hero_impact'
+  | 'birthday_rose'
+  | 'emerald_cinema';
+
+export type TitleStyleMode =
+  | 'standard'
+  | 'stacked_4line'
+  | 'neon_box'
+  | 'gold_crest'
+  | 'punch_slant'
+  | 'horror_drip'
+  | 'comedy_pop'
+  | 'news_bar'
+  | 'birthday_confetti'
+  | 'malayalam_bold'
+  | 'split_duotone';
+
+export type EmblemCrestShape =
+  | 'shield'
+  | 'crown'
+  | 'film_reel'
+  | 'star_crest'
+  | 'wings'
+  | 'neon_hex'
+  | 'birthday_star'
+  | 'royal_seal';
+
+export interface EmblemTrailerConfig {
+  enabled: boolean;
+  shape: EmblemCrestShape;
+  studioName: string;
+  tagline: string;
+  subline: string;
+  accentColor: string;
+  customLogoUrl?: string;
+  animStyle: 'spin_reveal' | 'slam_impact' | 'light_sweep' | 'fire_forge';
+  scale: number;
+}
+
+export const DEFAULT_EMBLEM_TRAILER_CONFIG: EmblemTrailerConfig = {
+  enabled: false,
+  shape: 'shield',
+  studioName: 'ROYAL CINEMAS',
+  tagline: 'PRESENTS AN EPIC ACTION TRAILER',
+  subline: '4K ULTRA HD · WORLDWIDE',
+  accentColor: '#fbbf24',
+  animStyle: 'light_sweep',
+  scale: 1,
+};
 
 export type TrailerFxMode =
   | 'none'
@@ -929,6 +977,8 @@ export function drawAnimatedCinemaTitle(
     movieTitle: string;
     subtitle: string;
     directorText: string;
+    extraLine3?: string;
+    extraLine4?: string;
     titleXPct: number;
     titleYPct: number;
     titleScale: number;
@@ -937,6 +987,8 @@ export function drawAnimatedCinemaTitle(
     globalTimeSec: number;
     animationType: TitleAnimationType;
     themeType: TitleThemeType;
+    titleStyleMode?: TitleStyleMode;
+    customColor?: string;
     exportScaleRatio?: number;
   }
 ) {
@@ -950,7 +1002,8 @@ export function drawAnimatedCinemaTitle(
   let extraOffsetX = 0;
   let extraOffsetY = 0;
   let spreadSpace = 0;
-  let displayMain = opts.movieTitle.toUpperCase();
+  const rawMainLines = opts.movieTitle.split('\n').filter((l) => l.trim().length > 0);
+  let displayMain = rawMainLines[0] || opts.movieTitle;
 
   if (opts.animationType === 'zoom_slam') {
     const p = Math.min(1, localT / 0.45);
@@ -1001,70 +1054,319 @@ export function drawAnimatedCinemaTitle(
   ctx.scale(opts.titleScale * ratio * animScale, opts.titleScale * ratio * animScale);
   ctx.textAlign = 'center';
 
-  let mainColor = '#ffffff';
-  let shadowCol = 'rgba(0,0,0,0.95)';
-  let subColor = 'rgba(255,255,255,0.88)';
-  if (opts.themeType === 'blockbuster_gold') {
-    const g = ctx.createLinearGradient(0, -32, 0, 24);
-    g.addColorStop(0, '#fef08a');
-    g.addColorStop(0.5, '#f59e0b');
-    g.addColorStop(1, '#b45309');
-    mainColor = g as unknown as string;
-    shadowCol = 'rgba(245, 158, 11, 0.55)';
-    subColor = '#fde68a';
-  } else if (opts.themeType === 'crimson_horror') {
-    mainColor = '#ef4444';
-    shadowCol = 'rgba(127, 29, 29, 0.95)';
-    subColor = '#fca5a5';
-  } else if (opts.themeType === 'cyber_neon') {
-    mainColor = '#22d3ee';
-    shadowCol = 'rgba(6, 182, 212, 0.9)';
-    subColor = '#f472b6';
-  } else if (opts.themeType === 'hollywood_chrome') {
-    const g = ctx.createLinearGradient(0, -34, 0, 24);
-    g.addColorStop(0, '#ffffff');
-    g.addColorStop(0.5, '#cbd5e1');
-    g.addColorStop(1, '#64748b');
-    mainColor = g as unknown as string;
-    shadowCol = 'rgba(15, 23, 42, 0.95)';
-    subColor = '#e2e8f0';
-  } else if (opts.themeType === 'hero_impact') {
-    mainColor = '#fb923c';
-    shadowCol = 'rgba(234, 88, 12, 0.9)';
-    subColor = '#fef3c7';
+  const styleMode = opts.titleStyleMode || 'standard';
+  if (styleMode === 'punch_slant') {
+    ctx.transform(1, 0, -0.14, 1, 0, 0);
   }
 
-  if (opts.subtitle) {
-    ctx.font = '700 16px system-ui, -apple-system, sans-serif';
+  let mainColor: string | CanvasGradient = opts.customColor || '#ffffff';
+  let shadowCol = 'rgba(0,0,0,0.95)';
+  let subColor = 'rgba(255,255,255,0.88)';
+  if (!opts.customColor) {
+    if (opts.themeType === 'blockbuster_gold') {
+      const g = ctx.createLinearGradient(0, -32, 0, 24);
+      g.addColorStop(0, '#fef08a');
+      g.addColorStop(0.5, '#f59e0b');
+      g.addColorStop(1, '#b45309');
+      mainColor = g;
+      shadowCol = 'rgba(245, 158, 11, 0.55)';
+      subColor = '#fde68a';
+    } else if (opts.themeType === 'crimson_horror') {
+      mainColor = '#ef4444';
+      shadowCol = 'rgba(127, 29, 29, 0.95)';
+      subColor = '#fca5a5';
+    } else if (opts.themeType === 'cyber_neon') {
+      mainColor = '#22d3ee';
+      shadowCol = 'rgba(6, 182, 212, 0.9)';
+      subColor = '#f472b6';
+    } else if (opts.themeType === 'hollywood_chrome') {
+      const g = ctx.createLinearGradient(0, -34, 0, 24);
+      g.addColorStop(0, '#ffffff');
+      g.addColorStop(0.5, '#cbd5e1');
+      g.addColorStop(1, '#64748b');
+      mainColor = g;
+      shadowCol = 'rgba(15, 23, 42, 0.95)';
+      subColor = '#e2e8f0';
+    } else if (opts.themeType === 'hero_impact') {
+      mainColor = '#fb923c';
+      shadowCol = 'rgba(234, 88, 12, 0.9)';
+      subColor = '#fef3c7';
+    } else if (opts.themeType === 'birthday_rose') {
+      mainColor = '#f472b6';
+      shadowCol = 'rgba(236, 72, 153, 0.85)';
+      subColor = '#fde047';
+    } else if (opts.themeType === 'emerald_cinema') {
+      mainColor = '#34d399';
+      shadowCol = 'rgba(16, 185, 129, 0.8)';
+      subColor = '#a7f3d0';
+    }
+  } else {
+    shadowCol = 'rgba(0,0,0,0.9)';
+    subColor = '#f4f4f5';
+  }
+
+  // Optional stylized backing frame for distinct Title Models
+  if (styleMode === 'neon_box') {
+    ctx.strokeStyle = typeof mainColor === 'string' ? mainColor : '#22d3ee';
+    ctx.lineWidth = 3;
+    ctx.fillStyle = 'rgba(6, 10, 22, 0.72)';
+    ctx.beginPath();
+    if (typeof ctx.roundRect === 'function') ctx.roundRect(-290, -68, 580, 142, 14);
+    else ctx.rect(-290, -68, 580, 142);
+    ctx.fill();
+    ctx.stroke();
+  } else if (styleMode === 'news_bar') {
+    ctx.fillStyle = '#dc2626';
+    ctx.fillRect(-340, -56, 680, 114);
+    ctx.fillStyle = '#fef08a';
+    ctx.fillRect(-340, 50, 680, 8);
+  } else if (styleMode === 'comedy_pop') {
+    ctx.fillStyle = '#facc15';
+    ctx.strokeStyle = '#09090b';
+    ctx.lineWidth = 5;
+    ctx.beginPath();
+    if (typeof ctx.roundRect === 'function') ctx.roundRect(-280, -64, 560, 132, 24);
+    else ctx.rect(-280, -64, 560, 132);
+    ctx.fill();
+    ctx.stroke();
+    mainColor = '#09090b';
+    subColor = '#dc2626';
+    shadowCol = 'rgba(0,0,0,0)';
+  } else if (styleMode === 'birthday_confetti') {
+    for (let i = 0; i < 16; i += 1) {
+      const cxp = Math.sin(i * 1.9 + localT * 2) * 260;
+      const cyp = Math.cos(i * 2.3 + localT * 1.5) * 65;
+      ctx.fillStyle = ['#fde047', '#f472b6', '#22d3ee', '#34d399'][i % 4];
+      ctx.beginPath();
+      ctx.arc(cxp, cyp, 4.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  } else if (styleMode === 'gold_crest') {
+    ctx.strokeStyle = '#fbbf24';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(-220, -48);
+    ctx.lineTo(220, -48);
+    ctx.moveTo(-220, 54);
+    ctx.lineTo(220, 54);
+    ctx.stroke();
+  }
+
+  // Gather up to 4 editable lines smoothly!
+  const line2Text = rawMainLines[1] || opts.subtitle || '';
+  const line3Text = rawMainLines[2] || opts.extraLine3 || opts.directorText || '';
+  const line4Text = rawMainLines[3] || opts.extraLine4 || '';
+  const has3or4Lines = Boolean(line3Text.trim() || line4Text.trim());
+
+  const mainFontFamily =
+    styleMode === 'malayalam_bold' || /[\u0D00-\u0D7F]/.test(displayMain)
+      ? '"Noto Sans Malayalam", "Manjari", system-ui, sans-serif'
+      : styleMode === 'gold_crest'
+      ? '"Playfair Display", Georgia, serif'
+      : '"Impact", "Arial Black", system-ui, sans-serif';
+
+  const yShift = has3or4Lines ? -18 : 0;
+
+  if (line2Text && rawMainLines.length <= 1 && !has3or4Lines) {
+    ctx.font = '700 16px "Noto Sans Malayalam", system-ui, -apple-system, sans-serif';
     ctx.fillStyle = subColor;
     ctx.shadowColor = 'rgba(0,0,0,0.9)';
     ctx.shadowBlur = 8;
-    ctx.fillText(opts.subtitle.toUpperCase(), 0, -42);
+    ctx.fillText(line2Text, 0, -42);
   }
 
-  ctx.font = '900 54px "Impact", "Arial Black", sans-serif';
+  const mainSize = has3or4Lines ? 40 : 52;
+  ctx.font = `900 ${mainSize}px ${mainFontFamily}`;
   ctx.fillStyle = mainColor;
   ctx.shadowColor = shadowCol;
-  ctx.shadowBlur = 20;
+  ctx.shadowBlur = styleMode === 'comedy_pop' ? 0 : 20;
 
-  if (spreadSpace > 1) {
-    const spaced = displayMain.split('').join(' ');
-    ctx.fillText(spaced, 0, 16);
+  const isAsciiMain = /^[\x00-\x7F]*$/.test(displayMain);
+  const renderedMain = isAsciiMain && styleMode !== 'malayalam_bold' ? displayMain.toUpperCase() : displayMain;
+
+  if (spreadSpace > 1 && isAsciiMain) {
+    ctx.fillText(renderedMain.split('').join(' '), 0, 14 + yShift);
   } else {
-    ctx.fillText(displayMain, 0, 16);
+    ctx.fillText(renderedMain, 0, 14 + yShift);
   }
 
-  if (opts.directorText) {
-    ctx.font = '700 12px system-ui, -apple-system, sans-serif';
+  if (line2Text && (rawMainLines.length > 1 || has3or4Lines)) {
+    ctx.font = '800 20px "Noto Sans Malayalam", system-ui, sans-serif';
+    ctx.fillStyle = styleMode === 'split_duotone' ? '#22d3ee' : subColor;
+    ctx.fillText(line2Text, 0, 44 + yShift);
+  }
+
+  if (line3Text) {
+    ctx.font = '700 15px "Noto Sans Malayalam", system-ui, -apple-system, sans-serif';
     ctx.fillStyle = subColor;
-    ctx.shadowColor = 'rgba(0,0,0,0.85)';
     ctx.shadowBlur = 6;
-    ctx.fillText(opts.directorText.toUpperCase(), 0, 48);
+    ctx.fillText(line3Text, 0, (has3or4Lines ? 68 : 48) + yShift);
+  }
+
+  if (line4Text) {
+    ctx.font = '700 13px "Noto Sans Malayalam", system-ui, -apple-system, sans-serif';
+    ctx.fillStyle = typeof mainColor === 'string' ? mainColor : '#fde68a';
+    ctx.shadowBlur = 4;
+    ctx.fillText(line4Text, 0, 90 + yShift);
   }
 
   if (opts.animationType === 'curtain_reveal') {
     ctx.restore();
   }
+  ctx.restore();
+}
+
+/**
+ * Animated Movie Studio Emblem / Crest Trailer Opener Renderer
+ */
+export function drawEmblemTrailerOverlay(
+  ctx: CanvasRenderingContext2D,
+  w: number,
+  h: number,
+  cfg: EmblemTrailerConfig,
+  customLogoImg: HTMLImageElement | HTMLVideoElement | null | undefined,
+  tSec: number
+) {
+  if (!cfg.enabled) return;
+  const localT = Math.max(0, tSec);
+  const enter = Math.min(1, localT / 0.75);
+  let sc = cfg.scale || 1;
+  let rot = 0;
+
+  if (cfg.animStyle === 'spin_reveal') {
+    rot = (1 - enter) * Math.PI * 0.4;
+    sc *= 0.65 + 0.35 * enter;
+  } else if (cfg.animStyle === 'slam_impact') {
+    sc *= enter < 1 ? 1.8 - 0.8 * enter : 1 + Math.sin(localT * 18) * 0.02;
+  } else if (cfg.animStyle === 'fire_forge') {
+    sc *= 0.94 + Math.sin(localT * 3) * 0.03;
+  }
+
+  ctx.save();
+  ctx.translate(w / 2, h / 2 - h * 0.04);
+  ctx.rotate(rot);
+  ctx.scale(sc, sc);
+  ctx.globalAlpha = Math.min(1, enter * 1.4);
+
+  const emblemR = Math.min(w, h) * 0.19;
+  const col = cfg.accentColor || '#fbbf24';
+
+  // Outer radiant ring
+  const rad = ctx.createRadialGradient(0, -emblemR * 0.15, emblemR * 0.1, 0, -emblemR * 0.15, emblemR * 1.5);
+  rad.addColorStop(0, `${col}55`);
+  rad.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = rad;
+  ctx.beginPath();
+  ctx.arc(0, -emblemR * 0.15, emblemR * 1.5, 0, Math.PI * 2);
+  ctx.fill();
+
+  if (customLogoImg && ((customLogoImg instanceof HTMLImageElement && customLogoImg.complete && customLogoImg.naturalWidth > 0))) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(0, -emblemR * 0.18, emblemR * 0.85, 0, Math.PI * 2);
+    ctx.clip();
+    ctx.drawImage(customLogoImg, -emblemR * 0.85, -emblemR * 1.03, emblemR * 1.7, emblemR * 1.7);
+    ctx.restore();
+    ctx.strokeStyle = col;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(0, -emblemR * 0.18, emblemR * 0.88, 0, Math.PI * 2);
+    ctx.stroke();
+  } else {
+    ctx.save();
+    ctx.translate(0, -emblemR * 0.18);
+    ctx.strokeStyle = col;
+    ctx.fillStyle = 'rgba(10, 14, 24, 0.86)';
+    ctx.lineWidth = 3.5;
+    ctx.shadowColor = col;
+    ctx.shadowBlur = 16;
+
+    if (cfg.shape === 'shield' || cfg.shape === 'royal_seal') {
+      ctx.beginPath();
+      ctx.moveTo(0, -emblemR * 0.9);
+      ctx.lineTo(emblemR * 0.78, -emblemR * 0.55);
+      ctx.quadraticCurveTo(emblemR * 0.72, emblemR * 0.45, 0, emblemR * 0.95);
+      ctx.quadraticCurveTo(-emblemR * 0.72, emblemR * 0.45, -emblemR * 0.78, -emblemR * 0.55);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+    } else if (cfg.shape === 'crown') {
+      ctx.beginPath();
+      ctx.moveTo(-emblemR * 0.85, emblemR * 0.5);
+      ctx.lineTo(-emblemR * 0.9, -emblemR * 0.45);
+      ctx.lineTo(-emblemR * 0.38, emblemR * 0.05);
+      ctx.lineTo(0, -emblemR * 0.78);
+      ctx.lineTo(emblemR * 0.38, emblemR * 0.05);
+      ctx.lineTo(emblemR * 0.9, -emblemR * 0.45);
+      ctx.lineTo(emblemR * 0.85, emblemR * 0.5);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+    } else if (cfg.shape === 'neon_hex') {
+      ctx.beginPath();
+      for (let i = 0; i < 6; i += 1) {
+        const ang = (i * Math.PI) / 3 - Math.PI / 6;
+        const px = Math.cos(ang) * emblemR * 0.88;
+        const py = Math.sin(ang) * emblemR * 0.88;
+        if (i === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+    } else {
+      // Star / Wings / Film Reel / Birthday Star Crest
+      ctx.beginPath();
+      const spikes = cfg.shape === 'film_reel' ? 8 : 5;
+      for (let i = 0; i < spikes * 2; i += 1) {
+        const r = i % 2 === 0 ? emblemR * 0.9 : emblemR * 0.42;
+        const ang = (i * Math.PI) / spikes - Math.PI / 2;
+        const px = Math.cos(ang) * r;
+        const py = Math.sin(ang) * r;
+        if (i === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+    }
+
+    // Center initial monogram
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = col;
+    ctx.font = `900 ${Math.round(emblemR * 0.52)}px "Playfair Display", Georgia, serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const mono = (cfg.studioName.trim()[0] || 'C').toUpperCase();
+    ctx.fillText(mono, 0, 2);
+    ctx.restore();
+  }
+
+  // Light sweep across emblem
+  const sweepX = (((localT * 1.2) % 2.4) - 1.2) * emblemR * 1.4;
+  ctx.fillStyle = 'rgba(255,255,255,0.22)';
+  ctx.fillRect(sweepX - 8, -emblemR, 16, emblemR * 1.7);
+
+  // Studio Name + Tagline below emblem
+  ctx.textAlign = 'center';
+  ctx.shadowColor = 'rgba(0,0,0,0.95)';
+  ctx.shadowBlur = 12;
+  ctx.fillStyle = col;
+  ctx.font = `900 ${Math.max(16, Math.round(h * 0.056))}px "Noto Sans Malayalam", "Impact", sans-serif`;
+  ctx.fillText(cfg.studioName || 'STUDIO EMBLEM', 0, emblemR * 1.15);
+
+  if (cfg.tagline) {
+    ctx.fillStyle = '#f8fafc';
+    ctx.font = `700 ${Math.max(10, Math.round(h * 0.028))}px "Noto Sans Malayalam", system-ui, sans-serif`;
+    ctx.fillText(cfg.tagline, 0, emblemR * 1.48);
+  }
+
+  if (cfg.subline) {
+    ctx.fillStyle = col;
+    ctx.font = `700 ${Math.max(9, Math.round(h * 0.022))}px system-ui, sans-serif`;
+    ctx.fillText(cfg.subline, 0, emblemR * 1.76);
+  }
+
   ctx.restore();
 }
 

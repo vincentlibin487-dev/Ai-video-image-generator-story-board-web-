@@ -26,6 +26,8 @@ import {
   Trash2,
   RotateCcw,
   Upload,
+  Shield,
+  Sliders,
 } from 'lucide-react';
 import type { WheelCategoryItem } from './CircularToolWheel';
 import type { DynamicCategoryItem } from '../lib/dynamicCategories';
@@ -62,19 +64,27 @@ import {
 } from './videoStudioLibrary';
 import {
   TRAILER_PRESET_PACKS,
+  TRAILER_TITLE_ANIMATIONS,
+  TRAILER_TITLE_THEMES,
   type ChromaKeyConfig,
+  type EmblemCrestShape,
+  type EmblemTrailerConfig,
   type SplitScreenConfig,
   type TitleAnimationType,
+  type TitleStyleMode,
   type TitleThemeType,
   type TrailerCardAnimation,
   type TrailerCardTheme,
 } from '../lib/studioAdvancedFx';
 import {
   ACTION_VFX_CATEGORIES,
+  CATEGORY_THEME_PRESETS,
+  PRO_ACTION_REEL_CATEGORIES,
   PRO_CARD_CATEGORIES,
   PRO_CHROMA_CATEGORIES,
   PRO_DIALOGUE_CATEGORIES,
   PRO_EFFECT_CATEGORIES,
+  PRO_EMBLEM_CATEGORIES,
   PRO_FILTER_CATEGORIES,
   PRO_LUT_CATEGORIES,
   PRO_MOTION_CATEGORIES,
@@ -86,9 +96,11 @@ import {
   PRO_TITLE_CATEGORIES,
   PRO_TRANSITION_CATEGORIES,
   queryActionVfxPresets,
+  queryProActionReels,
   queryProChroma,
   queryProDialogues,
   queryProEffects,
+  queryProEmblemTrailers,
   queryProFilters,
   queryProLuts,
   queryProMotions,
@@ -100,10 +112,12 @@ import {
   queryProTitles,
   queryProTrailerCards,
   queryProTransitions,
+  TOTAL_PRO_ACTION_REELS_COUNT,
   TOTAL_PRO_CARDS_COUNT,
   TOTAL_PRO_CHROMA_COUNT,
   TOTAL_PRO_DIALOGUES_COUNT,
   TOTAL_PRO_EFFECTS_COUNT,
+  TOTAL_PRO_EMBLEMS_COUNT,
   TOTAL_PRO_FILTERS_COUNT,
   TOTAL_PRO_LUTS_COUNT,
   TOTAL_PRO_MOTIONS_COUNT,
@@ -116,6 +130,8 @@ import {
   TOTAL_PRO_TRANSITIONS_COUNT,
   TOTAL_PRO_VFX_COUNT,
   type ActionVfxPreset,
+  type ActionVfxType,
+  type CategoryThemeSpec,
   type ProCatalogItem,
 } from '../lib/proVfxEngine';
 import type { AudioSynthKind } from '../lib/comedyAudioSynth';
@@ -123,6 +139,7 @@ import {
   ColorWheelPad,
   type ColorGradeAdjustments,
 } from './ColorWheelPad';
+import { CompactSmallBannerAd } from './AdsterraAds';
 
 export interface WheelFeatureDrawerProps {
   category: WheelCategoryItem;
@@ -162,16 +179,40 @@ export interface WheelFeatureDrawerProps {
   onApplyDialogue: () => void;
   onApplyDialoguePreset: (preset: DialoguePresetItem) => void;
 
-  // Titles
+  // Titles (Up to 4 editable lines, English & Malayalam, diverse styles & custom colors)
   showTitleOverlay: boolean;
   movieTitle: string;
   subtitle: string;
+  titleLine3?: string;
+  titleLine4?: string;
   titleAnimType: TitleAnimationType;
   titleThemeType: TitleThemeType;
+  titleStyleMode?: TitleStyleMode;
+  titleCustomColor?: string;
   onApplyTitlePreset: (preset: TitleItem) => void;
   onUpdateTitleText: (title: string, sub: string) => void;
+  onChangeTitleExtraLines?: (line3: string, line4: string) => void;
   onChangeTitleAnim: (anim: TitleAnimationType) => void;
   onChangeTitleTheme: (theme: TitleThemeType) => void;
+  onChangeTitleStyleMode?: (mode: TitleStyleMode) => void;
+  onChangeTitleCustomColor?: (color: string) => void;
+  onClearTitleOverlay?: () => void;
+
+  // Per-Category Theme + Action Video (#15) + Emblem Trailer (#16)
+  activeCategoryThemeId?: string;
+  onSelectCategoryTheme?: (theme: CategoryThemeSpec) => void;
+  activeActionReelId?: string | null;
+  onApplyActionReelPreset?: (spec: {
+    id: string;
+    name: string;
+    lines: string[];
+    vfxType: ActionVfxType;
+    motionSpeed: number;
+    themeId: string;
+  }) => void;
+  emblemConfig?: EmblemTrailerConfig;
+  onUpdateEmblemConfig?: (updater: (prev: EmblemTrailerConfig) => EmblemTrailerConfig) => void;
+  onPickEmblemLogo?: () => void;
 
   // Stickers & VFX
   onAddSticker: (sticker: StickerItem) => void;
@@ -315,11 +356,13 @@ export const WheelFeatureDrawer: React.FC<WheelFeatureDrawerProps> = React.memo(
   const [colorSourceTab, setColorSourceTab] = useState<'all' | 'filters' | 'luts'>('all');
   const [colorPageCount, setColorPageCount] = useState<number>(1);
 
-  // Unified Search, Category & Pagination for All Other 12 Categories (52,000–56,000+ Each!)
+  // Unified Search, Category & Pagination for All Categories (105,300–216,000+ Each!)
   const [catSearch, setCatSearch] = useState<string>('');
   const [catFilter, setCatFilter] = useState<string>('All');
   const [catPageCount, setCatPageCount] = useState<number>(1);
   const [musicSubView, setMusicSubView] = useState<'tracks' | 'lyrics'>('tracks');
+  const [showThemeGradeBar, setShowThemeGradeBar] = useState<boolean>(false);
+  const [localThemeId, setLocalThemeId] = useState<string>('natural');
 
   // Smooth scroll container ref + kinetic momentum inertia controller
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
@@ -429,6 +472,10 @@ export const WheelFeatureDrawer: React.FC<WheelFeatureDrawerProps> = React.memo(
         return { categories: PRO_EFFECT_CATEGORIES, totalCount: TOTAL_PRO_EFFECTS_COUNT, result: queryProEffects(catFilter, catSearch, 0, limit) };
       case 'templates':
         return { categories: PRO_TEMPLATE_CATEGORIES, totalCount: TOTAL_PRO_TEMPLATES_COUNT, result: queryProTemplates(catFilter, catSearch, 0, limit) };
+      case 'action_reel':
+        return { categories: PRO_ACTION_REEL_CATEGORIES, totalCount: TOTAL_PRO_ACTION_REELS_COUNT, result: queryProActionReels(catFilter, catSearch, 0, limit) };
+      case 'emblem_trailer':
+        return { categories: PRO_EMBLEM_CATEGORIES, totalCount: TOTAL_PRO_EMBLEMS_COUNT, result: queryProEmblemTrailers(catFilter, catSearch, 0, limit) };
       default:
         return { categories: [], totalCount: 0, result: { items: [], total: 0 } };
     }
@@ -759,7 +806,140 @@ export const WheelFeatureDrawer: React.FC<WheelFeatureDrawerProps> = React.memo(
           </div>
         ) : (
           <>
-            {/* 0. MUSIC TRACKS (54,000+ PLAYABLE SCORES & SONGS) */}
+            {/* UNIVERSAL PER-CATEGORY THEME & COLOR GRADING ADJUSTER BAR (ALL 16 CATEGORIES) */}
+            {props.onUpdateColorAdjust && props.colorAdjust && (
+              <div className="rounded-xl border border-zinc-800/90 bg-[#101520] p-1.5 space-y-1.5">
+                <div className="flex items-center justify-between gap-1">
+                  <span className="text-[8.5px] font-extrabold text-zinc-300 uppercase tracking-wider truncate">
+                    Theme & Color Grade
+                  </span>
+                  <div className="flex items-center gap-1 shrink-0">
+                    {props.onResetColorAdjust && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setLocalThemeId('natural');
+                          props.onResetColorAdjust?.();
+                        }}
+                        className="px-1.5 py-0.5 rounded bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-[8px] font-bold text-zinc-300 cursor-pointer"
+                      >
+                        Reset
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setShowThemeGradeBar((s) => !s)}
+                      className={`px-1.5 py-0.5 rounded text-[8px] font-extrabold inline-flex items-center gap-1 cursor-pointer transition-colors ${
+                        showThemeGradeBar
+                          ? 'bg-cyan-400 text-black'
+                          : 'bg-zinc-900 text-cyan-300 border border-zinc-700 hover:border-cyan-400/50'
+                      }`}
+                    >
+                      <Sliders className="w-2.5 h-2.5" />
+                      <span>{showThemeGradeBar ? 'Hide' : 'Adjust'}</span>
+                    </button>
+                  </div>
+                </div>
+                <div className="flex items-center gap-1 overflow-x-auto pb-0.5 no-scrollbar">
+                  {CATEGORY_THEME_PRESETS.map((th) => {
+                    const activeTheme = (props.activeCategoryThemeId || localThemeId) === th.id;
+                    return (
+                      <button
+                        key={th.id}
+                        type="button"
+                        onClick={() => {
+                          setLocalThemeId(th.id);
+                          if (props.onSelectCategoryTheme) {
+                            props.onSelectCategoryTheme(th);
+                          } else {
+                            props.onUpdateColorAdjust?.((prev) => ({
+                              ...prev,
+                              brightness: th.brightness,
+                              contrast: th.contrast,
+                              saturation: th.saturation,
+                              warmth: th.warmth,
+                              tint: th.tint,
+                              vignette: th.vignette,
+                            }));
+                          }
+                        }}
+                        className={`px-2 py-0.5 rounded-md text-[8px] font-bold whitespace-nowrap shrink-0 inline-flex items-center gap-1 cursor-pointer transition-colors ${
+                          activeTheme
+                            ? 'bg-teal-400 text-black'
+                            : 'bg-zinc-900 text-zinc-300 border border-zinc-800 hover:border-zinc-600'
+                        }`}
+                      >
+                        <span
+                          className="w-2 h-2 rounded-full shrink-0"
+                          style={{ backgroundColor: th.swatchHex }}
+                        />
+                        <span>{th.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+                {showThemeGradeBar && (
+                  <div className="grid grid-cols-2 gap-x-2 gap-y-1 pt-1 border-t border-zinc-800/80 text-[8.5px]">
+                    {(
+                      [
+                        { key: 'saturation', label: 'Color', min: 0, max: 200, val: props.colorAdjust.saturation, step: 5, unit: '%' },
+                        { key: 'contrast', label: 'Contrast', min: 40, max: 200, val: props.colorAdjust.contrast, step: 5, unit: '%' },
+                        { key: 'warmth', label: 'Warmth', min: -50, max: 80, val: props.colorAdjust.warmth, step: 4, unit: '' },
+                        { key: 'brightness', label: 'Bright', min: 40, max: 180, val: props.colorAdjust.brightness, step: 5, unit: '%' },
+                      ] as const
+                    ).map((g) => (
+                      <div key={g.key} className="space-y-0.5">
+                        <div className="flex items-center justify-between text-zinc-300">
+                          <span className="font-semibold">{g.label}</span>
+                          <div className="flex items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                props.onUpdateColorAdjust?.((prev) => ({
+                                  ...prev,
+                                  [g.key]: Math.max(g.min, prev[g.key] - g.step),
+                                }))
+                              }
+                              className="w-3.5 h-3.5 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-200 flex items-center justify-center font-bold cursor-pointer"
+                            >
+                              -
+                            </button>
+                            <span className="font-mono text-cyan-300 min-w-[26px] text-center">
+                              {g.val}{g.unit}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                props.onUpdateColorAdjust?.((prev) => ({
+                                  ...prev,
+                                  [g.key]: Math.min(g.max, prev[g.key] + g.step),
+                                }))
+                              }
+                              className="w-3.5 h-3.5 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-200 flex items-center justify-center font-bold cursor-pointer"
+                            >
+                              +
+                            </button>
+                          </div>
+                        </div>
+                        <input
+                          type="range"
+                          min={g.min}
+                          max={g.max}
+                          value={g.val}
+                          onChange={(e) => {
+                            const v = Number(e.target.value);
+                            props.onUpdateColorAdjust?.((prev) => ({ ...prev, [g.key]: v }));
+                          }}
+                          className="w-full accent-cyan-400 h-1 cursor-pointer"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* 0. MUSIC TRACKS (108,000+ REALISTIC YOUTUBE-STYLE SCORES & SONGS) */}
             {category.id === 'music' && (
               <div className="space-y-1.5">
                 <div className="flex items-center gap-1">
@@ -845,10 +1025,156 @@ export const WheelFeatureDrawer: React.FC<WheelFeatureDrawerProps> = React.memo(
               </div>
             )}
 
-            {/* 1. TITLES & TEXT (56,000+ LIVE ANIMATED PREVIEWS) */}
+            {/* 1. TITLES & TEXT (112,000+ DIVERSE 4-LINE MALAYALAM/ENGLISH MODELS, COLORS & STYLES) */}
             {category.id === 'titles' && (
               <div className="space-y-1.5">
-                {renderProCategoryToolbar('bg-amber-400 text-black', `Search ${TOTAL_PRO_TITLES_COUNT.toLocaleString()}+ title presets...`)}
+                {/* 4-Line Customizable Text, Color & Style Composer */}
+                <div className="rounded-xl border border-amber-400/35 bg-[#101520] p-2 space-y-1.5">
+                  <div className="flex items-center justify-between gap-1">
+                    <span className="text-[9px] font-extrabold text-amber-300">
+                      4-Line Title Studio (EN / മലയാളം)
+                    </span>
+                    <div className="flex items-center gap-1">
+                      {props.showTitleOverlay && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (props.onClearTitleOverlay) {
+                              props.onClearTitleOverlay();
+                            } else {
+                              props.onUpdateTitleText('', '');
+                              props.onChangeTitleExtraLines?.('', '');
+                            }
+                          }}
+                          className="px-1.5 py-0.5 rounded bg-red-500/20 hover:bg-red-500/35 text-red-300 text-[8px] font-bold cursor-pointer"
+                        >
+                          Clear
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Quick Starter Text Presets (English, Malayalam, Birthday, Comedy, Horror) */}
+                  <div className="flex items-center gap-1 overflow-x-auto pb-0.5 no-scrollbar">
+                    {(
+                      [
+                        { label: 'മലയാളം മാസ്സ്', l1: 'കൊച്ചി രാത്രികൾ', l2: 'MASS HERO ENTRY', l3: 'കഥ തുടങ്ങുന്നു', l4: '2026 CINEMA', style: 'malayalam_bold' as TitleStyleMode, color: '#fbbf24' },
+                        { label: '4-Line Action', l1: 'ONE SHOT.', l2: 'ZERO MERCY.', l3: 'FINAL MISSION', l4: 'IN 4K IMAX', style: 'stacked_4line' as TitleStyleMode, color: '#f97316' },
+                        { label: 'Birthday 🎉', l1: 'HAPPY BIRTHDAY', l2: 'ജന്മദിനാശംസകൾ 🎉', l3: 'WISHING HAPPINESS', l4: 'SPECIAL DAY', style: 'birthday_confetti' as TitleStyleMode, color: '#f472b6' },
+                        { label: 'Comedy 😂', l1: 'WAIT FOR IT 😂', l2: 'അടിപൊളി കോമഡി', l3: 'EPIC TWIST', l4: 'SUBSCRIBE NOW', style: 'comedy_pop' as TitleStyleMode, color: '#facc15' },
+                        { label: 'Horror 👻', l1: 'DO NOT BLINK', l2: 'ഭയപ്പെടുത്തുന്ന രാത്രി', l3: 'MIDNIGHT CURSE', l4: 'WATCH ALONE', style: 'horror_drip' as TitleStyleMode, color: '#ef4444' },
+                      ] as const
+                    ).map((q) => (
+                      <button
+                        key={q.label}
+                        type="button"
+                        onClick={() => {
+                          props.onUpdateTitleText(q.l1, q.l2);
+                          props.onChangeTitleExtraLines?.(q.l3, q.l4);
+                          props.onChangeTitleStyleMode?.(q.style);
+                          props.onChangeTitleCustomColor?.(q.color);
+                        }}
+                        className="px-2 py-0.5 rounded-md bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-[8px] font-bold text-amber-200 whitespace-nowrap shrink-0 cursor-pointer"
+                      >
+                        {q.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* 4 Editable Text Inputs */}
+                  <div className="grid grid-cols-2 gap-1">
+                    <input
+                      type="text"
+                      value={props.movieTitle}
+                      onChange={(e) => props.onUpdateTitleText(e.target.value, props.subtitle)}
+                      placeholder="Line 1 (Main Title / മലയാളം)"
+                      className="px-2 py-1 rounded-lg bg-zinc-950 border border-zinc-800 focus:border-amber-400 text-[9px] text-white placeholder-zinc-500 focus:outline-none"
+                    />
+                    <input
+                      type="text"
+                      value={props.subtitle}
+                      onChange={(e) => props.onUpdateTitleText(props.movieTitle, e.target.value)}
+                      placeholder="Line 2 (Subtitle / Punch)"
+                      className="px-2 py-1 rounded-lg bg-zinc-950 border border-zinc-800 focus:border-amber-400 text-[9px] text-white placeholder-zinc-500 focus:outline-none"
+                    />
+                    <input
+                      type="text"
+                      value={props.titleLine3 || ''}
+                      onChange={(e) => props.onChangeTitleExtraLines?.(e.target.value, props.titleLine4 || '')}
+                      placeholder="Line 3 (Director / Story)"
+                      className="px-2 py-1 rounded-lg bg-zinc-950 border border-zinc-800 focus:border-amber-400 text-[9px] text-white placeholder-zinc-500 focus:outline-none"
+                    />
+                    <input
+                      type="text"
+                      value={props.titleLine4 || ''}
+                      onChange={(e) => props.onChangeTitleExtraLines?.(props.titleLine3 || '', e.target.value)}
+                      placeholder="Line 4 (Tagline / Year)"
+                      className="px-2 py-1 rounded-lg bg-zinc-950 border border-zinc-800 focus:border-amber-400 text-[9px] text-white placeholder-zinc-500 focus:outline-none"
+                    />
+                  </div>
+
+                  {/* Color Swatches + Style Mode + Animation */}
+                  <div className="flex items-center justify-between gap-1 pt-0.5">
+                    <div className="flex items-center gap-1 overflow-x-auto no-scrollbar">
+                      {['#fbbf24', '#ffffff', '#22d3ee', '#f43f5e', '#34d399', '#facc15', '#a855f7', '#f97316'].map((hex) => (
+                        <button
+                          key={hex}
+                          type="button"
+                          onClick={() => props.onChangeTitleCustomColor?.(hex)}
+                          className={`w-4 h-4 rounded-full border shrink-0 cursor-pointer ${
+                            props.titleCustomColor === hex ? 'border-white scale-110 ring-1 ring-white' : 'border-zinc-700'
+                          }`}
+                          style={{ backgroundColor: hex }}
+                          title={`Color ${hex}`}
+                        />
+                      ))}
+                      <input
+                        type="color"
+                        value={props.titleCustomColor || '#fbbf24'}
+                        onChange={(e) => props.onChangeTitleCustomColor?.(e.target.value)}
+                        className="w-5 h-4 rounded bg-transparent border-0 p-0 cursor-pointer shrink-0"
+                        title="Custom Title Color"
+                      />
+                    </div>
+                    <select
+                      value={props.titleStyleMode || 'standard'}
+                      onChange={(e) => props.onChangeTitleStyleMode?.(e.target.value as TitleStyleMode)}
+                      className="px-1.5 py-0.5 rounded bg-zinc-950 border border-zinc-800 text-[8px] font-bold text-amber-300 focus:outline-none cursor-pointer"
+                    >
+                      <option value="standard">Cinema Clean</option>
+                      <option value="stacked_4line">4-Line Stacked</option>
+                      <option value="malayalam_bold">Malayalam Bold</option>
+                      <option value="punch_slant">Action Slant</option>
+                      <option value="neon_box">Neon Frame</option>
+                      <option value="gold_crest">Gold Serif Crest</option>
+                      <option value="comedy_pop">Comedy Pop Box</option>
+                      <option value="news_bar">Breaking News Bar</option>
+                      <option value="birthday_confetti">Birthday Confetti</option>
+                      <option value="horror_drip">Horror Crimson</option>
+                      <option value="split_duotone">Dual-Tone Split</option>
+                    </select>
+                  </div>
+
+                  {/* Animation Chips */}
+                  <div className="flex items-center gap-1 overflow-x-auto pb-0.5 no-scrollbar">
+                    {TRAILER_TITLE_ANIMATIONS.map((an) => (
+                      <button
+                        key={an.id}
+                        type="button"
+                        onClick={() => props.onChangeTitleAnim(an.id)}
+                        className={`px-1.5 py-0.5 rounded text-[8px] font-bold whitespace-nowrap shrink-0 cursor-pointer ${
+                          props.titleAnimType === an.id
+                            ? 'bg-amber-400 text-black'
+                            : 'bg-zinc-900 text-zinc-300 border border-zinc-800'
+                        }`}
+                      >
+                        {an.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {renderProCategoryToolbar('bg-amber-400 text-black', `Search ${TOTAL_PRO_TITLES_COUNT.toLocaleString()}+ titles (Malayalam, Action, Birthday, Comedy)...`)}
                 <div className="grid grid-cols-2 gap-1.5">
                   {!catSearch.trim() && catFilter === 'All' && TITLES_LIST.slice(0, 4).map((ti) => (
                     <button
@@ -861,10 +1187,10 @@ export const WheelFeatureDrawer: React.FC<WheelFeatureDrawerProps> = React.memo(
                         <div className="absolute inset-0 bg-gradient-to-tr from-amber-500/10 via-transparent to-cyan-500/10 animate-pulse" />
                         <div className="relative text-center z-10 scale-90">
                           <span className="text-[9.5px] font-black uppercase tracking-wider block text-amber-300">
-                            {ti.titleText.slice(0, 10)}
+                            {ti.titleText.slice(0, 12)}
                           </span>
                           <span className="text-[7px] text-zinc-400 block tracking-widest mt-0.5">
-                            {ti.subtitleText.slice(0, 12)}
+                            {ti.subtitleText.slice(0, 14)}
                           </span>
                         </div>
                       </div>
@@ -874,38 +1200,94 @@ export const WheelFeatureDrawer: React.FC<WheelFeatureDrawerProps> = React.memo(
                       </div>
                     </button>
                   ))}
-                  {genericProMeta.result.items.map((pt) => (
-                    <button
-                      key={pt.id}
-                      type="button"
-                      onClick={() =>
-                        props.onApplyTitlePreset({
-                          id: pt.id,
-                          name: pt.name,
-                          category: pt.category,
-                          titleText: pt.name.split(' Style')[0].toUpperCase(),
-                          subtitleText: pt.category.toUpperCase(),
-                          styleClass: 'text-amber-300',
-                          description: pt.sub,
-                        })
-                      }
-                      className="rounded-xl border border-zinc-800 hover:border-amber-400/80 active:border-amber-400 bg-[#121722] p-1.5 flex flex-col gap-1 text-left cursor-pointer transition-colors group"
-                    >
-                      <div className="w-full aspect-video rounded-lg bg-[#090b12] border border-white/10 relative overflow-hidden flex items-center justify-center p-1 shadow-inner">
-                        <div className={`absolute inset-0 bg-gradient-to-tr ${pt.swatch} opacity-20`} />
-                        <span
-                          className="text-[9px] font-black uppercase tracking-wider relative z-10 text-center line-clamp-1 px-1"
-                          style={{ color: pt.colorHex || '#fbbf24' }}
-                        >
-                          {pt.category}
-                        </span>
-                      </div>
-                      <div className="min-w-0 px-0.5">
-                        <div className="text-[9px] font-bold text-white truncate">{pt.name}</div>
-                        <div className="text-[7.5px] text-zinc-400 truncate">{pt.sub}</div>
-                      </div>
-                    </button>
-                  ))}
+                  {genericProMeta.result.items.map((pt) => {
+                    const [animPart = 'zoom_slam', themePart = 'blockbuster_gold', stylePart = 'stacked_4line'] = (pt.engineId || '').split('__');
+                    const lines = pt.previewLines || [pt.name.split(' · ')[0], pt.category];
+                    const lStyle = (pt.layoutStyle || stylePart || 'standard') as TitleStyleMode;
+                    const accent = pt.colorHex || '#fbbf24';
+                    const isBox = lStyle === 'neon_box';
+                    const isComedy = lStyle === 'comedy_pop';
+                    const isNews = lStyle === 'news_bar';
+                    const isSlant = lStyle === 'punch_slant';
+                    const isCrest = lStyle === 'gold_crest';
+                    return (
+                      <button
+                        key={pt.id}
+                        type="button"
+                        onClick={() => {
+                          props.onApplyTitlePreset({
+                            id: pt.id,
+                            name: pt.name,
+                            category: pt.category,
+                            titleText: lines[0] || pt.name,
+                            subtitleText: lines[1] || '',
+                            styleClass: 'text-amber-300',
+                            description: pt.sub,
+                          });
+                          props.onChangeTitleExtraLines?.(lines[2] || '', lines[3] || '');
+                          props.onChangeTitleAnim(animPart as TitleAnimationType);
+                          props.onChangeTitleTheme(themePart as TitleThemeType);
+                          props.onChangeTitleStyleMode?.(lStyle);
+                          props.onChangeTitleCustomColor?.(accent);
+                        }}
+                        className="rounded-xl border border-zinc-800 hover:border-amber-400/80 active:border-amber-400 bg-[#121722] p-1.5 flex flex-col gap-1 text-left cursor-pointer transition-colors group"
+                      >
+                        <div className="w-full aspect-video rounded-lg bg-[#090b12] border border-white/10 relative overflow-hidden flex items-center justify-center p-1 shadow-inner">
+                          <div className={`absolute inset-0 bg-gradient-to-tr ${pt.swatch} opacity-25`} />
+                          {pt.badge && (
+                            <span className="absolute top-0.5 right-0.5 px-1 rounded bg-black/75 text-[6.5px] font-mono text-zinc-300 z-20">
+                              {pt.badge}
+                            </span>
+                          )}
+                          <div
+                            className={`relative z-10 text-center px-1.5 py-0.5 max-w-full ${
+                              isBox ? 'rounded border bg-black/60' : ''
+                            } ${isComedy ? 'rounded-lg bg-yellow-400 text-black border border-black' : ''} ${
+                              isNews ? 'w-full bg-red-600/90 text-white border-b-2 border-yellow-300' : ''
+                            } ${isCrest ? 'border-y border-amber-400/70' : ''}`}
+                            style={{
+                              borderColor: isBox ? accent : undefined,
+                              transform: isSlant ? 'skewX(-10deg)' : undefined,
+                            }}
+                          >
+                            {lines.slice(0, 4).map((ln, lIdx) => (
+                              <div
+                                key={lIdx}
+                                className={`truncate leading-tight ${
+                                  lIdx === 0
+                                    ? 'text-[8.5px] font-black'
+                                    : lIdx === 1
+                                      ? 'text-[7px] font-bold opacity-95'
+                                      : 'text-[6px] opacity-80'
+                                } ${pt.fontStyle === 'mono' ? 'font-mono' : ''}`}
+                                style={{
+                                  color: isComedy
+                                    ? lIdx === 0
+                                      ? '#09090b'
+                                      : '#b91c1c'
+                                    : isNews
+                                      ? '#ffffff'
+                                      : lIdx === 1 && lStyle === 'split_duotone'
+                                        ? '#22d3ee'
+                                        : lIdx === 0
+                                          ? accent
+                                          : '#e4e4e7',
+                                }}
+                              >
+                                {ln}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                        <div className="min-w-0 px-0.5">
+                          <div className="text-[9px] font-bold text-white truncate">{pt.name}</div>
+                          <div className="text-[7px] text-zinc-400 truncate">
+                            {lStyle.replace(/_/g, ' ')} · {pt.category}
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
                 </div>
                 {renderProLoadMore('text-amber-300')}
               </div>
@@ -1242,6 +1624,9 @@ export const WheelFeatureDrawer: React.FC<WheelFeatureDrawerProps> = React.memo(
                   <Plus className="w-3.5 h-3.5 stroke-[3]" />
                   <span>Add Phone Video / Photo</span>
                 </button>
+                <div className="text-[8.5px] text-zinc-400 text-center px-1">
+                  Local device/browser only · Zero login or cloud storage needed
+                </div>
 
                 {renderProCategoryToolbar('bg-teal-400 text-black', `Search ${TOTAL_PRO_MOTIONS_COUNT.toLocaleString()}+ motion curves...`)}
 
@@ -2309,8 +2694,245 @@ export const WheelFeatureDrawer: React.FC<WheelFeatureDrawerProps> = React.memo(
                 {renderProLoadMore('text-teal-300')}
               </div>
             )}
+
+            {/* 14. PHOTO-TO-ACTION VIDEO REELS (108,000+ ACTION / BIRTHDAY / COMEDY / MALAYALAM / ENGLISH) */}
+            {category.id === 'action_reel' && (
+              <div className="space-y-1.5">
+                <button
+                  type="button"
+                  onClick={props.onTriggerUploadMedia}
+                  className="w-full py-2 px-2 rounded-xl bg-gradient-to-r from-orange-500 to-amber-400 hover:brightness-110 text-black text-[10.5px] font-extrabold flex items-center justify-center gap-1.5 cursor-pointer shadow-md"
+                >
+                  <Upload className="w-3.5 h-3.5 stroke-[2.5]" />
+                  <span>Upload Photo / Video → Action Reel</span>
+                </button>
+
+                {/* Quick 4-Line Action / Birthday / Malayalam Caption Box */}
+                <div className="rounded-xl border border-orange-500/35 bg-[#101520] p-1.5 space-y-1">
+                  <div className="text-[8.5px] font-extrabold text-orange-300">
+                    Reel Overlay Text (EN / മലയാളം · 4 Lines)
+                  </div>
+                  <div className="grid grid-cols-2 gap-1">
+                    <input
+                      type="text"
+                      value={props.movieTitle}
+                      onChange={(e) => props.onUpdateTitleText(e.target.value, props.subtitle)}
+                      placeholder="Line 1 (Hero / Birthday / മലയാളം)"
+                      className="px-1.5 py-1 rounded bg-zinc-950 border border-zinc-800 text-[8.5px] text-white placeholder-zinc-500 focus:outline-none focus:border-orange-400"
+                    />
+                    <input
+                      type="text"
+                      value={props.subtitle}
+                      onChange={(e) => props.onUpdateTitleText(props.movieTitle, e.target.value)}
+                      placeholder="Line 2 (Action Punch)"
+                      className="px-1.5 py-1 rounded bg-zinc-950 border border-zinc-800 text-[8.5px] text-white placeholder-zinc-500 focus:outline-none focus:border-orange-400"
+                    />
+                  </div>
+                </div>
+
+                {renderProCategoryToolbar('bg-orange-400 text-black', `Search ${TOTAL_PRO_ACTION_REELS_COUNT.toLocaleString()}+ Action, Birthday, Comedy, Malayalam reels...`)}
+
+                <div className="grid grid-cols-2 gap-1.5">
+                  {genericProMeta.result.items.map((ar) => {
+                    const [vfxType = 'explosion_boom', spdStr = '1', themeId = 'fire_action'] = (ar.engineId || '').split('__');
+                    const lines = ar.previewLines || [ar.name, ar.category];
+                    const active = props.activeActionReelId === ar.id && !isMutedOrOff;
+                    return (
+                      <button
+                        key={ar.id}
+                        type="button"
+                        onClick={() => {
+                          if (props.onApplyActionReelPreset) {
+                            props.onApplyActionReelPreset({
+                              id: ar.id,
+                              name: ar.name,
+                              lines,
+                              vfxType: vfxType as ActionVfxType,
+                              motionSpeed: Number(spdStr) || 1,
+                              themeId,
+                            });
+                          } else {
+                            props.onUpdateTitleText(lines[0] || ar.name, lines[1] || '');
+                            props.onChangeTitleExtraLines?.(lines[2] || '', lines[3] || '');
+                          }
+                        }}
+                        className={`rounded-xl border p-1.5 flex flex-col gap-1 text-left cursor-pointer transition-all ${
+                          active
+                            ? 'border-orange-400 bg-orange-950/40 text-white ring-1 ring-orange-400 shadow-md'
+                            : 'border-zinc-800 bg-[#121721] text-zinc-200 hover:border-orange-400/70'
+                        }`}
+                      >
+                        <div className={`w-full aspect-video rounded-lg bg-gradient-to-br ${ar.swatch} border border-white/10 relative overflow-hidden flex flex-col items-center justify-center p-1`}>
+                          <div className="absolute inset-0 bg-black/40" />
+                          <span className="text-base relative z-10">{ar.badge || '🎬'}</span>
+                          <span className="text-[7.5px] font-black text-white text-center line-clamp-1 relative z-10 mt-0.5">
+                            {lines[0]}
+                          </span>
+                          <span className="absolute bottom-0.5 right-1 px-1 rounded bg-black/75 text-[6.5px] font-mono text-orange-300">
+                            {spdStr}x
+                          </span>
+                        </div>
+                        <div className="min-w-0 px-0.5">
+                          <div className="text-[9px] font-bold text-white truncate">{ar.name}</div>
+                          <div className="text-[7px] text-zinc-400 truncate">{ar.sub}</div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+                {renderProLoadMore('text-orange-300')}
+              </div>
+            )}
+
+            {/* 15. EMBLEM STUDIO & LOGO MOVIE TRAILERS (108,000+ CRESTS & INTROS) */}
+            {category.id === 'emblem_trailer' && (
+              <div className="space-y-1.5">
+                <div className="rounded-xl border border-amber-400/35 bg-[#101520] p-2 space-y-1.5">
+                  <div className="flex items-center justify-between gap-1">
+                    <span className="text-[9px] font-extrabold text-amber-300 inline-flex items-center gap-1">
+                      <Shield className="w-3 h-3" />
+                      <span>Emblem Studio & Trailer Crest</span>
+                    </span>
+                    <div className="flex items-center gap-1">
+                      {props.onPickEmblemLogo && (
+                        <button
+                          type="button"
+                          onClick={props.onPickEmblemLogo}
+                          className="px-1.5 py-0.5 rounded bg-amber-400 text-black text-[8px] font-extrabold inline-flex items-center gap-0.5 cursor-pointer"
+                        >
+                          <Upload className="w-2.5 h-2.5" />
+                          <span>Logo</span>
+                        </button>
+                      )}
+                      {props.emblemConfig?.enabled && props.onUpdateEmblemConfig && (
+                        <button
+                          type="button"
+                          onClick={() => props.onUpdateEmblemConfig?.((p) => ({ ...p, enabled: false }))}
+                          className="px-1.5 py-0.5 rounded bg-red-500/20 text-red-300 text-[8px] font-bold cursor-pointer"
+                        >
+                          Off
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {props.emblemConfig && props.onUpdateEmblemConfig && (
+                    <>
+                      <div className="grid grid-cols-2 gap-1">
+                        <input
+                          type="text"
+                          value={props.emblemConfig.studioName}
+                          onChange={(e) =>
+                            props.onUpdateEmblemConfig?.((p) => ({ ...p, enabled: true, studioName: e.target.value }))
+                          }
+                          placeholder="Studio Name / മലയാളം"
+                          className="px-1.5 py-1 rounded bg-zinc-950 border border-zinc-800 text-[8.5px] text-white focus:outline-none focus:border-amber-400"
+                        />
+                        <input
+                          type="text"
+                          value={props.emblemConfig.tagline}
+                          onChange={(e) =>
+                            props.onUpdateEmblemConfig?.((p) => ({ ...p, enabled: true, tagline: e.target.value }))
+                          }
+                          placeholder="Tagline / Presents"
+                          className="px-1.5 py-1 rounded bg-zinc-950 border border-zinc-800 text-[8.5px] text-white focus:outline-none focus:border-amber-400"
+                        />
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <input
+                          type="text"
+                          value={props.emblemConfig.subline}
+                          onChange={(e) =>
+                            props.onUpdateEmblemConfig?.((p) => ({ ...p, enabled: true, subline: e.target.value }))
+                          }
+                          placeholder="Subline (4K ULTRA HD)"
+                          className="flex-1 px-1.5 py-1 rounded bg-zinc-950 border border-zinc-800 text-[8.5px] text-white focus:outline-none focus:border-amber-400"
+                        />
+                        <input
+                          type="color"
+                          value={props.emblemConfig.accentColor}
+                          onChange={(e) =>
+                            props.onUpdateEmblemConfig?.((p) => ({ ...p, enabled: true, accentColor: e.target.value }))
+                          }
+                          className="w-6 h-5 rounded bg-transparent border-0 p-0 cursor-pointer shrink-0"
+                        />
+                      </div>
+                      <div className="flex items-center gap-1 overflow-x-auto pb-0.5 no-scrollbar">
+                        {(
+                          ['shield', 'crown', 'film_reel', 'star_crest', 'wings', 'neon_hex', 'birthday_star', 'royal_seal'] as EmblemCrestShape[]
+                        ).map((sh) => (
+                          <button
+                            key={sh}
+                            type="button"
+                            onClick={() =>
+                              props.onUpdateEmblemConfig?.((p) => ({ ...p, enabled: true, shape: sh }))
+                            }
+                            className={`px-1.5 py-0.5 rounded text-[8px] font-bold whitespace-nowrap shrink-0 cursor-pointer ${
+                              props.emblemConfig?.shape === sh && props.emblemConfig?.enabled
+                                ? 'bg-amber-400 text-black'
+                                : 'bg-zinc-900 text-zinc-300 border border-zinc-800'
+                            }`}
+                          >
+                            {sh.replace(/_/g, ' ')}
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                {renderProCategoryToolbar('bg-amber-400 text-black', `Search ${TOTAL_PRO_EMBLEMS_COUNT.toLocaleString()}+ emblems & logo trailers...`)}
+
+                <div className="grid grid-cols-2 gap-1.5">
+                  {genericProMeta.result.items.map((em) => {
+                    const [shape = 'shield', anim = 'light_sweep', col = '#fbbf24'] = (em.engineId || '').split('__');
+                    const lines = em.previewLines || [em.name, em.category, '4K STUDIO'];
+                    return (
+                      <button
+                        key={em.id}
+                        type="button"
+                        onClick={() =>
+                          props.onUpdateEmblemConfig?.((prev) => ({
+                            ...prev,
+                            enabled: true,
+                            shape: shape as EmblemCrestShape,
+                            animStyle: anim as EmblemTrailerConfig['animStyle'],
+                            accentColor: col || em.colorHex || '#fbbf24',
+                            studioName: lines[0] || em.name,
+                            tagline: lines[1] || '',
+                            subline: lines[2] || '',
+                          }))
+                        }
+                        className="rounded-xl border border-zinc-800 hover:border-amber-400 active:border-amber-400 bg-[#121721] p-1.5 flex flex-col gap-1 text-left cursor-pointer transition-colors"
+                      >
+                        <div className={`w-full aspect-video rounded-lg bg-gradient-to-br ${em.swatch} border border-white/10 relative overflow-hidden flex flex-col items-center justify-center p-1`}>
+                          <div className="absolute inset-0 bg-black/45" />
+                          <Shield className="w-4 h-4 relative z-10" style={{ color: col || '#fbbf24' }} />
+                          <span className="text-[7.5px] font-black text-white truncate max-w-full relative z-10 mt-0.5">
+                            {lines[0]}
+                          </span>
+                          <span className="text-[6px] text-zinc-300 truncate max-w-full relative z-10">
+                            {em.badge || shape}
+                          </span>
+                        </div>
+                        <div className="min-w-0 px-0.5">
+                          <div className="text-[9px] font-bold text-white truncate">{em.name}</div>
+                          <div className="text-[7px] text-zinc-400 truncate">{em.sub}</div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+                {renderProLoadMore('text-amber-300')}
+              </div>
+            )}
           </>
         )}
+
+        {/* Subtle drawer sponsor banner at bottom of scrollable options */}
+        <div className="pt-3 pb-1 px-1 shrink-0">
+          <CompactSmallBannerAd slotId="drawer-scroll-bottom-ad" slotIndex={4} />
+        </div>
       </div>
     </div>
   );

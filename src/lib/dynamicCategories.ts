@@ -13,6 +13,7 @@ import {
   Music,
   Palette,
   Radio,
+  Shield,
   SlidersHorizontal,
   Smile,
   Sparkles,
@@ -113,6 +114,7 @@ export const CATEGORY_ICON_OPTIONS: CategoryIconOption[] = [
   { key: 'star', label: 'Star', icon: Star },
   { key: 'heart', label: 'Favorite', icon: Heart },
   { key: 'zap', label: 'Energy', icon: Zap },
+  { key: 'shield', label: 'Emblem Shield', icon: Shield },
   { key: 'bookmark', label: 'Bookmark', icon: Bookmark },
   { key: 'tag', label: 'Tag', icon: Tag },
 ];
@@ -323,6 +325,34 @@ export const DEFAULT_EDITOR_CATEGORIES: DynamicEditorCategory[] = [
     accentHex: '#2dd4bf',
     iconKey: 'layers',
     orderIndex: 13,
+    isBuiltIn: true,
+    hasLyricsBoxes: false,
+  },
+  {
+    categoryId: 'action_reel',
+    label: 'Action Video',
+    shortLabel: 'ActVid',
+    tab: 'Media',
+    subCategory: '',
+    trackNumber: 15,
+    trackName: 'Action Reel',
+    accentHex: '#f97316',
+    iconKey: 'film',
+    orderIndex: 14,
+    isBuiltIn: true,
+    hasLyricsBoxes: false,
+  },
+  {
+    categoryId: 'emblem_trailer',
+    label: 'Emblem Trailer',
+    shortLabel: 'Emblem',
+    tab: 'Trailer',
+    subCategory: '',
+    trackNumber: 16,
+    trackName: 'Emblem',
+    accentHex: '#eab308',
+    iconKey: 'shield',
+    orderIndex: 15,
     isBuiltIn: true,
     hasLyricsBoxes: false,
   },
@@ -540,7 +570,11 @@ export function subscribeDynamicEditorCatalog(callbacks: DynamicCatalogCallbacks
       return;
     }
     if (latestDbCategories.length > 0) {
-      callbacks.onCategoriesChange(sortCategories(latestDbCategories));
+      const existingIds = new Set(latestDbCategories.map((c) => c.categoryId));
+      const newBuiltIns = DEFAULT_EDITOR_CATEGORIES.filter(
+        (d) => (d.categoryId === 'action_reel' || d.categoryId === 'emblem_trailer') && !existingIds.has(d.categoryId)
+      );
+      callbacks.onCategoriesChange(sortCategories([...latestDbCategories, ...newBuiltIns]));
     } else if (latestConfig?.categoriesInitialized) {
       callbacks.onCategoriesChange([]);
     } else {

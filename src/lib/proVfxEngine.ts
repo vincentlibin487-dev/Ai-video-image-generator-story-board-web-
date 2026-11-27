@@ -46,7 +46,7 @@ export const ACTION_VFX_CATEGORIES: ActionVfxCategoryDef[] = [
     vfxType: 'bullet_tracer',
     defaultBlend: 'source-over',
     swatch: 'from-amber-300 via-orange-500 to-zinc-900',
-    count: 4000,
+    count: 8000,
     prefixes: ['9mm Parabellum', '7.62mm AK Bullet', '.50 Cal Sniper', 'Magnum Slug', 'Hollow Point', 'NATO Tracer', 'Shotgun Pellet', 'Armor Piercing', 'Subsonic Round', 'Rifle FMJ', 'Desert Eagle .50', 'Gold Jacket', 'Supersonic Cone', 'Matrix Slow-Mo'],
     modifiers: ['Mach Shock Cone', 'Hot Copper Glow', 'Smoking Spiral', 'Supersonic Whip', 'Ultra Fast Streak', 'Cinema 4K', 'Long Vapor Trail', 'Sparking Jacket', 'Action Tracer', 'Sniper Spin', 'Left-to-Right', 'Tight Vortex', 'Ember Wake', 'Night Tracer', 'Dual Shockwave', 'Heat Distortion', 'Tactical White', 'Blue Plasma Tip', 'Brass Glint', 'IMAX Macro'],
   },
@@ -56,7 +56,7 @@ export const ACTION_VFX_CATEGORIES: ActionVfxCategoryDef[] = [
     vfxType: 'bullet_hit_body',
     defaultBlend: 'source-over',
     swatch: 'from-red-600 via-rose-900 to-black',
-    count: 4000,
+    count: 8000,
     prefixes: ['Chest Entry Hit', 'Shoulder Shot', 'Headshot Impact', 'Armor Rip Burst', 'Back Exit Spray', 'Stomach Impact', 'Cloth & Blood', 'Limb Shot', 'Double Tap Hit', 'Sniper Through', 'Vest Dust & Blood', 'Cinematic Wound', 'Slow-Mo Exit', 'Gore Impact'],
     modifiers: ['Exit Mist Cone', 'Fabric Puff', 'High Velocity', 'Arterial Burst', 'Heavy Splatter', 'Dark Noir Red', 'Close Action', 'Fine Vapor', 'Wide Spray', 'Shock Ripple', 'Deep Crimson', 'Directional Jet', 'Sharp Droplets', 'Dramatic Arc', 'Rain Blood Mix', 'Twin Burst', 'Tactical Dust', 'Cinema Gore', 'Backlit Red', 'John Wick Style'],
   },
@@ -66,7 +66,7 @@ export const ACTION_VFX_CATEGORIES: ActionVfxCategoryDef[] = [
     vfxType: 'gun_smoke',
     defaultBlend: 'screen',
     swatch: 'from-zinc-400 via-amber-500 to-zinc-900',
-    count: 4000,
+    count: 8000,
     prefixes: ['AK-47', 'Pistol 9mm', 'Sniper .50', 'Shotgun Blast', 'Revolver', 'SMG Rapid', 'Rifle Smoke', 'Barrel Drift', 'Glock 19', 'Desert Eagle', 'M4 Carbine', 'Uzi Spray', 'Magnum .44', 'Silenced Barrel'],
     modifiers: ['Dense Plume', 'Fast Curl', 'Tactical Grey', 'Hot Ember', 'Side Wind', 'Slow Wisps', 'Heavy Burst', 'Cinema 35mm', 'Night Smoke', 'Noir Cloud', 'Long Trail', 'Double Puff', 'Crosswind', 'Recoil Haze', 'Dark Charcoal', 'White Cordite', 'Warm Ignition', 'Low Drift', 'Subsonic Mist', 'IMAX Sharp'],
   },
@@ -76,7 +76,7 @@ export const ACTION_VFX_CATEGORIES: ActionVfxCategoryDef[] = [
     vfxType: 'blood_splatter',
     defaultBlend: 'source-over',
     swatch: 'from-red-700 via-rose-800 to-black',
-    count: 4000,
+    count: 8000,
     prefixes: ['Arterial Spray', 'Blade Blood', 'Heavy Splatter', 'Dark Crimson', 'Hit Splash', 'Spray Mist', 'Action Impact', 'Thick Drop', 'Neck Slash', 'Bullet Exit', 'Cross Cut', 'Stab Burst', 'Fist Impact', 'Whip Blood'],
     modifiers: ['Close Burst', 'Directional Jet', 'Wide Scatter', 'Noir Deep Red', 'High Velocity', 'Fine Mist', 'Dramatic Arc', 'Cinema Gore', 'Sharp Splash', 'Micro Droplet', 'Slow Mo Drop', 'Heavy Spray', 'Chest Hit', 'Shoulder Arc', 'Rain Blood', 'Fresh Crimson', 'Deep Clot', 'Dual Jet', 'Wide Fan', 'Tarantino Spray'],
   },
@@ -86,7 +86,7 @@ export const ACTION_VFX_CATEGORIES: ActionVfxCategoryDef[] = [
     vfxType: 'sword_slash',
     defaultBlend: 'source-over',
     swatch: 'from-rose-500 via-white to-red-900',
-    count: 4000,
+    count: 8000,
     prefixes: ['Katana Arc', 'Machete Cut', 'Knife Strike', 'Double Slash', 'Cross X-Cut', 'Steel Flash', 'Crescent Slice', 'Lethal Swipe', 'Samurai Draw', 'Dagger Rip', 'Longsword Arc', 'Curved Scimitar', 'Ninja Slice', 'Axe Cleave'],
     modifiers: ['With Blood', 'Sparks & Red', 'White Steel', 'Crimson Trail', 'Ultra Fast', 'Wide Sweep', 'Heavy Impact', 'Neon Edge', 'Gold Streak', 'Silver Razor', 'Double Arc', 'Diagonal Cut', 'Overhead Chop', 'Spinning Slash', 'Blood Mist', 'Shockwave Cut', 'Ember Blade', 'Noir Slice', 'Clean Flash', 'Action Fury'],
   },
@@ -96,7 +96,7 @@ export const ACTION_VFX_CATEGORIES: ActionVfxCategoryDef[] = [
     vfxType: 'muzzle_flash',
     defaultBlend: 'screen',
     swatch: 'from-yellow-300 via-orange-500 to-red-800',
-    count: 4000,
+    count: 8000,
     prefixes: ['Tactical Flash', 'Star Burst', 'Side Port Flash', 'Heavy Cannon', '9mm Pop', 'Assault Cone', 'Suppressor Spark', 'Sniper Flare', 'Shotgun Cone', 'Minigun Strobe', 'Revolver Flame', 'Carbine Flash', 'Dual Barrel', 'Rifle Kick'],
     modifiers: ['Bright Core', 'Amber Heat', 'With Smoke', 'Rapid Strobe', 'Golden Ring', 'Hot White', 'Wide Cone', 'Sharp Spike', 'Cross Star', 'Blue Flame', 'Deep Orange', 'Short Pop', 'Long Jet', 'Night Glare', 'Side Vents', 'Ember Tail', 'High Caliber', 'Tactical Yellow', 'Blast Crown', 'Cinema 4K'],
   },
@@ -106,7 +106,7 @@ export const ACTION_VFX_CATEGORIES: ActionVfxCategoryDef[] = [
     vfxType: 'explosion_boom',
     defaultBlend: 'screen',
     swatch: 'from-amber-400 via-red-600 to-stone-950',
-    count: 4000,
+    count: 8000,
     prefixes: ['C4 Blast', 'Car Explosion', 'Grenade Pop', 'Fuel Fireball', 'Ground Mine', 'Shockwave Ring', 'Debris Boom', 'Thermal Core', 'Missile Strike', 'Gas Tanker', 'Door Breach', 'Mortar Hit', 'Oil Drum', 'Flashbang Ring'],
     modifiers: ['Massive Plume', 'Black Smoke', 'Fast Shock', 'Rolling Fire', 'Spark Debris', 'Action Bay', 'Night Blast', 'Slow Motion', 'Dust Cloud', 'Wide Halo', 'Ground Shake', 'White Flash', 'Ember Rain', 'Vertical Pillar', 'Lateral Wave', 'Clean Core', 'Heavy Force', 'Double Boom', 'Heat Wave', 'IMAX Blast'],
   },
@@ -116,7 +116,7 @@ export const ACTION_VFX_CATEGORIES: ActionVfxCategoryDef[] = [
     vfxType: 'fire_blast',
     defaultBlend: 'screen',
     swatch: 'from-yellow-400 via-orange-600 to-rose-900',
-    count: 4000,
+    count: 8000,
     prefixes: ['Inferno Flame', 'Torch Fire', 'Floating Embers', 'Ground Blaze', 'Wall of Fire', 'Dragon Breath', 'Campfire Glow', 'Burning Sparks', 'Window Fire', 'Car Hood Flame', 'Moltov Blaze', 'Oil Fire', 'Wildfire Edge', 'Forge Jet'],
     modifiers: ['High Heat', 'Wild Flicker', 'Cinema Amber', 'Dense Sparks', 'Soft Glow', 'Turbulent', 'Wind Blown', 'Blue Core', 'Crimson Lick', 'Golden Flame', 'Slow Swirl', 'Rising Ash', 'Heat Shimmer', 'Deep Orange', 'Fast Roar', 'Gentle Flame', 'Hero Rim Light', 'Hellfire', 'Hot Core', 'Wide Lick'],
   },
@@ -126,7 +126,7 @@ export const ACTION_VFX_CATEGORIES: ActionVfxCategoryDef[] = [
     vfxType: 'sparks_shower',
     defaultBlend: 'screen',
     swatch: 'from-amber-200 via-yellow-500 to-orange-900',
-    count: 4000,
+    count: 8000,
     prefixes: ['Metal Ricochet', 'Bullet Spark', 'Grinder Shower', 'Armor Hit', 'Concrete Chip', 'Weld Burst', 'Gold Embers', 'Hot Shrapnel', 'Car Scrape', 'Sword Clash', 'Door Lock Shot', 'Steel Ping', 'Chain Sparks', 'Track Grind'],
     modifiers: ['High Bounce', 'Fast Streak', 'Left Spray', 'Right Spray', 'Dense Shower', 'Crisp Gold', 'Steel Blue', 'Chaotic', 'Gravity Fall', 'Twin Jet', 'Wide Arc', 'Hot White', 'Short Zip', 'Long Trail', 'Fountain Burst', 'Low Angle', 'Floor Bounce', 'Impact Flash', 'Sharp Needle', 'Rain of Gold'],
   },
@@ -136,7 +136,7 @@ export const ACTION_VFX_CATEGORIES: ActionVfxCategoryDef[] = [
     vfxType: 'fog_atmosphere',
     defaultBlend: 'screen',
     swatch: 'from-slate-300 via-zinc-500 to-slate-900',
-    count: 4000,
+    count: 8000,
     prefixes: ['Tactical Smoke', 'Kochi Fog', 'Battlefield Haze', 'Low Ground Mist', 'Noir Steam', 'Dust Storm', 'Tear Gas Drift', 'Volumetric Air', 'Stage Smoke', 'Street Steam', 'Forest Mist', 'Harbor Fog', 'Sewer Vapor', 'Dry Ice'],
     modifiers: ['Slow Drift', 'Dense Layer', 'Cool Blue', 'Warm Dust', 'Soft Curl', 'Thick Cloud', 'Ambient Haze', 'Wind Sweep', 'Moonlit Mist', 'Neon Fog', 'Thick Blanket', 'Rising Wisps', 'Golden Dust', 'Subtle Depth', 'Floor Hugger', 'Heavy Roll', 'Ghostly Air', 'Rain Steam', 'Soft Veil', 'Anamorphic Haze'],
   },
@@ -146,7 +146,7 @@ export const ACTION_VFX_CATEGORIES: ActionVfxCategoryDef[] = [
     vfxType: 'glass_shatter',
     defaultBlend: 'source-over',
     swatch: 'from-cyan-200 via-sky-500 to-slate-900',
-    count: 4000,
+    count: 8000,
     prefixes: ['Window Crash', 'Bullet Hole Glass', 'Mirror Break', 'Crystal Burst', 'Windshield Crack', 'Shards Rain', 'Bottle Smash', 'Ice Shatter', 'Scope Break', 'Screen Crack', 'Chandelier Drop', 'Door Smash', 'Tile Burst', 'Stone Debris'],
     modifiers: ['Heavy Shards', 'Micro Splinters', 'Slow Mo Fly', 'Sharp Glint', 'Radial Break', 'Impact Burst', 'Tinted Glass', 'Blue Crystal', 'Falling Rain', 'Spin Shards', 'Dust & Chips', 'Wide Scatter', 'Bullet Exit', 'High Speed', 'Clear Edge', 'Silver Glint', 'Hard Impact', 'Shock Break', 'Edge Spray', '3D Scatter'],
   },
@@ -156,7 +156,7 @@ export const ACTION_VFX_CATEGORIES: ActionVfxCategoryDef[] = [
     vfxType: 'lightning_arc',
     defaultBlend: 'screen',
     swatch: 'from-cyan-300 via-blue-500 to-indigo-950',
-    count: 4000,
+    count: 8000,
     prefixes: ['Thunder Strike', 'Arc Bolt', 'Storm Flash', 'Plasma Crack', 'Power Surge', 'Tesla Spark', 'Sky Bolt', 'Energy Whip', 'Taser Shock', 'Portal Arc', 'Blade Charge', 'Fuse Blow', 'Aura Strike', 'Coil Zap'],
     modifiers: ['Electric Cyan', 'Violet Surge', 'High Voltage', 'Multi Branch', 'Sudden Flash', 'Cinema White', 'Gold Lightning', 'Red Plasma', 'Short Flicker', 'Sustained Arc', 'Forked Bolt', 'EMP Pulse', 'Bright Halo', 'Storm Crack', 'Diagonal Strike', 'Vertical Bolt', 'Chain Arc', 'Cyber Neon', 'Twin Bolt', 'Omega Flash'],
   },
@@ -166,7 +166,7 @@ export const ACTION_VFX_CATEGORIES: ActionVfxCategoryDef[] = [
     vfxType: 'building_fire',
     defaultBlend: 'screen',
     swatch: 'from-yellow-400 via-orange-600 to-zinc-950',
-    count: 4000,
+    count: 8000,
     prefixes: ['Skyscraper Fire', 'Warehouse Inferno', 'Apartment Blaze', 'Rooftop Fireball', 'Window Flames', 'Tower Firestorm', 'Factory Meltdown', 'Garage Explosion Fire', 'Hospital Wing Blaze', 'Mall Fire Plume', 'Bridge Fireball', 'Hotel Floor Fire', 'Subway Blast Fire', 'Hangar Inferno'],
     modifiers: ['Black Smoke Plume', 'Raging Roof', 'Window Blowout', 'Night Inferno', 'Dense Embers', 'Structural Glow', 'Thermal Heat', 'Heavy Billow', 'Action Climax', 'Wide Building', 'Twin Tower Fire', 'Oil Burn', 'Gas Ignition', 'IMAX Disaster', 'Slow Burn', 'Sudden Flashover', 'Crimson Sky', 'Charcoal Smoke', 'Rising Ash', 'Rescue Scene'],
   },
@@ -176,30 +176,32 @@ export const ACTION_VFX_CATEGORIES: ActionVfxCategoryDef[] = [
     vfxType: 'building_collapse',
     defaultBlend: 'source-over',
     swatch: 'from-stone-300 via-zinc-600 to-slate-950',
-    count: 4000,
+    count: 8000,
     prefixes: ['Tower Collapse', 'Wall Demolition', 'Glass Facade Fall', 'Concrete Slab Drop', 'Pillar Crumble', 'Roof Cave-In', 'Bridge Span Fall', 'Skyscraper Implosion', 'Warehouse Crush', 'Balcony Shear', 'Curtain Wall Shatter', 'Factory Stack Fall', 'Tunnel Cave-In', 'Dam Wall Break'],
     modifiers: ['Massive Dust Cloud', 'Falling Glass Rain', 'Heavy Concrete', 'Shockwave Base', 'Slow Motion Crash', 'Multi Floor Drop', 'Steel Rebar Snap', 'Smoke & Rubble', 'Ground Impact', 'Action Disaster', 'Wide Debris', 'Shaking Earth', 'Noir Dust', 'Close Structural', 'Cinematic Implosion', 'Side Tilt Fall', 'Cascade Shards', 'Urban Rubble', 'IMAX Collapse', 'Final Impact'],
   },
 ];
 
-export const TOTAL_PRO_VFX_COUNT = ACTION_VFX_CATEGORIES.reduce((s, c) => s + c.count, 0); // 56,000+
-export const TOTAL_PRO_FILTERS_COUNT = 55000;
-export const TOTAL_PRO_LUTS_COUNT = 55000;
-export const TOTAL_PRO_SFX_COUNT = 52000;
-export const TOTAL_PRO_TRANSITIONS_COUNT = 56000;
-export const TOTAL_PRO_TITLES_COUNT = 56000;
-export const TOTAL_PRO_MOTIONS_COUNT = 54000;
-export const TOTAL_PRO_MUSIC_COUNT = 54000;
-export const TOTAL_PRO_DIALOGUES_COUNT = 52000;
-export const TOTAL_PRO_STICKERS_COUNT = 52000;
-export const TOTAL_PRO_CARDS_COUNT = 52000;
-export const TOTAL_PRO_CHROMA_COUNT = 52000;
-export const TOTAL_PRO_SPLIT_COUNT = 52000;
-export const TOTAL_PRO_EFFECTS_COUNT = 52000;
-export const TOTAL_PRO_TEMPLATES_COUNT = 52000;
-export const TOTAL_PRO_MASKS_COUNT = 52000;
-export const TOTAL_PRO_GRAPHS_COUNT = 52000;
-export const TOTAL_PRO_CHARACTERS_COUNT = 52000;
+export const TOTAL_PRO_VFX_COUNT = ACTION_VFX_CATEGORIES.reduce((s, c) => s + c.count, 0); // 112,000+
+export const TOTAL_PRO_FILTERS_COUNT = 108000;
+export const TOTAL_PRO_LUTS_COUNT = 108000;
+export const TOTAL_PRO_SFX_COUNT = 105300;
+export const TOTAL_PRO_TRANSITIONS_COUNT = 108000;
+export const TOTAL_PRO_TITLES_COUNT = 112000;
+export const TOTAL_PRO_MOTIONS_COUNT = 108000;
+export const TOTAL_PRO_MUSIC_COUNT = 108000;
+export const TOTAL_PRO_DIALOGUES_COUNT = 108000;
+export const TOTAL_PRO_STICKERS_COUNT = 108000;
+export const TOTAL_PRO_CARDS_COUNT = 108000;
+export const TOTAL_PRO_CHROMA_COUNT = 108000;
+export const TOTAL_PRO_SPLIT_COUNT = 108000;
+export const TOTAL_PRO_EFFECTS_COUNT = 108000;
+export const TOTAL_PRO_TEMPLATES_COUNT = 108000;
+export const TOTAL_PRO_ACTION_REELS_COUNT = 108000;
+export const TOTAL_PRO_EMBLEMS_COUNT = 108000;
+export const TOTAL_PRO_MASKS_COUNT = 108000;
+export const TOTAL_PRO_GRAPHS_COUNT = 108000;
+export const TOTAL_PRO_CHARACTERS_COUNT = 108000;
 export const TOTAL_STUDIO_FEATURES_COUNT =
   TOTAL_PRO_VFX_COUNT +
   TOTAL_PRO_FILTERS_COUNT +
@@ -216,9 +218,11 @@ export const TOTAL_STUDIO_FEATURES_COUNT =
   TOTAL_PRO_SPLIT_COUNT +
   TOTAL_PRO_EFFECTS_COUNT +
   TOTAL_PRO_TEMPLATES_COUNT +
+  TOTAL_PRO_ACTION_REELS_COUNT +
+  TOTAL_PRO_EMBLEMS_COUNT +
   TOTAL_PRO_MASKS_COUNT +
   TOTAL_PRO_GRAPHS_COUNT +
-  TOTAL_PRO_CHARACTERS_COUNT; // 954,000+ presets across all 14 Categories & Studio Tools
+  TOTAL_PRO_CHARACTERS_COUNT; // 2,165,300+ presets across all 16 Categories & Studio Tools
 
 function makePresetFromCategory(cat: ActionVfxCategoryDef, localIdx: number): ActionVfxPreset {
   const p = cat.prefixes[localIdx % cat.prefixes.length];
@@ -845,6 +849,10 @@ export interface ProCatalogItem {
   fontStyle?: 'cinema' | 'bold' | 'mono';
   freq?: number;
   bpm?: number;
+  previewLines?: string[];
+  layoutStyle?: string;
+  badge?: string;
+  sampleLang?: 'en' | 'ml' | 'mix';
 }
 
 export const PRO_FILTER_CATEGORIES = [
@@ -1083,35 +1091,120 @@ export function queryProTransitions(category: string, search: string, page = 0, 
   return { items, total: matchCount };
 }
 
-// 12,000+ Essential Graphics Titles & Text Presets
+// 112,000+ Essential Graphics Titles: 4-Line Story, Action Punch, Malayalam Mass, Birthday, Horror, Comedy & Neon
 export const PRO_TITLE_CATEGORIES = [
-  'All', 'Premiere Lower Third', 'IMAX Hero Title', 'Neon Pop Badge', 'Action Poster',
-  'Breaking News Ticker', 'Subtitle Caption', 'Gold Cinema Credit', 'Typewriter & Glitch',
+  'All',
+  '4-Line Punch & Story',
+  'Malayalam Cinema & Mass',
+  'Action Punch Titles',
+  'Neon Cyber & Glitch',
+  'Gold 3D Blockbuster',
+  'Happy Birthday & Party',
+  'Comedy & Meme Pop',
+  'Romance & Calligraphy',
+  'Horror Blood & Thriller',
+  'News & Lower Thirds',
+  'Dual-Color Split Type',
 ];
-const TITLE_ENGINES = [
-  'lower_third', 'imax_hero', 'neon_pop', 'gold_frame',
-  'news_ticker', 'minimal_whisper', 'cinema_credits', 'glitch_thriller',
+const TITLE_STYLE_MODES = [
+  'stacked_4line',
+  'malayalam_bold',
+  'punch_slant',
+  'neon_box',
+  'gold_crest',
+  'birthday_confetti',
+  'comedy_pop',
+  'standard',
+  'horror_drip',
+  'news_bar',
+  'split_duotone',
+] as const;
+const TITLE_COLORS = ['#f59e0b', '#ffffff', '#22d3ee', '#f43f5e', '#10b981', '#a855f7', '#facc15', '#ef4444', '#fb7185', '#38bdf8'];
+const TITLE_SWATCHES = [
+  'from-amber-500 via-orange-700 to-zinc-950',
+  'from-rose-600 via-red-800 to-black',
+  'from-cyan-500 via-blue-800 to-slate-950',
+  'from-fuchsia-500 via-purple-800 to-zinc-950',
+  'from-emerald-500 via-teal-800 to-zinc-950',
+  'from-yellow-400 via-amber-600 to-stone-950',
+  'from-pink-500 via-rose-700 to-indigo-950',
+  'from-sky-400 via-indigo-700 to-black',
 ];
-const TITLE_COLORS = ['#f59e0b', '#ffffff', '#38bdf8', '#f43f5e', '#10b981', '#a855f7', '#eab308', '#ef4444'];
+const TITLE_SAMPLES_BY_CAT: Array<Array<{ lines: string[]; lang: 'en' | 'ml' | 'mix'; anim: string; theme: string }>> = [
+  [
+    { lines: ['CHAPTER ONE', 'THE SILENT STORM', 'DIRECTED BY STUDIO', 'COMING THIS FRIDAY'], lang: 'en', anim: 'epic_spread', theme: 'blockbuster_gold' },
+    { lines: ['NO FEAR', 'NO SURRENDER', 'ONE LAST MISSION', 'IN 4K IMAX'], lang: 'en', anim: 'zoom_slam', theme: 'hero_impact' },
+    { lines: ['രാത്രിയുടെ നിഴലിൽ', 'THE FINAL STRIKE', 'A SHORT FILM STORY', 'WORLDWIDE RELEASE'], lang: 'mix', anim: 'gold_rise', theme: 'blockbuster_gold' },
+  ],
+  [
+    { lines: ['കൊച്ചി രാത്രികൾ', 'MASS HERO ENTRY', 'കഥ തുടങ്ങുന്നു', '2026 BLOCKBUSTER'], lang: 'ml', anim: 'zoom_slam', theme: 'blockbuster_gold' },
+    { lines: ['തീപ്പൊരി പഞ്ച്', 'ONE MAN ARMY', 'ഇനി കളി മാറും', 'CINEMA SPECIAL'], lang: 'ml', anim: 'fire_ember', theme: 'hero_impact' },
+    { lines: ['സ്നേഹത്തിന്റെ തീരം', 'MALAYALAM ROMANCE', 'ഹൃദയം തൊടും കഥ', 'SHORT FILM'], lang: 'ml', anim: 'gold_rise', theme: 'birthday_rose' },
+  ],
+  [
+    { lines: ['ONE SHOT.', 'ZERO MERCY.', 'FINAL WARNING', 'ACTION REEL'], lang: 'en', anim: 'zoom_slam', theme: 'hero_impact' },
+    { lines: ['FULL THROTTLE', 'TARGET LOCKED', 'NO ESCAPE TONIGHT'], lang: 'en', anim: 'fire_ember', theme: 'crimson_horror' },
+  ],
+  [
+    { lines: ['CYBER PROTOCOL', 'SYSTEM OVERRIDE 99%', 'NEON NIGHTS'], lang: 'en', anim: 'glitch_slice', theme: 'cyber_neon' },
+    { lines: ['FUTURE PULSE', '2099 DIGITAL ERA', 'LIVE SYNTH STREAM'], lang: 'en', anim: 'neon_flicker', theme: 'cyber_neon' },
+  ],
+  [
+    { lines: ['THE DARK HORIZON', 'AN IMAX EXPERIENCE', 'MUSIC & VFX BY PRO'], lang: 'en', anim: 'epic_spread', theme: 'blockbuster_gold' },
+    { lines: ['GOLDEN EMPIRE', 'LEGEND NEVER DIES', 'OFFICIAL TRAILER'], lang: 'en', anim: 'gold_rise', theme: 'blockbuster_gold' },
+  ],
+  [
+    { lines: ['HAPPY BIRTHDAY', 'ജന്മദിനാശംസകൾ 🎉', 'WISHING JOY & MAGIC', 'CELEBRATION REEL'], lang: 'mix', anim: 'gold_rise', theme: 'birthday_rose' },
+    { lines: ['BIRTHDAY STAR!', 'MAKE A BIG WISH 🎂', 'PARTY ALL NIGHT'], lang: 'en', anim: 'zoom_slam', theme: 'birthday_rose' },
+  ],
+  [
+    { lines: ['WAIT FOR IT 😂', 'അടിപൊളി കോമഡി', 'PLOT TWIST ALERT!'], lang: 'mix', anim: 'zoom_slam', theme: 'hero_impact' },
+    { lines: ['BRUH MOMENT', 'TOTAL CHAOS MODE', 'SUBSCRIBE FOR MORE'], lang: 'en', anim: 'neon_flicker', theme: 'classic_white' },
+  ],
+  [
+    { lines: ['Forever Yours', 'എന്നും നിൻ്റെ മാത്രം', 'Love & Memories'], lang: 'mix', anim: 'gold_rise', theme: 'birthday_rose' },
+    { lines: ['Moonlit Promise', 'Two Hearts One Story', 'Wedding Teaser'], lang: 'en', anim: 'epic_spread', theme: 'hollywood_chrome' },
+  ],
+  [
+    { lines: ['DO NOT LOOK BACK', 'ഭയപ്പെടുത്തുന്ന രാത്രി', 'MIDNIGHT CURSE', 'HORROR SHORT'], lang: 'mix', anim: 'glitch_slice', theme: 'crimson_horror' },
+    { lines: ['ROOM 404', 'THE SHADOW WATCHES', 'TRUE HORROR'], lang: 'en', anim: 'typewriter', theme: 'crimson_horror' },
+  ],
+  [
+    { lines: ['BREAKING NEWS', 'LIVE STUDIO UPDATE', 'EXCLUSIVE REPORT'], lang: 'en', anim: 'curtain_reveal', theme: 'crimson_horror' },
+    { lines: ['DIRECTOR CUT', 'NOW TRENDING WORLDWIDE', 'HIGHLIGHT'], lang: 'en', anim: 'typewriter', theme: 'hollywood_chrome' },
+  ],
+  [
+    { lines: ['DUAL CONTRAST', 'BLACK & CYAN EDITION', 'SPLIT GRAPHICS', '4K TITLES'], lang: 'en', anim: 'epic_spread', theme: 'cyber_neon' },
+    { lines: ['FIRE & ICE', 'DOUBLE TONE PUNCH', 'STUDIO PRO'], lang: 'en', anim: 'zoom_slam', theme: 'emerald_cinema' },
+  ],
+];
 
 export function queryProTitles(category: string, search: string, page = 0, pageSize = 36): { items: ProCatalogItem[]; total: number } {
   const realCats = PRO_TITLE_CATEGORIES.slice(1);
   const q = search.trim().toLowerCase();
-  const perCat = Math.floor(TOTAL_PRO_TITLES_COUNT / realCats.length); // 12,000
+  const perCat = Math.floor(TOTAL_PRO_TITLES_COUNT / realCats.length);
   const cats = category === 'All' || !realCats.includes(category) ? realCats : [category];
 
   const buildTi = (cIdx: number, localIdx: number): ProCatalogItem => {
-    const colorHex = TITLE_COLORS[localIdx % TITLE_COLORS.length];
+    const samples = TITLE_SAMPLES_BY_CAT[cIdx % TITLE_SAMPLES_BY_CAT.length];
+    const sample = samples[localIdx % samples.length];
+    const layoutStyle = TITLE_STYLE_MODES[(cIdx + (localIdx % 3)) % TITLE_STYLE_MODES.length];
+    const colorHex = TITLE_COLORS[(cIdx * 3 + localIdx) % TITLE_COLORS.length];
+    const swatch = TITLE_SWATCHES[(cIdx + localIdx) % TITLE_SWATCHES.length];
     const fontStyle: 'cinema' | 'bold' | 'mono' = localIdx % 3 === 0 ? 'cinema' : localIdx % 3 === 1 ? 'bold' : 'mono';
     return {
       id: `pttl__${cIdx}__${localIdx}`,
-      engineId: TITLE_ENGINES[cIdx % TITLE_ENGINES.length],
-      name: `${realCats[cIdx]} Style #${localIdx + 1}`,
+      engineId: `${sample.anim}__${sample.theme}__${layoutStyle}`,
+      name: `${sample.lines[0]} · #${localIdx + 1}`,
       category: realCats[cIdx],
       colorHex,
       fontStyle,
-      swatch: cIdx % 2 === 0 ? 'from-emerald-500 via-teal-700 to-zinc-900' : 'from-amber-400 via-rose-600 to-zinc-900',
-      sub: `${fontStyle.toUpperCase()} · ${colorHex}`,
+      swatch,
+      previewLines: sample.lines,
+      layoutStyle,
+      sampleLang: sample.lang,
+      badge: `${sample.lines.length} Lines`,
+      sub: `${sample.lines.join(' / ')}`,
     };
   };
 
@@ -1132,7 +1225,8 @@ export function queryProTitles(category: string, search: string, page = 0, pageS
   let matchCount = 0;
   for (const cName of cats) {
     const cIdx = realCats.indexOf(cName);
-    if (cName.toLowerCase().includes(q) || 'style'.includes(q) || 'title'.includes(q)) {
+    const samplesText = TITLE_SAMPLES_BY_CAT[cIdx % TITLE_SAMPLES_BY_CAT.length].map((s) => s.lines.join(' ')).join(' ').toLowerCase();
+    if (cName.toLowerCase().includes(q) || samplesText.includes(q) || 'style'.includes(q) || 'title'.includes(q) || 'malayalam'.includes(q) || 'birthday'.includes(q)) {
       if (matchCount + perCat > start && items.length < pageSize) {
         const ls = Math.max(0, start - matchCount);
         const le = Math.min(perCat, end - matchCount);
@@ -1332,23 +1426,55 @@ export function queryProSfx(category: string, search: string, page = 0, pageSize
   return { items, total: matchCount };
 }
 
-// 54,000+ Music Tracks & Cinema Scores
+// 108,000+ Realistic YouTube-Style Music Tracks: Horror, Romance, Action, Malayalam Mass, Birthday, Comedy, Trap & Lo-Fi
 export const PRO_MUSIC_CATEGORIES = [
-  'All', 'Action & Trailer', 'Cinema & Drama', 'Thriller & Crime',
-  'Reels & Upbeat', 'Ambient & Calm', 'Hip-Hop & Trap Beat',
-  'Comedy & Fun', 'Lo-Fi & Chill',
+  'All',
+  'Horror & Haunted',
+  'Romance & Emotional',
+  'Action & Trailer',
+  'Malayalam Mass & Folk',
+  'Happy Birthday & Party',
+  'Comedy & Meme',
+  'Hip-Hop & Trap Beat',
+  'Lo-Fi & Chill',
+  'Cyber Synth & Sci-Fi',
 ];
 
 const MUSIC_SYNTH_ENGINES = [
-  'trailer',
-  'cinematic',
-  'sad_violin',
-  'upbeat',
+  'music_horror',
+  'music_romance',
+  'music_action_brass',
+  'music_malayalam',
+  'music_birthday',
+  'comedy_ukulele',
+  'music_hiphop',
   'lofi',
   'electronic',
-  'comedy_ukulele',
-  'lofi',
 ] as const;
+
+const MUSIC_TRACK_NAMES: string[][] = [
+  ['Midnight Asylum Drone', 'Haunted Corridor Violin', 'Blood Moon Suspense', 'Ghost Whisper Sub', 'Dark Ritual Pulse'],
+  ['Velvet Monsoon Piano', 'First Love Strings', 'Golden Sunset Romance', 'Heartbreak Rain', 'Moonlight Serenade'],
+  ['IMAX War Brass', 'Hero Entry Thunder', 'Titan Epic Orchestra', 'Final Chase Drums', 'Blockbuster Climax'],
+  ['Kochi Mass Chenda', 'Nadodi Folk Synth', 'Mass Hero Swag', 'Backwater Breeze', 'Malabar Beat'],
+  ['Birthday Confetti Pop', 'Happy Birthday Bells', 'Party Cake Anthem', 'Joyful Candles', 'Celebration Spark'],
+  ['Quirky Ukulele Fun', 'Funny Fail Brass', 'Vlog Bounce Beat', 'Meme Chase Whistle', 'Cartoon Groove'],
+  ['Midnight 808 Trap', 'Street King Drill', 'Bass Drop Flow', 'Neon Hood Beat', 'Heavy Sub Bounce'],
+  ['Rainy Window Lo-Fi', '3AM Study Tape', 'Soft Vinyl Chill', 'Warm Cafe Rhodes', 'Calm Horizon'],
+  ['Neon Cyberwave 2099', 'Laser Grid Synth', 'Space Odyssey Pad', 'Matrix Pulse', 'Future Drive'],
+];
+
+const MUSIC_SWATCHES = [
+  'from-red-900 via-rose-950 to-black',
+  'from-pink-500 via-rose-700 to-indigo-950',
+  'from-amber-500 via-orange-700 to-zinc-950',
+  'from-emerald-500 via-teal-700 to-zinc-950',
+  'from-yellow-400 via-pink-600 to-purple-950',
+  'from-sky-400 via-amber-600 to-zinc-950',
+  'from-purple-600 via-fuchsia-800 to-black',
+  'from-teal-500 via-cyan-800 to-slate-950',
+  'from-indigo-500 via-violet-800 to-black',
+];
 
 export function queryProMusic(category: string, search: string, page = 0, pageSize = 36): { items: ProCatalogItem[]; total: number } {
   const realCats = PRO_MUSIC_CATEGORIES.slice(1);
@@ -1357,18 +1483,20 @@ export function queryProMusic(category: string, search: string, page = 0, pageSi
   const cats = category === 'All' || !realCats.includes(category) ? realCats : [category];
 
   const buildMus = (cIdx: number, localIdx: number): ProCatalogItem => {
-    const bpm = 75 + (localIdx % 12) * 8;
+    const bpm = 72 + (localIdx % 14) * 7;
     const freq = 110 + (localIdx % 9) * 18;
     const engineId = MUSIC_SYNTH_ENGINES[cIdx % MUSIC_SYNTH_ENGINES.length];
+    const titles = MUSIC_TRACK_NAMES[cIdx % MUSIC_TRACK_NAMES.length];
+    const title = titles[localIdx % titles.length];
     return {
       id: `pmus__${cIdx}__${localIdx}`,
       engineId,
-      name: `${realCats[cIdx]} Score #${localIdx + 1}`,
+      name: `${title} #${localIdx + 1}`,
       category: realCats[cIdx],
       bpm,
       freq,
-      swatch: 'from-fuchsia-500 via-purple-700 to-zinc-950',
-      sub: `${bpm} BPM · 0:${15 + (localIdx % 45)}s · Royalty Free`,
+      swatch: MUSIC_SWATCHES[cIdx % MUSIC_SWATCHES.length],
+      sub: `${realCats[cIdx]} · ${bpm} BPM · Full Mix`,
     };
   };
 
@@ -1389,7 +1517,8 @@ export function queryProMusic(category: string, search: string, page = 0, pageSi
   let matchCount = 0;
   for (const cName of cats) {
     const cIdx = realCats.indexOf(cName);
-    if (cName.toLowerCase().includes(q) || 'music'.includes(q) || 'score'.includes(q) || 'bgm'.includes(q) || 'track'.includes(q)) {
+    const titlesText = (MUSIC_TRACK_NAMES[cIdx] || []).join(' ').toLowerCase();
+    if (cName.toLowerCase().includes(q) || titlesText.includes(q) || 'music'.includes(q) || 'score'.includes(q) || 'bgm'.includes(q) || 'track'.includes(q) || 'youtube'.includes(q)) {
       if (matchCount + perCat > start && items.length < pageSize) {
         const ls = Math.max(0, start - matchCount);
         const le = Math.min(perCat, end - matchCount);
@@ -2444,5 +2573,226 @@ export const PRO_121_FEATURES: ProStudioFeatureTool[] = (() => {
   }
   return list; // Exact 121 Pro Studio Features!
 })();
+
+// =====================================================================
+// CATEGORY #15: PHOTO-TO-ACTION VIDEO REELS (108,000+ ACTION / BIRTHDAY / COMEDY / MALAYALAM / ENGLISH)
+// =====================================================================
+export const PRO_ACTION_REEL_CATEGORIES = [
+  'All',
+  'Hero Action Video',
+  'Happy Birthday Photo Reel',
+  'Comedy & Meme Skits',
+  'Malayalam Reels & Shorts',
+  'English Story & Intro',
+  'Love & Wedding Story',
+  'Festival & Celebration',
+  'Horror & Thriller Cut',
+];
+
+const ACTION_REEL_PRESETS_DATA: Array<Array<{
+  title: string;
+  lines: string[];
+  vfx: ActionVfxType;
+  motionSpeed: number;
+  themeId: string;
+  lang: 'en' | 'ml' | 'mix';
+  swatch: string;
+  emoji: string;
+}>> = [
+  [
+    { title: 'Walk Away Fire Explosion', lines: ['ZERO FEAR', 'THE HERO ARRIVES', 'ACTION CUT'], vfx: 'explosion_boom', motionSpeed: 0.75, themeId: 'fire_action', lang: 'en', swatch: 'from-orange-500 via-red-700 to-black', emoji: '💥' },
+    { title: 'Bullet-Time Slow Motion', lines: ['DODGE THE BULLET', 'MATRIX PROTOCOL', 'SLOW MO 0.5X'], vfx: 'bullet_tracer', motionSpeed: 0.5, themeId: 'cyber_neon', lang: 'en', swatch: 'from-amber-400 via-zinc-800 to-black', emoji: '🔫' },
+    { title: 'Thunder Storm Entry', lines: ['STORM IS COMING', 'UNSTOPPABLE FORCE'], vfx: 'lightning_arc', motionSpeed: 1.25, themeId: 'horror_dark', lang: 'en', swatch: 'from-cyan-400 via-blue-800 to-black', emoji: '⚡' },
+  ],
+  [
+    { title: 'Happy Birthday Sparks & Crown', lines: ['HAPPY BIRTHDAY 🎉', 'ജന്മദിനാശംസകൾ', 'WISHING HAPPINESS ALWAYS', 'PARTY SPECIAL'], vfx: 'sparks_shower', motionSpeed: 1.0, themeId: 'birthday_party', lang: 'mix', swatch: 'from-pink-500 via-amber-500 to-purple-950', emoji: '🎂' },
+    { title: 'Golden Confetti Birthday Reel', lines: ['HAPPY BIRTHDAY STAR', 'BEST DAY EVER 🎂', 'CELEBRATE LIFE'], vfx: 'fire_blast', motionSpeed: 1.0, themeId: 'royal_gold', lang: 'en', swatch: 'from-yellow-400 via-rose-600 to-indigo-950', emoji: '🎁' },
+  ],
+  [
+    { title: 'Comedy Plot Twist Boom', lines: ['WAIT FOR THE END 😂', 'ഒരു രക്ഷയുമില്ല!', 'COMEDY REEL'], vfx: 'sparks_shower', motionSpeed: 1.5, themeId: 'comedy_pop', lang: 'mix', swatch: 'from-yellow-400 via-orange-600 to-zinc-900', emoji: '😂' },
+    { title: 'Meme Glass Break Shock', lines: ['WHAT JUST HAPPENED?!', 'EPIC FAIL MOMENT'], vfx: 'glass_shatter', motionSpeed: 1.25, themeId: 'natural', lang: 'en', swatch: 'from-sky-400 via-indigo-700 to-black', emoji: '🤣' },
+  ],
+  [
+    { title: 'കലിപ്പ് മാസ്സ് ആക്ഷൻ', lines: ['കലിപ്പ് തുടങ്ങുന്നു', 'MASS MALAYALAM ENTRY', 'കൊച്ചി സ്റ്റുഡിയോ'], vfx: 'fire_blast', motionSpeed: 0.75, themeId: 'malayalam_mass', lang: 'ml', swatch: 'from-amber-500 via-emerald-800 to-black', emoji: '🔥' },
+    { title: 'സ്നേഹപൂർവ്വം മലയാളം സ്റ്റോറി', lines: ['ഹൃദയത്തിൽ ഒരു കഥ', 'മലയാളം റീൽസ്', 'SPECIAL CUT'], vfx: 'fog_atmosphere', motionSpeed: 1.0, themeId: 'romance_rose', lang: 'ml', swatch: 'from-teal-400 via-rose-700 to-zinc-950', emoji: '🎬' },
+  ],
+  [
+    { title: 'English Cinematic Intro', lines: ['EVERY LEGEND', 'STARTS WITH ONE STEP', 'MY STORY 2026'], vfx: 'fog_atmosphere', motionSpeed: 0.75, themeId: 'cinema_dark', lang: 'en', swatch: 'from-cyan-500 via-slate-800 to-black', emoji: '🎥' },
+    { title: 'Power Motivation Smash', lines: ['RISE & SHINE', 'BREAK EVERY LIMIT', 'KEEP MOVING'], vfx: 'lightning_arc', motionSpeed: 1.25, themeId: 'royal_gold', lang: 'en', swatch: 'from-amber-400 via-stone-800 to-black', emoji: '🏆' },
+  ],
+  [
+    { title: 'Romantic Ember Glow Photo', lines: ['FOREVER TOGETHER', 'എന്നും സ്നേഹത്തോടെ', 'LOVE STORY'], vfx: 'sparks_shower', motionSpeed: 0.75, themeId: 'romance_rose', lang: 'mix', swatch: 'from-rose-400 via-pink-700 to-zinc-950', emoji: '❤️' },
+  ],
+  [
+    { title: 'Onam / Vishu / Diwali Sparks', lines: ['FESTIVE CELEBRATION ✨', 'ആഘോഷ രാവ്', 'JOY & LIGHTS'], vfx: 'sparks_shower', motionSpeed: 1.0, themeId: 'royal_gold', lang: 'mix', swatch: 'from-yellow-300 via-amber-600 to-red-950', emoji: '🪔' },
+  ],
+  [
+    { title: 'Haunted Fog Horror Photo', lines: ['DO NOT BLINK', 'പ്രേത രാത്രി', 'HORROR TEASER'], vfx: 'fog_atmosphere', motionSpeed: 0.75, themeId: 'horror_dark', lang: 'mix', swatch: 'from-red-700 via-zinc-900 to-black', emoji: '👻' },
+  ],
+];
+
+export function queryProActionReels(category: string, search: string, page = 0, pageSize = 36): { items: ProCatalogItem[]; total: number } {
+  const realCats = PRO_ACTION_REEL_CATEGORIES.slice(1);
+  const q = search.trim().toLowerCase();
+  const perCat = Math.floor(TOTAL_PRO_ACTION_REELS_COUNT / realCats.length);
+  const cats = category === 'All' || !realCats.includes(category) ? realCats : [category];
+
+  const buildAr = (cIdx: number, localIdx: number): ProCatalogItem => {
+    const arr = ACTION_REEL_PRESETS_DATA[cIdx % ACTION_REEL_PRESETS_DATA.length];
+    const spec = arr[localIdx % arr.length];
+    return {
+      id: `pactr__${cIdx}__${localIdx}`,
+      engineId: `${spec.vfx}__${spec.motionSpeed}__${spec.themeId}`,
+      name: `${spec.title} #${localIdx + 1}`,
+      category: realCats[cIdx],
+      swatch: spec.swatch,
+      previewLines: spec.lines,
+      badge: spec.emoji,
+      sampleLang: spec.lang,
+      sub: `${spec.emoji} ${spec.lines.slice(0, 2).join(' · ')}`,
+    };
+  };
+
+  if (!q) {
+    const total = cats.length * perCat;
+    const start = page * pageSize;
+    const end = Math.min(total, start + pageSize);
+    const items: ProCatalogItem[] = [];
+    for (let g = start; g < end; g++) {
+      items.push(buildAr(realCats.indexOf(cats[Math.floor(g / perCat)]), g % perCat));
+    }
+    return { items, total };
+  }
+
+  const start = page * pageSize;
+  const end = start + pageSize;
+  const items: ProCatalogItem[] = [];
+  let matchCount = 0;
+  for (const cName of cats) {
+    const cIdx = realCats.indexOf(cName);
+    const dataText = ACTION_REEL_PRESETS_DATA[cIdx % ACTION_REEL_PRESETS_DATA.length]
+      .map((s) => `${s.title} ${s.lines.join(' ')}`)
+      .join(' ')
+      .toLowerCase();
+    if (cName.toLowerCase().includes(q) || dataText.includes(q) || 'action'.includes(q) || 'birthday'.includes(q) || 'comedy'.includes(q) || 'malayalam'.includes(q) || 'photo'.includes(q)) {
+      if (matchCount + perCat > start && items.length < pageSize) {
+        const ls = Math.max(0, start - matchCount);
+        const le = Math.min(perCat, end - matchCount);
+        for (let i = ls; i < le; i++) items.push(buildAr(cIdx, i));
+      }
+      matchCount += perCat;
+    }
+  }
+  return { items, total: matchCount };
+}
+
+// =====================================================================
+// CATEGORY #16: EMBLEM STUDIO & LOGO MOVIE TRAILERS (108,000+ CRESTS & INTROS)
+// =====================================================================
+export const PRO_EMBLEM_CATEGORIES = [
+  'All',
+  'Production Studio Crest',
+  'Royal Gold Emblem',
+  'Action Shield Trailer',
+  'Malayalam Cinema Banner',
+  'Birthday Crown Emblem',
+  'Neon Cyber Logo',
+  'Comedy Club Seal',
+  'Award & Festival Crest',
+];
+
+const EMBLEM_SHAPES = ['shield', 'crown', 'film_reel', 'star_crest', 'wings', 'neon_hex', 'birthday_star', 'royal_seal'] as const;
+const EMBLEM_ANIMS = ['spin_reveal', 'slam_impact', 'light_sweep', 'fire_forge'] as const;
+const EMBLEM_STUDIOS = [
+  { name: 'ROYAL CINEMAS', tag: 'PRESENTS AN EPIC TRAILER', sub: '4K DOLBY VISION' },
+  { name: 'കേരള ഫിലിംസ്', tag: 'മലയാളം മെഗാ പ്രൊഡക്ഷൻ', sub: 'WORLDWIDE RELEASE' },
+  { name: 'APEX ACTION LAB', tag: 'HIGH OCTANE MOTION PICTURES', sub: 'IMAX CERTIFIED' },
+  { name: 'BIRTHDAY STAR STUDIO', tag: 'ജന്മദിന സ്പെഷ്യൽ എഡിഷൻ', sub: 'CELEBRATION REEL' },
+  { name: 'NEON HORIZON', tag: 'CYBER ENTERTAINMENT', sub: 'OFFICIAL TEASER' },
+  { name: 'LAUGH FACTORY', tag: 'COMEDY CLUB ORIGINALS', sub: 'NON-STOP FUN' },
+];
+const EMBLEM_COLORS = ['#fbbf24', '#22d3ee', '#f97316', '#f43f5e', '#34d399', '#a855f7', '#ffffff', '#fde047'];
+
+export function queryProEmblemTrailers(category: string, search: string, page = 0, pageSize = 36): { items: ProCatalogItem[]; total: number } {
+  const realCats = PRO_EMBLEM_CATEGORIES.slice(1);
+  const q = search.trim().toLowerCase();
+  const perCat = Math.floor(TOTAL_PRO_EMBLEMS_COUNT / realCats.length);
+  const cats = category === 'All' || !realCats.includes(category) ? realCats : [category];
+
+  const buildEm = (cIdx: number, localIdx: number): ProCatalogItem => {
+    const shape = EMBLEM_SHAPES[(cIdx + localIdx) % EMBLEM_SHAPES.length];
+    const anim = EMBLEM_ANIMS[localIdx % EMBLEM_ANIMS.length];
+    const studio = EMBLEM_STUDIOS[(cIdx + localIdx) % EMBLEM_STUDIOS.length];
+    const col = EMBLEM_COLORS[(cIdx + localIdx) % EMBLEM_COLORS.length];
+    return {
+      id: `pemb__${cIdx}__${localIdx}`,
+      engineId: `${shape}__${anim}__${col}`,
+      name: `${studio.name} · #${localIdx + 1}`,
+      category: realCats[cIdx],
+      colorHex: col,
+      swatch: cIdx % 2 === 0 ? 'from-amber-500 via-yellow-800 to-black' : 'from-cyan-500 via-indigo-800 to-black',
+      previewLines: [studio.name, studio.tag, studio.sub],
+      badge: shape.replace(/_/g, ' ').toUpperCase(),
+      sub: `${shape.replace(/_/g, ' ')} · ${anim.replace(/_/g, ' ')}`,
+    };
+  };
+
+  if (!q) {
+    const total = cats.length * perCat;
+    const start = page * pageSize;
+    const end = Math.min(total, start + pageSize);
+    const items: ProCatalogItem[] = [];
+    for (let g = start; g < end; g++) {
+      items.push(buildEm(realCats.indexOf(cats[Math.floor(g / perCat)]), g % perCat));
+    }
+    return { items, total };
+  }
+
+  const start = page * pageSize;
+  const end = start + pageSize;
+  const items: ProCatalogItem[] = [];
+  let matchCount = 0;
+  for (const cName of cats) {
+    const cIdx = realCats.indexOf(cName);
+    if (cName.toLowerCase().includes(q) || 'emblem'.includes(q) || 'logo'.includes(q) || 'trailer'.includes(q) || 'birthday'.includes(q) || 'malayalam'.includes(q)) {
+      if (matchCount + perCat > start && items.length < pageSize) {
+        const ls = Math.max(0, start - matchCount);
+        const le = Math.min(perCat, end - matchCount);
+        for (let i = ls; i < le; i++) items.push(buildEm(cIdx, i));
+      }
+      matchCount += perCat;
+    }
+  }
+  return { items, total: matchCount };
+}
+
+// =====================================================================
+// UNIVERSAL PER-CATEGORY THEMES & COLOR GRADING PRESETS (FOR ALL 16 CATEGORIES)
+// =====================================================================
+export interface CategoryThemeSpec {
+  id: string;
+  label: string;
+  swatchHex: string;
+  brightness: number;
+  contrast: number;
+  saturation: number;
+  warmth: number;
+  tint: number;
+  vignette: number;
+}
+
+export const CATEGORY_THEME_PRESETS: CategoryThemeSpec[] = [
+  { id: 'natural', label: 'Original', swatchHex: '#94a3b8', brightness: 100, contrast: 100, saturation: 100, warmth: 0, tint: 0, vignette: 0 },
+  { id: 'cinema_dark', label: 'Cinema', swatchHex: '#22d3ee', brightness: 96, contrast: 118, saturation: 112, warmth: -8, tint: -4, vignette: 24 },
+  { id: 'fire_action', label: 'Action Fire', swatchHex: '#f97316', brightness: 104, contrast: 128, saturation: 132, warmth: 26, tint: 4, vignette: 28 },
+  { id: 'royal_gold', label: 'Royal Gold', swatchHex: '#fbbf24', brightness: 106, contrast: 114, saturation: 122, warmth: 28, tint: -2, vignette: 18 },
+  { id: 'horror_dark', label: 'Horror', swatchHex: '#ef4444', brightness: 86, contrast: 135, saturation: 72, warmth: -18, tint: 10, vignette: 48 },
+  { id: 'romance_rose', label: 'Romance', swatchHex: '#f472b6', brightness: 108, contrast: 106, saturation: 118, warmth: 16, tint: 18, vignette: 14 },
+  { id: 'cyber_neon', label: 'Neon Cyber', swatchHex: '#a855f7', brightness: 100, contrast: 126, saturation: 142, warmth: -22, tint: 24, vignette: 22 },
+  { id: 'malayalam_mass', label: 'Mass Gold', swatchHex: '#10b981', brightness: 102, contrast: 122, saturation: 126, warmth: 14, tint: -8, vignette: 20 },
+  { id: 'birthday_party', label: 'Birthday', swatchHex: '#ec4899', brightness: 110, contrast: 112, saturation: 138, warmth: 12, tint: 14, vignette: 10 },
+  { id: 'comedy_pop', label: 'Comedy Pop', swatchHex: '#facc15', brightness: 112, contrast: 110, saturation: 130, warmth: 10, tint: 0, vignette: 6 },
+];
+
 
 

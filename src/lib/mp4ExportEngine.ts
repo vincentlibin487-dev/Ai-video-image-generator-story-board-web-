@@ -17,36 +17,38 @@ export interface ProbedVideoConfig {
 const alignEven = (n: number) => Math.max(2, Math.floor(n / 2) * 2);
 const align16 = (n: number) => Math.max(16, Math.floor(n / 16) * 16);
 
+export type StudioExportResolution = '420p' | '720p' | '1080p';
+
 /**
- * Computes exact requested output pixel dimensions for 4K / 1080p / 720p
+ * Computes exact requested output pixel dimensions for 420p / 720p / 1080p
  * while honoring the user's chosen aspect ratio and keeping H.264 even alignment.
  */
 export function computeRequestedExportDimensions(
-  res: '4K' | '1080p' | '720p',
+  res: StudioExportResolution,
   aspectRatio: string
 ): { outW: number; outH: number } {
-  let rawW = 1920;
-  let rawH = 1080;
+  let rawW = 1280;
+  let rawH = 720;
 
-  if (res === '4K') {
+  if (res === '420p') {
     if (aspectRatio === '9:16') {
-      rawW = 2160;
-      rawH = 3840;
+      rawW = 420;
+      rawH = 748;
     } else if (aspectRatio === '1:1') {
-      rawW = 2160;
-      rawH = 2160;
+      rawW = 420;
+      rawH = 420;
     } else if (aspectRatio === '4:5') {
-      rawW = 2160;
-      rawH = 2700;
+      rawW = 420;
+      rawH = 526;
     } else if (aspectRatio === '21:9') {
-      rawW = 3840;
-      rawH = 1648;
+      rawW = 980;
+      rawH = 420;
     } else if (aspectRatio === '4:3') {
-      rawW = 2880;
-      rawH = 2160;
+      rawW = 560;
+      rawH = 420;
     } else {
-      rawW = 3840;
-      rawH = 2160;
+      rawW = 748;
+      rawH = 420;
     }
   } else if (res === '720p') {
     if (aspectRatio === '9:16') {
@@ -101,7 +103,7 @@ export function computeRequestedExportDimensions(
 export async function probeSupportedVideoEncoderConfig(
   reqW: number,
   reqH: number,
-  res: '4K' | '1080p' | '720p',
+  res: StudioExportResolution,
   fps = 30
 ): Promise<ProbedVideoConfig | null> {
   if (typeof VideoEncoder === 'undefined' || typeof VideoFrame === 'undefined') {
@@ -120,8 +122,8 @@ export async function probeSupportedVideoEncoderConfig(
   pushDims(reqW, reqH);
   pushDims(align16(reqW), align16(reqH));
 
-  // Graceful step-downs only if native 4K / 1080p encoder is unavailable on low-RAM device
-  const fallbackEdges = res === '4K' ? [2560, 1920, 1280] : res === '1080p' ? [1280] : [];
+  // Graceful step-downs only if native 1080p / 720p encoder is unavailable on low-RAM device
+  const fallbackEdges = res === '1080p' ? [1280] : res === '720p' ? [854] : [];
   for (const edge of fallbackEdges) {
     const longest = Math.max(reqW, reqH);
     if (longest > edge) {
@@ -134,14 +136,12 @@ export async function probeSupportedVideoEncoderConfig(
 
   for (const dims of dimCandidates) {
     const codecs =
-      dims.maxEdgeTag > 1920
-        ? ['avc1.640033', 'avc1.4d0033', 'avc1.420033', 'avc1.640034']
-        : dims.maxEdgeTag > 1280
+      dims.maxEdgeTag > 1280
         ? ['avc1.64002a', 'avc1.4d002a', 'avc1.640028', 'avc1.4d0028', 'avc1.420028']
         : ['avc1.64001f', 'avc1.4d001f', 'avc1.42001f', 'avc1.4d0028'];
 
     const bitrate =
-      dims.maxEdgeTag >= 2560 ? 16_000_000 : dims.maxEdgeTag >= 1400 ? 8_500_000 : 4_500_000;
+      dims.maxEdgeTag >= 1400 ? 8_500_000 : dims.maxEdgeTag >= 900 ? 4_500_000 : 2_000_000;
 
     for (const codec of codecs) {
       for (const hardwareAcceleration of accelCandidates) {
@@ -487,7 +487,7 @@ export async function runWebCodecsMp4Export(params: RunWebCodecsMp4ExportParams)
       videoEncoder.encode(vf, { keyFrame: frameIdx % fps === 0 });
       vf.close();
 
-      // Prevent encoder backlog RAM growth on 4K/1080p mobile exports
+      // Prevent encoder backlog RAM growth on mobile exports
       if (videoEncoder.encodeQueueSize > 5) {
         await videoEncoder.flush();
       }

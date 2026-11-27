@@ -22,8 +22,6 @@ import {
   FolderOpen,
   PlusCircle,
   Download,
-  Mail,
-  Cloud,
   LogOut,
   ExternalLink,
   ShieldCheck,
@@ -35,6 +33,14 @@ import {
   Calendar,
   Flame,
   Palette,
+  Search,
+  Camera,
+  Sun,
+  Wallet,
+  Gift,
+  HardDrive,
+  UserCheck,
+  Lock,
 } from 'lucide-react';
 import {
   getRedirectResult,
@@ -60,6 +66,14 @@ import {
   generateBreakdownLocal,
 } from './lib/storyEngine';
 import {
+  STORY_CATEGORIES,
+  STORY_CATEGORY_GROUPS,
+  getCategoryById,
+  getCategoryGroup,
+  searchStoryCategories,
+  type StoryCategoryGroupId,
+} from './lib/storyCategories';
+import {
   AppLang,
   LANGUAGE_OPTIONS,
   UI_TRANSLATIONS,
@@ -78,6 +92,8 @@ import {
   TwoSecondVideoBreakOverlay,
   VideoWithSmallBannerAd,
   InFeedBannerAd,
+  CompactSmallBannerAd,
+  NativeCardAd,
 } from './components/AdsterraAds';
 import { AdminDashboard } from './components/AdminDashboard';
 import { type SavedStoryItem } from './components/SavedStoriesModal';
@@ -182,12 +198,16 @@ export default function App() {
   const [loadingAngles, setLoadingAngles] = useState<boolean>(false);
   const [loadingShots, setLoadingShots] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const [offlineFallbackType, setOfflineFallbackType] = useState<'angles' | 'prompts' | null>(null);
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string>('all');
+  const [categoryGroupFilter, setCategoryGroupFilter] = useState<StoryCategoryGroupId | 'all'>('all');
+  const [categorySearchQuery, setCategorySearchQuery] = useState<string>('');
   const [selectedGenreFilter, setSelectedGenreFilter] = useState<string>('all');
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [speakingAngleId, setSpeakingAngleId] = useState<string | null>(null);
   const [loadingTtsId, setLoadingTtsId] = useState<string | null>(null);
   const [voicePace, setVoicePace] = useState<VoicePace>('story');
-  const [dialogueMode, setDialogueMode] = useState<DialogueMode>('dynamic');
+  const [dialogueMode, setDialogueMode] = useState<DialogueMode>('dialogue');
   const [promptViewMode, setPromptViewMode] = useState<'all' | 'single'>('all');
   const [focusedShotIndex, setFocusedShotIndex] = useState<number>(0);
   const [editingShots, setEditingShots] = useState<Record<number, boolean>>({});
@@ -222,11 +242,10 @@ export default function App() {
   const [continuationBadge, setContinuationBadge] = useState<string | null>(null);
   const [saveSuccessMessage, setSaveSuccessMessage] = useState<string | null>(null);
 
-  // Google (Gmail) Account Login & Auto-Save Cloud Sync State
+  // Optional Account Login State (Profile, Wallet & Promotions)
   const [currentUser, setCurrentUser] = useState<User | null>(auth.currentUser);
   const [userAuthBusy, setUserAuthBusy] = useState<boolean>(false);
   const [userAuthError, setUserAuthError] = useState<string | null>(null);
-  const [cloudSyncing, setCloudSyncing] = useState<boolean>(false);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const ttsAbortRef = useRef<AbortController | null>(null);
@@ -245,6 +264,16 @@ export default function App() {
     }
     return set;
   }, [savedStories]);
+
+  const filteredCategories = useMemo(
+    () => searchStoryCategories(categorySearchQuery, categoryGroupFilter),
+    [categorySearchQuery, categoryGroupFilter]
+  );
+
+  const selectedCategoryObj = useMemo(
+    () => (selectedCategoryId !== 'all' ? getCategoryById(selectedCategoryId) : undefined),
+    [selectedCategoryId]
+  );
 
   const isInIframe =
     typeof window !== 'undefined' &&
@@ -335,12 +364,11 @@ export default function App() {
     let mergedPendingLocal = false;
 
     const bootstrapSync = async () => {
-      setCloudSyncing(true);
       try {
         await upsertUserAccountOnLogin(currentUser, savedStoriesRef.current.length);
       } catch (err: any) {
         if (active) {
-          console.warn('Gmail profile sync error:', err?.message);
+          console.warn('Account profile sync error:', err?.message);
         }
       }
     };
@@ -354,7 +382,6 @@ export default function App() {
         const cloudIds = new Set(cloudItems.map((c) => c.id));
         const localOnly = savedStoriesRef.current.filter((l) => !cloudIds.has(l.id));
 
-        // Upload any pre-login local stories once to the signed-in Gmail cloud account
         if (!mergedPendingLocal && localOnly.length > 0) {
           mergedPendingLocal = true;
           for (const item of localOnly) {
@@ -381,15 +408,12 @@ export default function App() {
         try {
           localStorage.setItem('cinematic_saved_stories', JSON.stringify(merged));
         } catch {}
-        setCloudSyncing(false);
 
         if (cloudItems.length > 0) {
           void syncStoryCountToUserAccount(currentUser, merged.length);
         }
       },
-      () => {
-        if (active) setCloudSyncing(false);
-      }
+      () => {}
     );
 
     return () => {
@@ -507,16 +531,19 @@ export default function App() {
           dialogueMode,
           targetShotCount: calculatedShotCount,
           durationDisplay: formatDurationDisplay(),
+          categoryId: selectedCategoryId,
         });
         if (result.angles && Array.isArray(result.angles) && result.angles.length > 0) {
           updatedAngles = result.angles;
         }
       } catch {
-        updatedAngles = [];
-      }
-
-      if (updatedAngles.length === 0) {
-        updatedAngles = generateStoryAnglesLocal(trimmedCurrent, newLang, calculatedShotCount);
+        updatedAngles = generateStoryAnglesLocal(
+          trimmedCurrent,
+          newLang,
+          calculatedShotCount,
+          selectedCategoryId,
+          dialogueMode
+        );
       }
 
       setStoryAngles(updatedAngles);
@@ -535,6 +562,7 @@ export default function App() {
             matchedAngle.characters && !baseText.includes('[CHARACTERS:')
               ? `${baseText}\n\n[CHARACTERS: ${matchedAngle.characters}]`
               : baseText;
+          const activeCategoryId = matchedAngle.categoryId || selectedCategoryId;
           try {
             const shotResult = await postApiJson<{ shots?: GeneratedShot[] }>(
               '/api/generate-breakdown',
@@ -545,6 +573,7 @@ export default function App() {
                 fastMode: false,
                 language: newLang,
                 dialogueMode,
+                categoryId: activeCategoryId,
               }
             );
             if (shotResult.shots && Array.isArray(shotResult.shots)) {
@@ -559,7 +588,8 @@ export default function App() {
               [],
               calculatedShotCount,
               newLang,
-              dialogueMode
+              dialogueMode,
+              activeCategoryId
             );
             setShots(localBreakdown.shots);
           } finally {
@@ -727,17 +757,19 @@ export default function App() {
     }
   };
 
-  // Step 1 -> Step 2: Generate Story Angle Variations in Selected Language
+  // Step 1 -> Step 2: Generate Story Angle Variations in Selected Language & Category
   const handleGenerateStoryAngles = async () => {
     triggerOptionVideoBreak();
     const trimmedPremise = premise.trim();
     if (!trimmedPremise) {
       setError(t.premiseRequiredError);
+      setOfflineFallbackType(null);
       return;
     }
 
     setLoadingAngles(true);
     setError(null);
+    setOfflineFallbackType(null);
     setStoryAngles([]);
     setSelectedAngle(null);
     setShots([]);
@@ -750,6 +782,7 @@ export default function App() {
         dialogueMode,
         targetShotCount: calculatedShotCount,
         durationDisplay: formatDurationDisplay(),
+        categoryId: selectedCategoryId,
       });
 
       if (result.angles && Array.isArray(result.angles) && result.angles.length > 0) {
@@ -767,22 +800,8 @@ export default function App() {
       }
       throw new Error('Unexpected format received for story angles.');
     } catch (err: any) {
-      console.warn('API /api/generate-story-angles fallback activated:', err?.message);
-      const localAngles = generateStoryAnglesLocal(trimmedPremise, lang, calculatedShotCount);
-      if (localAngles.length > 0) {
-        setStoryAngles(localAngles);
-        trackAnglesGenerated();
-        void recordGenerationActivity({
-          actionType: 'angles',
-          language: lang,
-          searchPremise: trimmedPremise,
-          generatedTitles: localAngles.map((a) => a.title),
-          user: currentUser,
-        });
-        setActiveStep('options');
-      } else {
-        setError(err?.message || t.angleErrorFallback);
-      }
+      setError(err?.message || t.angleErrorFallback);
+      setOfflineFallbackType('angles');
     } finally {
       setLoadingAngles(false);
     }
@@ -794,6 +813,7 @@ export default function App() {
     modeOverride?: DialogueMode
   ) => {
     const activeMode = modeOverride ?? dialogueMode;
+    const activeCategoryId = angle.categoryId || selectedCategoryId;
     triggerOptionVideoBreak();
     stopAllSpeech();
     setSelectedAngle(angle);
@@ -801,6 +821,7 @@ export default function App() {
     setEditingShots({});
     setLoadingShots(true);
     setError(null);
+    setOfflineFallbackType(null);
     setVisiblePromptCount(25);
     setActiveStep('prompts');
 
@@ -863,6 +884,7 @@ export default function App() {
         fastMode: false,
         language: lang,
         dialogueMode: activeMode,
+        categoryId: activeCategoryId,
       });
 
       if (result.shots && Array.isArray(result.shots)) {
@@ -881,32 +903,54 @@ export default function App() {
       }
       throw new Error('Unexpected breakdown format.');
     } catch (err: any) {
-      console.warn('API /api/generate-breakdown fallback activated:', err?.message);
+      setError(err?.message || t.breakdownErrorFallback);
+      setOfflineFallbackType('prompts');
+    } finally {
+      setLoadingShots(false);
+    }
+  };
+
+  // Explicit user-triggered Offline Script Engine fallback when Gemini API key is unavailable or fails
+  const handleRunOfflineFallback = () => {
+    if (offlineFallbackType === 'angles') {
+      const trimmedPremise = premise.trim();
+      if (!trimmedPremise) return;
+      const localAngles = generateStoryAnglesLocal(
+        trimmedPremise,
+        lang,
+        calculatedShotCount,
+        selectedCategoryId,
+        dialogueMode
+      );
+      setError(null);
+      setOfflineFallbackType(null);
+      setStoryAngles(localAngles);
+      trackAnglesGenerated();
+      setActiveStep('options');
+      return;
+    }
+
+    if (offlineFallbackType === 'prompts' && selectedAngle) {
+      const activeCategoryId = selectedAngle.categoryId || selectedCategoryId;
+      const baseText = selectedAngle.scriptText || selectedAngle.storySummary || premise.trim();
+      const scriptInput =
+        selectedAngle.characters && !baseText.includes('[CHARACTERS:')
+          ? `${baseText}\n\n[CHARACTERS: ${selectedAngle.characters}]`
+          : baseText;
       const localBreakdown = generateBreakdownLocal(
         scriptInput,
         shotDurationSec,
         [],
         calculatedShotCount,
         lang,
-        activeMode
+        dialogueMode,
+        activeCategoryId
       );
-      if (localBreakdown.shots.length > 0) {
-        setShots(localBreakdown.shots);
-        trackBreakdownGenerated();
-        void recordGenerationActivity({
-          actionType: 'prompts',
-          language: lang,
-          searchPremise: premise.trim() || angle.title,
-          selectedStoryTitle: angle.title,
-          shotCount: localBreakdown.shots.length,
-          user: currentUser,
-        });
-        void autoSaveToHistoryAndGmail(localBreakdown.shots);
-      } else {
-        setError(err?.message || t.breakdownErrorFallback);
-      }
-    } finally {
-      setLoadingShots(false);
+      setError(null);
+      setOfflineFallbackType(null);
+      setShots(localBreakdown.shots);
+      trackBreakdownGenerated();
+      setActiveStep('prompts');
     }
   };
 
@@ -1080,13 +1124,9 @@ export default function App() {
     handleDownloadStoryTxt(newStoryItem);
 
     setSaveSuccessMessage(
-      activeEmail
-        ? lang === 'ml'
-          ? `✅ കഥയും എല്ലാ പ്രോംപ്റ്റുകളും നിങ്ങളുടെ Gmail (${activeEmail})-ലും ഹിസ്റ്ററിയിലും ഫയലായും സേവ് ചെയ്തു!`
-          : `✅ Story & prompts saved to your Gmail (${activeEmail}), History, and downloaded!`
-        : lang === 'ml'
-        ? '✅ കഥയും എല്ലാ പ്രോംപ്റ്റുകളും ഹിസ്റ്ററിയിൽ സേവ് ചെയ്യുകയും ഫയൽ ഡൗൺലോഡ് ആവുകയും ചെയ്തിട്ടുണ്ട്!'
-        : '✅ Story & prompts successfully saved to History and downloaded!'
+      lang === 'ml'
+        ? '✅ കഥയും എല്ലാ പ്രോംപ്റ്റുകളും നിങ്ങളുടെ ഡിവൈസിലെ ഹിസ്റ്ററിയിൽ സേവ് ചെയ്യുകയും .TXT ഫയൽ ഡൗൺലോഡ് ആവുകയും ചെയ്തു!'
+        : '✅ Story & prompts saved locally to History on your device and downloaded as .TXT!'
     );
     setTimeout(() => setSaveSuccessMessage(null), 6000);
   };
@@ -1135,6 +1175,9 @@ export default function App() {
   };
 
   const presetDurations = [
+    { name: `8 ${t.unitSecond}`, val: 8, unit: 'seconds' as const },
+    { name: `16 ${t.unitSecond}`, val: 16, unit: 'seconds' as const },
+    { name: `24 ${t.unitSecond}`, val: 24, unit: 'seconds' as const },
     { name: `30 ${t.unitSecond}`, val: 30, unit: 'seconds' as const },
     { name: `1 ${t.unitMinute}`, val: 1, unit: 'minutes' as const },
     { name: `2 ${t.unitMinute}`, val: 2, unit: 'minutes' as const },
@@ -1146,7 +1189,8 @@ export default function App() {
     { name: `3 ${t.unitHour}`, val: 3, unit: 'hours' as const },
   ];
 
-  const totalAngleCountDisplay = storyAngles.length > 0 ? storyAngles.length : 14;
+  const expectedAngleCount = selectedCategoryId === 'all' ? 28 : 8;
+  const totalAngleCountDisplay = storyAngles.length > 0 ? storyAngles.length : expectedAngleCount;
 
   // Standalone dedicated Admin Panel view (no website header, login bar, or bottom nav tabs)
   if (showAdminPanel) {
@@ -1184,7 +1228,7 @@ export default function App() {
     );
   }
 
-  // Full-screen dedicated 16:9 4K Studio (Editing / VFX Editing / Color Grading)
+  // Full-screen dedicated 16:9 Studio (Editing / VFX Editing / Color Grading)
   if (
     !showAdminPanel &&
     (activeStep === 'editor' || activeStep === 'vfx' || activeStep === 'color')
@@ -1278,12 +1322,12 @@ export default function App() {
                     : 'Saved Story History & ❤️ Favorites')}
                 {activeStep === 'login' &&
                   (lang === 'ml'
-                    ? 'Google / ജിമെയിൽ ലോഗിൻ & ഓട്ടോ ക്ലൗഡ് സേവ്'
-                    : 'Google / Gmail Account Login & Auto Cloud Sync')}
+                    ? 'അക്കൗണ്ട് — പ്രൊഫൈൽ, വാലറ്റ് & പ്രൊമോഷനുകൾ (ലോഗിൻ നിർബന്ധമില്ല)'
+                    : 'Account — Profile, Wallet & Promotions (Optional Sign-In)')}
                 {(activeStep === 'editor' || activeStep === 'vfx' || activeStep === 'color') &&
                   (lang === 'ml'
-                    ? '4K വീഡിയോ എഡിറ്റിംഗ്, VFX & കളർ ഗ്രേഡിംഗ് സ്റ്റുഡിയോ'
-                    : '4K Video Editing, VFX & Color Grading Studio')}
+                    ? 'വീഡിയോ എഡിറ്റിംഗ്, VFX & കളർ ഗ്രേഡിംഗ് സ്റ്റുഡിയോ'
+                    : 'Video Editing, VFX & Color Grading Studio')}
               </p>
             </div>
           </div>
@@ -1351,12 +1395,17 @@ export default function App() {
               </div>
             )}
 
-            {/* Profile Avatar / Login Button on Top Header */}
+            {/* Optional Account Button (Profile, Wallet & Promotions) */}
             <button
               type="button"
               onClick={() => setActiveStep('login')}
               className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-xs font-bold transition-all cursor-pointer shrink-0"
-              title={currentUser?.email || 'Login / Profile'}
+              title={
+                currentUser?.email ||
+                (lang === 'ml'
+                  ? 'പ്രൊഫൈൽ, വാലറ്റ് & പ്രൊമോഷനുകൾ (ഓപ്ഷണൽ)'
+                  : 'Profile, Wallet & Promotions (Optional Sign-In)')
+              }
             >
               {currentUser?.photoURL ? (
                 <img
@@ -1366,11 +1415,11 @@ export default function App() {
                 />
               ) : (
                 <div className="w-7 h-7 rounded-full bg-amber-500/20 text-amber-400 font-bold flex items-center justify-center shrink-0 border border-amber-500/30">
-                  {(currentUser?.email || 'U').charAt(0).toUpperCase()}
+                  {(currentUser?.email || 'A').charAt(0).toUpperCase()}
                 </div>
               )}
               <span className="max-w-[110px] truncate hidden sm:inline text-zinc-200">
-                {currentUser?.displayName || currentUser?.email || (lang === 'ml' ? 'ലോഗിൻ' : 'Login')}
+                {currentUser?.displayName || currentUser?.email || (lang === 'ml' ? 'അക്കൗണ്ട്' : 'Account')}
               </span>
             </button>
           </div>
@@ -1382,10 +1431,19 @@ export default function App() {
             {/* Top In-Flow Banner placed cleanly below Language Bar & Header */}
             <TopBannerAd />
 
-        {/* Error notification */}
+        {/* Error notification with explicit Offline Script Engine action */}
         {error && (
-          <div className="mb-6 p-3 bg-red-500/10 border border-red-500/30 text-red-300 text-sm rounded-xl">
-            {error}
+          <div className="mb-6 p-3.5 bg-red-500/10 border border-red-500/30 text-red-200 text-sm rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <span>{error}</span>
+            {offlineFallbackType && (
+              <button
+                type="button"
+                onClick={handleRunOfflineFallback}
+                className="px-4 py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-black font-extrabold text-xs uppercase tracking-wider cursor-pointer shrink-0 transition-all shadow-md"
+              >
+                {t.offlineFallbackBtn}
+              </button>
+            )}
           </div>
         )}
 
@@ -1446,10 +1504,130 @@ export default function App() {
                 <AutoResizeTextarea
                   value={premise}
                   onChange={(e) => setPremise(e.target.value)}
-                  rows={6}
+                  rows={5}
                   placeholder={t.premisePlaceholder}
-                  className="w-full min-h-[160px] lg:min-h-[300px] bg-[#0a0b12] border border-zinc-800 rounded-xl p-3.5 sm:p-4 text-base sm:text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-amber-500 transition-colors leading-relaxed"
+                  className="w-full min-h-[140px] lg:min-h-[200px] bg-[#0a0b12] border border-zinc-800 rounded-xl p-3.5 sm:p-4 text-base sm:text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-amber-500 transition-colors leading-relaxed"
                 />
+              </div>
+
+              {/* 366+ Curated Story Categories Selector */}
+              <div className="p-3.5 rounded-xl bg-[#090a12] border border-zinc-800/90 space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <label className="text-xs font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
+                    <Layers className="w-3.5 h-3.5 shrink-0" />
+                    <span>{t.categorySelectorLabel}</span>
+                  </label>
+                  <span className="text-[11px] font-mono px-2.5 py-0.5 rounded-md bg-amber-500/15 text-amber-300 border border-amber-500/30 font-bold">
+                    {t.categoriesCountBadge(STORY_CATEGORIES.length)}
+                  </span>
+                </div>
+
+                {/* Search Input */}
+                <div className="relative">
+                  <Search className="w-4 h-4 text-zinc-500 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <input
+                    type="text"
+                    value={categorySearchQuery}
+                    onChange={(e) => setCategorySearchQuery(e.target.value)}
+                    placeholder={t.categorySearchPlaceholder}
+                    className="w-full bg-zinc-950 border border-zinc-800 focus:border-amber-500 rounded-lg pl-9 pr-8 py-2 text-xs text-zinc-100 placeholder-zinc-600 focus:outline-none"
+                  />
+                  {categorySearchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setCategorySearchQuery('')}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white cursor-pointer"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+
+                {/* 14 Genre Group Horizontal Chips */}
+                <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1">
+                  <button
+                    type="button"
+                    onClick={() => setCategoryGroupFilter('all')}
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-bold shrink-0 cursor-pointer transition-all ${
+                      categoryGroupFilter === 'all'
+                        ? 'bg-amber-500 text-black font-extrabold'
+                        : 'bg-zinc-900 text-zinc-300 border border-zinc-800 hover:text-white'
+                    }`}
+                  >
+                    All ({STORY_CATEGORIES.length})
+                  </button>
+                  {STORY_CATEGORY_GROUPS.map((grp) => (
+                    <button
+                      key={grp.id}
+                      type="button"
+                      onClick={() => setCategoryGroupFilter(grp.id)}
+                      className={`px-2.5 py-1 rounded-lg text-[11px] font-bold shrink-0 cursor-pointer transition-all ${
+                        categoryGroupFilter === grp.id
+                          ? 'bg-amber-500 text-black font-extrabold'
+                          : 'bg-zinc-900 text-zinc-300 border border-zinc-800 hover:text-white'
+                      }`}
+                    >
+                      {grp.icon} {grp.labels[lang] || grp.labels.en}
+                    </button>
+                  ))}
+                </div>
+
+                {/* All Categories Explore Option + Matching Categories Scrollable Grid */}
+                <div className="space-y-2">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedCategoryId('all')}
+                    className={`w-full text-left px-3 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center justify-between ${
+                      selectedCategoryId === 'all'
+                        ? 'bg-amber-500/20 border border-amber-500 text-amber-300'
+                        : 'bg-zinc-900/70 border border-zinc-800 text-zinc-300 hover:border-zinc-700'
+                    }`}
+                  >
+                    <span>✨ {t.allCategoriesLabel}</span>
+                    {selectedCategoryId === 'all' && <Check className="w-4 h-4 text-amber-400 shrink-0" />}
+                  </button>
+
+                  <div className="max-h-48 overflow-y-auto pr-1 grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                    {filteredCategories.slice(0, 120).map((cat) => {
+                      const grp = getCategoryGroup(cat.groupId);
+                      const isSel = selectedCategoryId === cat.id;
+                      return (
+                        <button
+                          key={cat.id}
+                          type="button"
+                          onClick={() => setSelectedCategoryId(cat.id)}
+                          className={`text-left px-2.5 py-2 rounded-lg border transition-all cursor-pointer ${
+                            isSel
+                              ? 'bg-amber-500 text-black border-amber-400 font-extrabold shadow-sm'
+                              : 'bg-zinc-950/90 hover:bg-zinc-900 text-zinc-200 border-zinc-800/90'
+                          }`}
+                        >
+                          <div className="text-[11px] font-bold leading-snug truncate">
+                            {grp.icon} {cat.name}
+                          </div>
+                          <div
+                            className={`text-[10px] truncate ${
+                              isSel ? 'text-black/80 font-semibold' : 'text-zinc-500'
+                            }`}
+                          >
+                            {cat.tone} · {cat.pacing}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {selectedCategoryObj && (
+                    <div className="p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-[11px] text-amber-200 space-y-1">
+                      <div className="font-bold text-amber-300">
+                        {getCategoryGroup(selectedCategoryObj.groupId).icon} {selectedCategoryObj.name} — {selectedCategoryObj.tone}
+                      </div>
+                      <div className="text-zinc-300 text-[10px] leading-relaxed">
+                        {selectedCategoryObj.visualStyle} · {selectedCategoryObj.cameraFocus}
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
 
               <div className="pt-1">
@@ -1498,6 +1676,9 @@ export default function App() {
                   );
                 })}
               </div>
+
+              {/* Compact small sponsor slot below presets */}
+              <CompactSmallBannerAd slotId="page1-presets-small" slotIndex={2} />
 
               {/* Custom Typing Box for Duration & Unit Switcher */}
               <div className="p-3.5 sm:p-4 rounded-xl bg-[#090a12] border border-amber-500/30 space-y-3 shadow-inner">
@@ -1613,13 +1794,14 @@ export default function App() {
                 <span className="text-center leading-snug">
                   {loadingAngles
                     ? t.generatingAngles
-                    : t.generateAnglesBtn(14, formatDurationDisplay(), calculatedShotCount)}
+                    : t.generateAnglesBtn(expectedAngleCount, formatDurationDisplay(), calculatedShotCount)}
                 </span>
               </button>
             </div>
 
             {/* Clean Full-Width Showcase Video + Banner below panels */}
             <div className="lg:col-span-12 space-y-4">
+              <NativeCardAd slotId="page1-native-card" slotIndex={3} />
               <FullWidthShowcaseAd slotId="page1-showcase" />
             </div>
           </div>
@@ -1701,36 +1883,46 @@ export default function App() {
               </div>
             )}
 
-            {/* Genre Category Filter Bar (Swipeable Single Row on Mobile, Wrapping Grid on Desktop) */}
+            {/* Genre Category Filter Bar across all populated Category Groups */}
             {!loadingAngles && (
               <>
                 <div className="flex items-center gap-2 overflow-x-auto no-scrollbar whitespace-nowrap sm:flex-wrap p-2 rounded-xl bg-[#0b0c14] border border-zinc-800">
-                  {[
-                    { id: 'all', label: t.filterAll(storyAngles.length) },
-                    { id: 'thriller', label: t.filterThriller },
-                    { id: 'action', label: t.filterAction },
-                    { id: 'drama', label: t.filterDrama },
-                    { id: 'comedy', label: t.filterComedy },
-                    { id: 'scifi', label: t.filterScifi },
-                    { id: 'folk', label: t.filterFolk },
-                    { id: 'ad', label: t.filterAd },
-                  ].map((filter) => (
-                    <button
-                      key={filter.id}
-                      type="button"
-                      onClick={() => {
-                        setSelectedGenreFilter(filter.id);
-                        triggerOptionVideoBreak();
-                      }}
-                      className={`px-3 py-2 sm:py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer shrink-0 ${
-                        selectedGenreFilter === filter.id
-                          ? 'bg-amber-500 text-black font-extrabold shadow-sm'
-                          : 'bg-zinc-900 text-zinc-400 hover:text-white border border-zinc-800'
-                      }`}
-                    >
-                      {filter.label}
-                    </button>
-                  ))}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedGenreFilter('all');
+                      triggerOptionVideoBreak();
+                    }}
+                    className={`px-3 py-2 sm:py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer shrink-0 ${
+                      selectedGenreFilter === 'all'
+                        ? 'bg-amber-500 text-black font-extrabold shadow-sm'
+                        : 'bg-zinc-900 text-zinc-400 hover:text-white border border-zinc-800'
+                    }`}
+                  >
+                    {t.filterAll(storyAngles.length)}
+                  </button>
+                  {STORY_CATEGORY_GROUPS.filter((grp) =>
+                    storyAngles.some((a) => a.categoryGroup === grp.id)
+                  ).map((grp) => {
+                    const count = storyAngles.filter((a) => a.categoryGroup === grp.id).length;
+                    return (
+                      <button
+                        key={grp.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedGenreFilter(grp.id);
+                          triggerOptionVideoBreak();
+                        }}
+                        className={`px-3 py-2 sm:py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer shrink-0 ${
+                          selectedGenreFilter === grp.id
+                            ? 'bg-amber-500 text-black font-extrabold shadow-sm'
+                            : 'bg-zinc-900 text-zinc-400 hover:text-white border border-zinc-800'
+                        }`}
+                      >
+                        {grp.icon} {grp.labels[lang] || grp.labels.en} ({count})
+                      </button>
+                    );
+                  })}
                 </div>
 
                 {/* Story Option Cards List — Small banner between every card + Playing Video Ad & Banner every 3 cards */}
@@ -1738,20 +1930,15 @@ export default function App() {
                   {storyAngles
                     .filter((angle) => {
                       if (selectedGenreFilter === 'all') return true;
+                      if (angle.categoryGroup) return angle.categoryGroup === selectedGenreFilter;
                       if (angle.catKey) return angle.catKey === selectedGenreFilter;
-                      const g = angle.genre.toLowerCase();
-                      if (selectedGenreFilter === 'thriller') return g.includes('thriller') || g.includes('ത്രില്ലർ') || g.includes('थ्रिलर') || g.includes('திரில்லர்') || g.includes('ಥ್ರಿಲ್ಲರ್') || g.includes('థ్రిల్లర్');
-                      if (selectedGenreFilter === 'action') return g.includes('action') || g.includes('ആക്ഷൻ') || g.includes('एक्शन') || g.includes('ஆக்ஷன்') || g.includes('ಆಕ್ಷನ್') || g.includes('యాక్షన్');
-                      if (selectedGenreFilter === 'drama') return g.includes('drama') || g.includes('ഡ്രാമ') || g.includes('ड्रामा') || g.includes('டிராமா') || g.includes('ಡ್ರಾಮಾ') || g.includes('డ్రామా');
-                      if (selectedGenreFilter === 'comedy') return g.includes('comedy') || g.includes('കോമഡി') || g.includes('कॉमेडी') || g.includes('காமெடி') || g.includes('ಕಾಮಿಡಿ') || g.includes('కామెడీ');
-                      if (selectedGenreFilter === 'scifi') return g.includes('sci-fi') || g.includes('സയൻസ്') || g.includes('साइंस') || g.includes('சயின்ஸ்') || g.includes('ಸೈನ್ಸ್') || g.includes('సైన్స్');
-                      if (selectedGenreFilter === 'folk') return g.includes('folk') || g.includes('ഫോക്ക്') || g.includes('लोक') || g.includes('நாட்டு') || g.includes('ಜಾನಪದ') || g.includes('జానపద');
-                      if (selectedGenreFilter === 'ad') return g.includes('ad') || g.includes('പരസ്യം') || g.includes('विज्ञापन') || g.includes('விளம்பரம்') || g.includes('ಜಾಹೀರಾತು') || g.includes('ప్రకటన');
                       return true;
                     })
                     .map((angle, angleIdx) => {
                       const showVideoAndBannerHere =
                         angleIdx === 2 || angleIdx === 7 || angleIdx === 12;
+                      const showSmallBannerHere =
+                        !showVideoAndBannerHere && (angleIdx === 0 || angleIdx === 4 || angleIdx === 9 || angleIdx === 14);
 
                       return (
                         <React.Fragment key={angle.id}>
@@ -1827,6 +2014,26 @@ export default function App() {
                               <p className="text-xs text-amber-400/90 font-mono font-semibold break-words">
                                 {angle.mood}
                               </p>
+
+                              {(angle.visualStyle || angle.cameraFocus) && (
+                                <div className="flex flex-wrap gap-1.5 text-[11px]">
+                                  {angle.categoryName && (
+                                    <span className="px-2 py-0.5 rounded-md bg-zinc-900 border border-zinc-700 text-amber-300 font-semibold">
+                                      {angle.categoryName}
+                                    </span>
+                                  )}
+                                  {angle.cameraFocus && (
+                                    <span className="px-2 py-0.5 rounded-md bg-zinc-900 border border-zinc-800 text-zinc-300">
+                                      🎥 {angle.cameraFocus}
+                                    </span>
+                                  )}
+                                  {angle.visualStyle && (
+                                    <span className="px-2 py-0.5 rounded-md bg-zinc-900 border border-zinc-800 text-zinc-300">
+                                      💡 {angle.visualStyle}
+                                    </span>
+                                  )}
+                                </div>
+                              )}
 
                               {/* Characters List */}
                               {angle.characters && (
@@ -1931,6 +2138,12 @@ export default function App() {
                               startIndex={angleIdx % 5}
                             />
                           )}
+                          {showSmallBannerHere && (
+                            <CompactSmallBannerAd
+                              slotId={`angle-small-${angleIdx}`}
+                              slotIndex={angleIdx}
+                            />
+                          )}
                         </React.Fragment>
                       );
                     })}
@@ -1997,6 +2210,9 @@ export default function App() {
                 </div>
               </div>
             </div>
+
+            {/* Subtle Top Sponsor Banner */}
+            <CompactSmallBannerAd slotId="prompts-top-small" slotIndex={1} />
 
             {loadingShots && (
               <div className="py-16 flex flex-col items-center justify-center space-y-3 text-zinc-400 bg-[#0f111c] border border-zinc-800 rounded-2xl">
@@ -2182,18 +2398,28 @@ ${imgPromptText}`;
                     (idx + 1) % 6 === 0 &&
                     idx < 24;
 
+                  const showShotSmallBanner =
+                    promptViewMode === 'all' &&
+                    !showShotVideoAndBanner &&
+                    (idx === 2 || idx === 8 || idx === 14 || idx === 20);
+
                   return (
                     <React.Fragment key={idx}>
                       <div className="bg-[#10121d] border border-zinc-800 rounded-2xl shadow-2xl transition-all">
                       {/* Shot Header Bar */}
                       <div className="px-4 sm:px-5 py-3 sm:py-3.5 bg-[#0b0c13] border-b border-zinc-800 rounded-t-2xl flex flex-wrap items-center justify-between gap-2.5 sm:gap-3">
-                        <div className="flex items-center gap-2.5 sm:gap-3">
+                        <div className="flex items-center gap-2 sm:gap-2.5 flex-wrap">
                           <span className="px-3 py-1 rounded-lg bg-amber-500 text-black font-mono font-extrabold text-xs">
-                            SHOT {shotNumber.toString().padStart(2, '0')} — {shotDur}s
+                            SHOT {shotNumber.toString().padStart(2, '0')} — {shot.timeRange || `${shotDur}s`}
                           </span>
-                          <span className="text-xs font-mono text-zinc-400 hidden sm:inline">
-                            {shot.timing || `Shot ${shotNumber} - ${shotDur}s`}
+                          <span className="text-xs font-mono text-zinc-400">
+                            ({shotDur}s)
                           </span>
+                          {shot.categoryTag && (
+                            <span className="px-2.5 py-0.5 rounded-md bg-zinc-900 border border-zinc-700 text-amber-300 text-[11px] font-bold">
+                              {shot.categoryTag}
+                            </span>
+                          )}
                         </div>
 
                         <div className="flex items-center gap-2 flex-wrap">
@@ -2239,6 +2465,30 @@ ${imgPromptText}`;
 
                       {/* Full-Height Non-Scrolling Body (100% visible & swipe-free) */}
                       <div className="p-4 sm:p-5 space-y-4">
+                        {/* Camera Angle & Lighting Cues */}
+                        {(shot.cameraAngle || shot.lightingCue) && (
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                            {shot.cameraAngle && (
+                              <div className="p-2.5 rounded-lg bg-[#0a0b12] border border-zinc-800/90 text-xs">
+                                <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1 mb-0.5">
+                                  <Camera className="w-3 h-3 shrink-0" />
+                                  {t.cameraAngleLabel}
+                                </span>
+                                <span className="text-zinc-200">{shot.cameraAngle}</span>
+                              </div>
+                            )}
+                            {shot.lightingCue && (
+                              <div className="p-2.5 rounded-lg bg-[#0a0b12] border border-zinc-800/90 text-xs">
+                                <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1 mb-0.5">
+                                  <Sun className="w-3 h-3 shrink-0" />
+                                  {t.lightingCueLabel}
+                                </span>
+                                <span className="text-zinc-200">{shot.lightingCue}</span>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
                         {/* Scene Action Summary */}
                         <div className="space-y-1.5">
                           <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-400 flex items-center gap-1">
@@ -2274,10 +2524,14 @@ ${imgPromptText}`;
                                 onChange={(e) => updateShotField(idx, 'malayalamDialogue', e.target.value)}
                                 className="w-full bg-[#0a0b12] border border-emerald-500/40 rounded-lg p-3 text-sm text-emerald-100 placeholder-zinc-600 font-sans focus:outline-none focus:border-emerald-400 leading-relaxed"
                               />
-                            ) : (
+                            ) : shotDialogue.trim().length > 0 ? (
                               <p className="w-full bg-[#0a0b12] border border-emerald-500/25 rounded-lg p-3 text-sm text-emerald-100 font-sans leading-relaxed whitespace-pre-wrap break-words select-text">
-                                {shotDialogue || '—'}
+                                {shotDialogue}
                               </p>
+                            ) : (
+                              <div className="w-full bg-[#0a0b12] border border-zinc-800 rounded-lg p-3 text-xs text-zinc-400 font-semibold">
+                                {t.pureVisualBadge}
+                              </div>
                             )}
                           </div>
 
@@ -2450,12 +2704,24 @@ ${imgPromptText}`;
                           startIndex={idx % 5}
                         />
                       )}
-                      {promptViewMode === 'single' && (
-                        <VideoWithSmallBannerAd
-                          slotId={`shot-single-${safeFocusedIdx}`}
-                          slotIndex={safeFocusedIdx}
-                          startIndex={safeFocusedIdx % 5}
+                      {showShotSmallBanner && (
+                        <CompactSmallBannerAd
+                          slotId={`shot-small-${idx}`}
+                          slotIndex={idx}
                         />
+                      )}
+                      {promptViewMode === 'single' && (
+                        <>
+                          <VideoWithSmallBannerAd
+                            slotId={`shot-single-${safeFocusedIdx}`}
+                            slotIndex={safeFocusedIdx}
+                            startIndex={safeFocusedIdx % 5}
+                          />
+                          <CompactSmallBannerAd
+                            slotId={`shot-single-small-${safeFocusedIdx}`}
+                            slotIndex={safeFocusedIdx + 1}
+                          />
+                        </>
                       )}
                     </React.Fragment>
                   );
@@ -2552,7 +2818,7 @@ ${imgPromptText}`;
         )}
 
         {/* ================================================================= */}
-        {/* PAGE 4: 4K VIDEO EDITING / VFX / COLOR STUDIO FALLBACK            */}
+        {/* PAGE 4: VIDEO EDITING / VFX / COLOR STUDIO FALLBACK            */}
         {/* ================================================================= */}
         {(activeStep === 'editor' || activeStep === 'vfx' || activeStep === 'color') && (
           <VideoEditorStudio
@@ -2659,6 +2925,9 @@ ${imgPromptText}`;
                 </div>
               </div>
 
+              {/* Top History Sponsor Slot */}
+              <CompactSmallBannerAd slotId="history-filter-small-ad" slotIndex={0} />
+
               {/* Stories List / Empty State */}
               {displayedStories.length === 0 ? (
                 <div className="bg-[#11131f] border border-zinc-800 rounded-2xl text-center py-14 px-4 space-y-4 shadow-xl">
@@ -2691,9 +2960,9 @@ ${imgPromptText}`;
               ) : (
                 <div className="space-y-4">
                   {displayedStories.map((story, idx) => (
-                    <div
-                      key={story.id || idx}
-                      className={`bg-[#11131f] border rounded-2xl p-4 sm:p-5 transition-all shadow-xl space-y-3 ${
+                    <React.Fragment key={story.id || idx}>
+                      <div
+                        className={`bg-[#11131f] border rounded-2xl p-4 sm:p-5 transition-all shadow-xl space-y-3 ${
                         story.isLoved
                           ? 'border-rose-500/40 hover:border-rose-400/70'
                           : 'border-zinc-800 hover:border-amber-500/40'
@@ -2812,19 +3081,25 @@ ${imgPromptText}`;
                         </button>
                       </div>
                     </div>
-                  ))}
+                    {idx > 0 && (idx + 1) % 3 === 0 && (
+                      <CompactSmallBannerAd
+                        slotId={`history-inline-small-${idx}`}
+                        slotIndex={idx}
+                      />
+                    )}
+                  </React.Fragment>
+                ))}
                 </div>
               )}
 
               <div className="p-3.5 rounded-xl bg-[#11131f] border border-zinc-800 text-xs text-zinc-400 flex items-center justify-between gap-3 flex-wrap">
-                <span>
-                  {currentUser?.email
-                    ? isMl
-                      ? `☁️ ${currentUser.email} അക്കൗണ്ടിൽ ഓട്ടോമാറ്റിക്കായി സേവ് ചെയ്യപ്പെടുന്നു`
-                      : `☁️ Auto-synced to ${currentUser.email}`
-                    : isMl
-                    ? 'ബ്രൗസറിൽ സേവ് ചെയ്യപ്പെടുന്നു (ലോഗിൻ ടാബിൽ Google ലോഗിൻ ചെയ്താൽ ജിമെയിലിൽ സുരക്ഷിതമാകും)'
-                    : 'Saved locally (Sign in on the Login tab to auto-sync across devices)'}
+                <span className="flex items-center gap-2">
+                  <HardDrive className="w-4 h-4 text-teal-400 shrink-0" />
+                  <span>
+                    {isMl
+                      ? 'പെയ്ഡ് ക്ലൗഡ് സ്റ്റോറേജ് ഇല്ലാതെ നിങ്ങളുടെ ഡിവൈസിലും ബ്രൗസറിലും ലോക്കലായി സേവ് ചെയ്യപ്പെടുന്നു. എപ്പോൾ വേണമെങ്കിലും .TXT ആയി ഡൗൺലോഡ് ചെയ്യാം.'
+                      : 'Saved locally on your device/browser with zero paid cloud storage required. Export .TXT anytime.'}
+                  </span>
                 </span>
               </div>
             </div>
@@ -2832,26 +3107,54 @@ ${imgPromptText}`;
         })()}
 
         {/* ================================================================= */}
-        {/* PAGE 6: DEDICATED LOGIN & ACCOUNT PAGE (`activeStep === 'login'`)  */}
+        {/* PAGE 6: OPTIONAL ACCOUNT PAGE — PROFILE, WALLET & PROMOTIONS       */}
         {/* ================================================================= */}
         {activeStep === 'login' && (
-          <div className="max-w-3xl mx-auto space-y-5">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* CARD 1: Direct Phone Google / Gmail Sign-In */}
+          <div className="max-w-4xl mx-auto space-y-4">
+            {/* Local-First Studio Banner (No Login / No Paid Cloud Storage Required) */}
+            <div className="bg-teal-500/10 border border-teal-500/30 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-start gap-3">
+                <div className="p-2 rounded-xl bg-teal-500/20 border border-teal-400/30 text-teal-300 shrink-0">
+                  <HardDrive className="w-5 h-5" />
+                </div>
+                <div className="space-y-1">
+                  <h2 className="text-xs sm:text-sm font-extrabold text-teal-200 uppercase tracking-wider">
+                    {lang === 'ml'
+                      ? '100% ലോക്കൽ & ലോഗിൻ-രഹിത ക്രിയേറ്റീവ് സ്റ്റുഡിയോ'
+                      : '100% Local & Login-Free Creative Studio'}
+                  </h2>
+                  <p className="text-xs text-zinc-300 leading-relaxed">
+                    {lang === 'ml'
+                      ? 'സ്റ്റോറി/സ്ക്രിപ്റ്റ് ജനറേറ്റർ, വീഡിയോ എഡിറ്റിംഗ്, VFX എഡിറ്റിംഗ്, കളർ ഗ്രേഡിംഗ്, മീഡിയ സെലക്ഷൻ, പ്രിവ്യൂ, എക്സ്പോർട്ട് എന്നിവയെല്ലാം ലോഗിൻ ഇല്ലാതെയും പെയ്ഡ് ക്ലൗഡ് സ്റ്റോറേജ് ഇല്ലാതെയും നിങ്ങളുടെ ഡിവൈസിൽ നേരിട്ട് പ്രവർത്തിക്കുന്നു.'
+                      : 'Story/Script generator, Editing studio, VFX Editing, Color Grading, media selection, previews, and video exports all run directly on your device/browser with zero forced login and zero paid cloud storage.'}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setActiveStep('editor')}
+                className="px-4 py-2 rounded-xl bg-teal-400 hover:bg-teal-300 text-black font-extrabold text-xs uppercase tracking-wider shrink-0 cursor-pointer transition-colors"
+              >
+                {lang === 'ml' ? 'സ്റ്റുഡിയോ തുറക്കുക' : 'Open Studio'}
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {/* CARD 1: Profile & Optional Account Sign-In */}
               <div className="bg-[#11131f] border border-zinc-800 hover:border-amber-500/40 rounded-2xl p-5 flex flex-col justify-between space-y-5 shadow-2xl transition-all">
                 <div className="space-y-3">
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2.5 text-amber-400">
                       <div className="p-2.5 rounded-xl bg-amber-500/15 border border-amber-500/30">
-                        <Mail className="w-5 h-5" />
+                        <UserCheck className="w-5 h-5" />
                       </div>
                       <h2 className="text-base font-extrabold text-white">
-                        {lang === 'ml' ? 'Google / ജിമെയിൽ ലോഗിൻ' : 'Google / Gmail Login'}
+                        {lang === 'ml' ? 'പ്രൊഫൈൽ' : 'Profile'}
                       </h2>
                     </div>
                     {currentUser && (
                       <span className="px-2.5 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-[11px] font-bold">
-                        {lang === 'ml' ? 'സേവ് സജീവം' : 'Synced'}
+                        {lang === 'ml' ? 'സജീവം' : 'Signed In'}
                       </span>
                     )}
                   </div>
@@ -2872,7 +3175,7 @@ ${imgPromptText}`;
                       )}
                       <div className="min-w-0">
                         <p className="text-sm font-bold text-white truncate">
-                          {currentUser.displayName || 'Google User'}
+                          {currentUser.displayName || 'Creator Account'}
                         </p>
                         <p className="text-xs font-mono text-emerald-400 truncate">
                           {currentUser.email}
@@ -2880,10 +3183,10 @@ ${imgPromptText}`;
                       </div>
                     </div>
                   ) : (
-                    <p className="text-xs sm:text-sm text-zinc-400 leading-relaxed">
+                    <p className="text-xs text-zinc-400 leading-relaxed">
                       {lang === 'ml'
-                        ? 'നിങ്ങളുടെ ഫോണിലെയും ബ്രൗസറിലെയും Google (Gmail) ഉപയോഗിച്ച് നേരിട്ട് ലോഗിൻ ചെയ്താൽ ജിമെയിൽ ഐഡി സേവ് ആകുകയും കഥകളും പ്രോംപ്റ്റുകളും ഓട്ടോമാറ്റിക്കായി അതിലേക്ക് സൂക്ഷിക്കുകയും ചെയ്യും.'
-                        : 'Sign in directly with your Google (Gmail) account. Your generated stories and prompts automatically save and sync across devices.'}
+                        ? 'ലോഗിൻ ഓപ്ഷണൽ ആണ് — നിങ്ങളുടെ അക്കൗണ്ട് പ്രൊഫൈൽ, വാലറ്റ്, പ്രൊമോഷനുകൾ എന്നിവ തുറക്കാൻ മാത്രം Google അക്കൗണ്ട് വഴി ലോഗിൻ ചെയ്യാം.'
+                        : 'Sign in with Google only if you want account features: Profile, Wallet, and Promotions. All creative tools stay open without sign-in.'}
                     </p>
                   )}
 
@@ -2903,7 +3206,7 @@ ${imgPromptText}`;
                       className="w-full py-3 px-4 rounded-xl bg-zinc-900 hover:bg-red-950/50 border border-zinc-700 hover:border-red-500/40 text-zinc-300 hover:text-red-300 text-xs font-bold flex items-center justify-center gap-2 cursor-pointer transition-all"
                     >
                       <LogOut className="w-4 h-4" />
-                      <span>{lang === 'ml' ? 'ജിമെയിൽ ലോഗ് ഔട്ട്' : 'Sign Out Gmail'}</span>
+                      <span>{lang === 'ml' ? 'ലോഗ് ഔട്ട്' : 'Sign Out'}</span>
                     </button>
                   ) : (
                     <>
@@ -2911,17 +3214,17 @@ ${imgPromptText}`;
                         type="button"
                         onClick={handleUserGoogleLogin}
                         disabled={userAuthBusy}
-                        className="w-full py-3.5 px-4 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-extrabold text-xs uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-amber-500/20 transition-all disabled:opacity-50"
+                        className="w-full py-3 px-4 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-extrabold text-xs uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-amber-500/20 transition-all disabled:opacity-50"
                       >
-                        <ShieldCheck className="w-4 h-4 shrink-0" />
+                        <LogIn className="w-4 h-4 shrink-0" />
                         <span>
                           {userAuthBusy
                             ? lang === 'ml'
                               ? 'ലോഗിൻ ചെയ്യുന്നു...'
                               : 'Signing in...'
                             : lang === 'ml'
-                            ? 'Google വഴി ലോഗിൻ (Gmail സേവ്)'
-                            : 'Sign in with Google (Auto-Save)'}
+                            ? 'Google ലോഗിൻ (അക്കൗണ്ട് മാത്രം)'
+                            : 'Sign In for Account Features'}
                         </span>
                       </button>
                       {isInIframe && typeof window !== 'undefined' && (
@@ -2929,7 +3232,7 @@ ${imgPromptText}`;
                           href={window.location.href}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="w-full py-2.5 px-3 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-zinc-300 text-xs font-bold flex items-center justify-center gap-1.5"
+                          className="w-full py-2 px-3 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-zinc-300 text-xs font-bold flex items-center justify-center gap-1.5"
                         >
                           <ExternalLink className="w-3.5 h-3.5 text-amber-400" />
                           <span>{lang === 'ml' ? 'പുതിയ ടാബിൽ തുറന്ന് ലോഗിൻ ചെയ്യുക' : 'Open in New Tab to Sign In'}</span>
@@ -2940,70 +3243,139 @@ ${imgPromptText}`;
                 </div>
               </div>
 
-              {/* CARD 2: Story & Prompts Cloud Auto-Save Vault */}
+              {/* Compact Sponsor Banner below Profile card */}
+              <div className="col-span-full">
+                <CompactSmallBannerAd slotId="account-profile-small" slotIndex={1} />
+              </div>
+
+              {/* CARD 2: Account Wallet (Auth-Only Feature) */}
               <div className="bg-[#11131f] border border-zinc-800 hover:border-amber-500/40 rounded-2xl p-5 flex flex-col justify-between space-y-5 shadow-2xl transition-all">
                 <div className="space-y-3">
                   <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2.5 text-amber-400">
-                      <div className="p-2.5 rounded-xl bg-sky-500/15 border border-sky-500/30 text-sky-400">
-                        <Cloud className="w-5 h-5" />
+                    <div className="flex items-center gap-2.5 text-emerald-400">
+                      <div className="p-2.5 rounded-xl bg-emerald-500/15 border border-emerald-500/30">
+                        <Wallet className="w-5 h-5" />
                       </div>
                       <h3 className="text-base font-extrabold text-white">
-                        {lang === 'ml' ? 'ക്ലൗഡ് ഓട്ടോ-സേവ് വോൾട്ട്' : 'Cloud Auto-Save Vault'}
+                        {lang === 'ml' ? 'വാലറ്റ്' : 'Wallet'}
                       </h3>
                     </div>
-                    {cloudSyncing && (
-                      <span className="text-[11px] font-mono text-amber-400 animate-pulse">
-                        Syncing...
+                    {!currentUser && (
+                      <span className="px-2 py-0.5 rounded-full bg-zinc-900 border border-zinc-700 text-zinc-400 text-[10px] font-bold inline-flex items-center gap-1">
+                        <Lock className="w-3 h-3" />
+                        <span>{lang === 'ml' ? 'അക്കൗണ്ട്' : 'Account Only'}</span>
                       </span>
                     )}
                   </div>
 
-                  <p className="text-xs sm:text-sm text-zinc-400 leading-relaxed">
-                    {currentUser
-                      ? lang === 'ml'
-                        ? `നിങ്ങൾ തയ്യാറാക്കുന്ന എല്ലാ സ്റ്റോറികളും ഷോട്ട് പ്രോംപ്റ്റുകളും ${currentUser.email} എന്ന അക്കൗണ്ടിലേക്ക് ഓട്ടോമാറ്റിക്കായി സേവ് ആകുന്നതാണ്.`
-                        : `Every story and shot breakdown you generate automatically syncs to ${currentUser.email}.`
-                      : lang === 'ml'
-                      ? 'ലോഗിൻ ചെയ്യുമ്പോൾ തന്നെ നിങ്ങളുടെ സ്റ്റോറികളും വീഡിയോ/ഫോട്ടോ പ്രോംപ്റ്റുകളും ജിമെയിലിലേക്ക് ഓട്ടോമാറ്റിക് സേവ് ആകും.'
-                      : 'Sign in with Gmail to automatically back up generated stories and shot prompts into your personal cloud vault.'}
-                  </p>
-
-                  <div className="p-3 rounded-xl bg-[#0a0b12] border border-zinc-800 flex items-center justify-between text-xs font-mono">
-                    <span className="text-zinc-400">
-                      {lang === 'ml' ? 'സേവ് ആയ കഥകൾ:' : 'Saved Stories:'}
-                    </span>
-                    <span className="text-amber-400 font-extrabold text-sm">{savedStories.length}</span>
-                  </div>
+                  {currentUser ? (
+                    <div className="space-y-2.5">
+                      <div className="p-3 rounded-xl bg-[#0a0b12] border border-zinc-800 space-y-1">
+                        <div className="text-[11px] text-zinc-400">
+                          {lang === 'ml' ? 'ക്രിയേറ്റർ പ്ലാൻ' : 'Creator Studio Tier'}
+                        </div>
+                        <div className="text-sm font-extrabold text-emerald-400">
+                          {lang === 'ml' ? 'ഫ്രീ ലോക്കൽ എഡിഷൻ ($0 ക്ലൗഡ് ഫീസ്)' : 'Free Local Edition ($0 Cloud Storage)'}
+                        </div>
+                      </div>
+                      <div className="p-3 rounded-xl bg-[#0a0b12] border border-zinc-800 flex items-center justify-between text-xs font-mono">
+                        <span className="text-zinc-400">
+                          {lang === 'ml' ? 'ലോക്കൽ സ്റ്റോറികൾ:' : 'Local Stories:'}
+                        </span>
+                        <span className="text-amber-400 font-extrabold text-sm">{savedStories.length}</span>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-zinc-400 leading-relaxed">
+                      {lang === 'ml'
+                        ? 'നിങ്ങളുടെ അക്കൗണ്ട് വാലറ്റും ക്രെഡിറ്റ് വിവരങ്ങളും കാണാൻ Google വഴി ലോഗിൻ ചെയ്യുക. എഡിറ്റിംഗും എക്സ്പോർട്ടും പൂർണ്ണമായും സൗജന്യമാണ്.'
+                        : 'Sign in with your Google account to access your personal Creator Wallet and account credits. Local editing & exports remain 100% free.'}
+                    </p>
+                  )}
                 </div>
 
-                <div className="flex flex-col gap-2">
-                  {selectedAngle && shots.length > 0 && (
-                    <button
-                      type="button"
-                      onClick={handleSaveCurrentStory}
-                      className="w-full py-3 px-4 rounded-xl bg-zinc-900 hover:bg-amber-500 hover:text-black border border-amber-500/40 text-amber-300 font-extrabold text-xs uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer transition-all"
-                    >
-                      <Download className="w-4 h-4 shrink-0" />
-                      <span>
-                        {lang === 'ml' ? '💾 ഇപ്പോഴത്തെ കഥയും പ്രോംപ്റ്റും സേവ്' : 'Save Current Story & Prompts'}
+                <button
+                  type="button"
+                  onClick={() => setActiveStep('history')}
+                  className="w-full py-2.5 px-4 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-zinc-200 font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer transition-all"
+                >
+                  <History className="w-4 h-4 text-amber-400 shrink-0" />
+                  <span>
+                    {lang === 'ml'
+                      ? `ലോക്കൽ ഹിസ്റ്ററി (${savedStories.length})`
+                      : `Local History (${savedStories.length})`}
+                  </span>
+                </button>
+              </div>
+
+              {/* CARD 3: Promotions & Partner Offers (Auth-Only Feature) */}
+              <div className="bg-[#11131f] border border-zinc-800 hover:border-amber-500/40 rounded-2xl p-5 flex flex-col justify-between space-y-5 shadow-2xl transition-all">
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2.5 text-rose-400">
+                      <div className="p-2.5 rounded-xl bg-rose-500/15 border border-rose-500/30">
+                        <Gift className="w-5 h-5" />
+                      </div>
+                      <h3 className="text-base font-extrabold text-white">
+                        {lang === 'ml' ? 'പ്രൊമോഷനുകൾ' : 'Promotions'}
+                      </h3>
+                    </div>
+                    {!currentUser && (
+                      <span className="px-2 py-0.5 rounded-full bg-zinc-900 border border-zinc-700 text-zinc-400 text-[10px] font-bold inline-flex items-center gap-1">
+                        <Lock className="w-3 h-3" />
+                        <span>{lang === 'ml' ? 'അക്കൗണ്ട്' : 'Account Only'}</span>
                       </span>
-                    </button>
+                    )}
+                  </div>
+
+                  {currentUser ? (
+                    <div className="space-y-2">
+                      <div className="p-3 rounded-xl bg-[#0a0b12] border border-rose-500/25 space-y-1">
+                        <div className="text-xs font-extrabold text-rose-300">
+                          {lang === 'ml' ? 'ക്രിയേറ്റർ വെൽക്കം പാസ്' : 'Creator Member Perks Active'}
+                        </div>
+                        <p className="text-[11px] text-zinc-400 leading-relaxed">
+                          {lang === 'ml'
+                            ? 'സീറോ-ക്ലൗഡ് HD ലോക്കൽ എക്സ്പോർട്ട്, 360+ സ്റ്റോറി കാറ്റഗറികൾ, VFX & കളർ ഗ്രേഡിംഗ് എല്ലാം സജീവമാണ്.'
+                            : 'Full access active for your account — seasonal creator campaigns and partner offers appear here when available.'}
+                        </p>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-zinc-400 leading-relaxed">
+                      {lang === 'ml'
+                        ? 'അക്കൗണ്ട് ഉടമകൾക്കുള്ള പ്രത്യേക പ്രൊമോഷനുകളും ക്രിയേറ്റർ ഓഫറുകളും കാണാൻ സൈൻ ഇൻ ചെയ്യുക.'
+                        : 'Sign in with Google to view account-only creator promotions, reward campaigns, and partner offers.'}
+                    </p>
                   )}
+                </div>
+
+                {!currentUser ? (
                   <button
                     type="button"
-                    onClick={() => setActiveStep('history')}
-                    className="w-full py-3 px-4 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-zinc-200 font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer transition-all"
+                    onClick={handleUserGoogleLogin}
+                    disabled={userAuthBusy}
+                    className="w-full py-2.5 px-4 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-amber-500/40 text-amber-300 font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer transition-all disabled:opacity-50"
                   >
-                    <History className="w-4 h-4 text-amber-400 shrink-0" />
-                    <span>
-                      {lang === 'ml'
-                        ? `സ്റ്റോറി ഹിസ്റ്ററി കാണുക (${savedStories.length})`
-                        : `View Story History (${savedStories.length})`}
-                    </span>
+                    <ShieldCheck className="w-4 h-4 shrink-0" />
+                    <span>{lang === 'ml' ? 'അക്കൗണ്ട് തുറക്കുക' : 'Unlock Account Area'}</span>
                   </button>
-                </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setActiveStep('input')}
+                    className="w-full py-2.5 px-4 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-zinc-200 font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer transition-all"
+                  >
+                    <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
+                    <span>{lang === 'ml' ? 'പുതിയ സ്റ്റോറി' : 'Create Story'}</span>
+                  </button>
+                )}
               </div>
+            </div>
+
+            {/* Native Sponsor Card in Account View */}
+            <div className="col-span-full">
+              <NativeCardAd slotId="account-sponsor-card" slotIndex={2} />
             </div>
           </div>
         )}
@@ -3178,7 +3550,7 @@ ${imgPromptText}`;
             </span>
           </button>
 
-          {/* Tab 6: Login */}
+          {/* Tab 6: Account (Profile, Wallet, Promotions) */}
           <button
             type="button"
             onClick={() => {
@@ -3194,13 +3566,19 @@ ${imgPromptText}`;
             <div className="relative w-6 h-6 rounded-lg overflow-hidden border border-amber-500/40 shrink-0 shadow-inner">
               <img
                 src={currentUser?.photoURL || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=100&q=80"}
-                alt="Login"
+                alt="Account"
                 className="w-full h-full object-cover"
               />
               <div className="absolute inset-0 bg-black/20" />
             </div>
             <span className="truncate max-w-full whitespace-nowrap">
-              {lang === 'ml' ? 'ലോഗിൻ' : 'Login'}
+              {currentUser
+                ? lang === 'ml'
+                  ? 'പ്രൊഫൈൽ'
+                  : 'Profile'
+                : lang === 'ml'
+                ? 'അക്കൗണ്ട്'
+                : 'Account'}
             </span>
           </button>
         </div>

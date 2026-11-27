@@ -475,7 +475,7 @@
         "resolution": {
           "type": "string",
           "description": "Selected export resolution.",
-          "enum": ["720p", "1080p", "4K"],
+          "enum": ["420p", "720p", "1080p"],
           "maxLength": 10
         },
         "aspectRatio": {

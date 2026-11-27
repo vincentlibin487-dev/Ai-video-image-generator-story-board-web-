@@ -302,15 +302,32 @@ function acquireModalVideoLock(): () => void {
  * - Uses strict opaque-origin srcDoc isolation (NO `allow-same-origin` alongside `allow-scripts`)
  *   so third-party ad scripts CANNOT access `window.top`, attach invisible overlays,
  *   intercept Storyboard touch/scroll events, or block the main React UI thread.
- * - Zero synchronous DOM/innerText polling and zero simultaneous 3.2s reload bursts.
+/**
+ * Pure Frameless Dual-Network Banner Renderer (Adsterra <-> HilltopAds).
+ * - Uses strict opaque-origin srcDoc isolation (NO `allow-same-origin` alongside `allow-scripts`)
+ *   so third-party ad scripts CANNOT access `window.top`, attach invisible overlays,
+ *   intercept Storyboard touch/scroll events, or block the main React UI thread.
+ * - Auto-Collapsing & Zero Broken Boxes: Gracefully detects empty ad fills, timeouts, or network blocks
+ *   and collapses container height to 0 with zero empty/broken placeholders.
+ * - Smart Dual-Network Fallback: Tries secondary partner if primary fails before collapsing.
  */
 export const DualNetworkBannerFrame: React.FC<{
   slotId: string;
   slotIndex?: number;
-  preferFormat?: 'banner' | 'square' | 'wide';
+  preferFormat?: 'banner' | 'square' | 'wide' | 'compact';
   maxHeight?: number;
   title?: string;
-}> = ({ slotId, slotIndex = 0, preferFormat = 'banner', maxHeight, title = 'Advertisement' }) => {
+  onCollapse?: () => void;
+  onLoad?: () => void;
+}> = ({
+  slotId,
+  slotIndex = 0,
+  preferFormat = 'banner',
+  maxHeight,
+  title = 'Advertisement',
+  onCollapse,
+  onLoad,
+}) => {
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const [inView, setInView] = useState<boolean>(false);
   const [mountReady, setMountReady] = useState<boolean>(false);
@@ -320,7 +337,27 @@ export const DualNetworkBannerFrame: React.FC<{
   const [containerWidth, setContainerWidth] = useState<number>(() =>
     typeof window !== 'undefined' ? Math.min(window.innerWidth, 760) : 360
   );
-  const activeNetwork: 'adsterra' | 'hilltop' = slotIndex % 2 === 0 ? 'hilltop' : 'adsterra';
+  const [currentNetwork, setCurrentNetwork] = useState<'adsterra' | 'hilltop'>(() =>
+    slotIndex % 2 === 0 ? 'adsterra' : 'hilltop'
+  );
+  const [swapAttempts, setSwapAttempts] = useState<number>(0);
+  const [isCollapsed, setIsCollapsed] = useState<boolean>(false);
+  const [isAdLoaded, setIsAdLoaded] = useState<boolean>(false);
+
+  const onCollapseRef = useRef(onCollapse);
+  onCollapseRef.current = onCollapse;
+  const onLoadRef = useRef(onLoad);
+  onLoadRef.current = onLoad;
+
+  const handleFailure = React.useCallback(() => {
+    if (swapAttempts === 0) {
+      setSwapAttempts(1);
+      setCurrentNetwork((prev) => (prev === 'adsterra' ? 'hilltop' : 'adsterra'));
+    } else {
+      setIsCollapsed(true);
+      if (onCollapseRef.current) onCollapseRef.current();
+    }
+  }, [swapAttempts]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -388,14 +425,46 @@ export const DualNetworkBannerFrame: React.FC<{
   // Stagger iframe script hydration lightly when multiple banners enter near load
   useEffect(() => {
     if (!inView) return;
-    const delayMs = 80 + (slotIndex % 4) * 140;
+    const delayMs = 60 + (slotIndex % 3) * 120;
     const timer = window.setTimeout(() => setMountReady(true), delayMs);
     return () => window.clearTimeout(timer);
   }, [inView, slotIndex]);
 
+  // Listen for status reports from the isolated sandboxed iframe
+  useEffect(() => {
+    const handler = (evt: MessageEvent) => {
+      if (evt.data?.type === 'CINE_AD_STATUS' && evt.data?.slotId === slotId) {
+        if (evt.data.status === 'loaded') {
+          setIsAdLoaded(true);
+          if (onLoadRef.current) onLoadRef.current();
+        } else if (evt.data.status === 'error' || evt.data.status === 'empty') {
+          handleFailure();
+        }
+      }
+    };
+    window.addEventListener('message', handler);
+    return () => window.removeEventListener('message', handler);
+  }, [slotId, handleFailure]);
+
+  // Failsafe timeout: if iframe remains completely silent or un-hydrated, gracefully collapse
+  useEffect(() => {
+    if (!mountReady || isAdLoaded || isCollapsed) return;
+    const timer = window.setTimeout(() => {
+      if (!isAdLoaded) {
+        handleFailure();
+      }
+    }, 5500);
+    return () => window.clearTimeout(timer);
+  }, [mountReady, isAdLoaded, isCollapsed, handleFailure]);
+
   const adDetails = useMemo(() => {
-    if (activeNetwork === 'adsterra') {
-      const cfg = isDesktop ? ADSTERRA_CONFIG.desktop728x90 : ADSTERRA_CONFIG.mobile320x50;
+    if (currentNetwork === 'adsterra') {
+      let cfg = ADSTERRA_CONFIG.mobile320x50;
+      if (preferFormat === 'compact') {
+        cfg = ADSTERRA_CONFIG.mobile320x50;
+      } else if (isDesktop && (preferFormat === 'banner' || preferFormat === 'wide')) {
+        cfg = ADSTERRA_CONFIG.desktop728x90;
+      }
       const scriptHtml = `<script type="text/javascript">
         atOptions = {
           'key': '${cfg.key}',
@@ -405,12 +474,18 @@ export const DualNetworkBannerFrame: React.FC<{
           'params': {}
         };
       </script>
-      <script type="text/javascript" src="${cfg.invokeUrl}" async></script>`;
+      <script type="text/javascript" src="${cfg.invokeUrl}" async onerror="window.__cineAdErr && window.__cineAdErr()"></script>`;
       return { width: cfg.width, height: cfg.height, scriptHtml };
     }
 
-    const is300x250 = preferFormat === 'square' || (!isDesktop && preferFormat !== 'wide');
-    const cfg = is300x250 ? HILLTOP_CONFIG.banner300x250 : HILLTOP_CONFIG.banner300x100;
+    // Hilltop Ads network
+    let cfg = HILLTOP_CONFIG.banner300x100;
+    if (preferFormat === 'square') {
+      cfg = HILLTOP_CONFIG.banner300x250;
+    } else {
+      cfg = HILLTOP_CONFIG.banner300x100;
+    }
+
     const scriptHtml = `<script>
       (function(cfg){
         var d = document,
@@ -420,6 +495,7 @@ export const DualNetworkBannerFrame: React.FC<{
         s.src = "${cfg.src}";
         s.async = true;
         s.referrerPolicy = 'no-referrer-when-downgrade';
+        s.onerror = function() { if (window.__cineAdErr) window.__cineAdErr(); };
         if (l && l.parentNode) {
           l.parentNode.insertBefore(s, l);
         } else if (d.body) {
@@ -428,7 +504,7 @@ export const DualNetworkBannerFrame: React.FC<{
       })({});
     </script>`;
     return { width: cfg.width, height: cfg.height, scriptHtml };
-  }, [activeNetwork, isDesktop, preferFormat]);
+  }, [currentNetwork, isDesktop, preferFormat]);
 
   const bannerSrcDoc = useMemo(() => {
     return `<!doctype html>
@@ -453,10 +529,50 @@ export const DualNetworkBannerFrame: React.FC<{
     </style>
   </head>
   <body>
+    <script>
+      (function() {
+        var notified = false;
+        function notifyParent(status) {
+          if (notified) return;
+          notified = true;
+          try {
+            window.parent.postMessage({ type: 'CINE_AD_STATUS', slotId: '${slotId}', status: status }, '*');
+          } catch(e) {}
+        }
+        window.__cineAdErr = function() {
+          notifyParent('error');
+        };
+        window.addEventListener('error', function() {
+          notifyParent('error');
+        });
+        var checks = 0;
+        var timer = setInterval(function() {
+          checks++;
+          var b = document.body;
+          if (b) {
+            var el = b.querySelector('iframe, img, a[href], video, canvas, ins, div[id*="ad"], div[class*="ad"]');
+            var txt = (b.innerText || '').trim();
+            if (el || txt.length > 2) {
+              clearInterval(timer);
+              notifyParent('loaded');
+              return;
+            }
+          }
+          if (checks >= 38) {
+            clearInterval(timer);
+            notifyParent('empty');
+          }
+        }, 100);
+      })();
+    </script>
     ${adDetails.scriptHtml}
   </body>
 </html>`;
-  }, [adDetails]);
+  }, [adDetails, slotId]);
+
+  if (isCollapsed) {
+    return null;
+  }
 
   const safeWidth = maxHeight ? Math.max(96, containerWidth) : Math.max(260, containerWidth);
   const heightScale = maxHeight ? maxHeight / adDetails.height : 1;
@@ -465,9 +581,13 @@ export const DualNetworkBannerFrame: React.FC<{
   const scaledHeight = Math.max(1, Math.floor(adDetails.height * scale));
 
   return (
-    <div ref={wrapperRef} className="w-full max-w-full flex items-center justify-center">
+    <div
+      ref={wrapperRef}
+      className="w-full max-w-full flex flex-col items-center justify-center transition-all duration-300"
+      style={{ contain: 'layout style paint' }}
+    >
       <div
-        className="relative overflow-hidden mx-auto flex items-center justify-center"
+        className="relative overflow-hidden mx-auto flex items-center justify-center transition-all duration-300"
         style={{
           width: `${scaledWidth}px`,
           height: `${scaledHeight}px`,
@@ -477,7 +597,7 @@ export const DualNetworkBannerFrame: React.FC<{
       >
         {inView && mountReady && (
           <iframe
-            key={`${slotId}-${activeNetwork}-${adDetails.width}x${adDetails.height}`}
+            key={`${slotId}-${currentNetwork}-${adDetails.width}x${adDetails.height}-${swapAttempts}`}
             srcDoc={bannerSrcDoc}
             title={title}
             loading="lazy"
@@ -486,6 +606,7 @@ export const DualNetworkBannerFrame: React.FC<{
             referrerPolicy="no-referrer-when-downgrade"
             sandbox="allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox"
             allow="autoplay; encrypted-media"
+            onError={() => handleFailure()}
             style={{
               width: `${adDetails.width}px`,
               height: `${adDetails.height}px`,
@@ -499,6 +620,80 @@ export const DualNetworkBannerFrame: React.FC<{
           />
         )}
       </div>
+    </div>
+  );
+};
+
+/**
+ * Clean, compact small ad slot (320x50 / 300x50 format).
+ * Designed specifically for non-intrusive placement between sections, below duration presets,
+ * between cards, and inside list views.
+ * Gracefully auto-collapses to 0 height if no ad fills or network fails.
+ */
+export const CompactSmallBannerAd: React.FC<{
+  slotId: string;
+  slotIndex?: number;
+  className?: string;
+  label?: string;
+}> = ({ slotId, slotIndex = 0, className = '', label = 'Sponsor' }) => {
+  const [collapsed, setCollapsed] = useState<boolean>(false);
+
+  if (collapsed) return null;
+
+  return (
+    <div
+      className={`col-span-full w-full max-w-md mx-auto my-2 px-1 flex flex-col items-center justify-center transition-all duration-200 ${className}`}
+    >
+      <div className="w-full flex items-center justify-center gap-1.5 mb-0.5">
+        <span className="text-[8px] font-mono text-zinc-500 uppercase tracking-widest">
+          Sponsored
+        </span>
+      </div>
+      <DualNetworkBannerFrame
+        slotId={slotId}
+        slotIndex={slotIndex}
+        preferFormat="compact"
+        maxHeight={54}
+        title={label}
+        onCollapse={() => setCollapsed(true)}
+      />
+    </div>
+  );
+};
+
+/**
+ * Native Card Style Small Ad:
+ * Clean card container that matches CineStoryboard AI's dark theme (#0f111c, border-zinc-800)
+ * with a subtle 'SPONSORED' tag. If ad fails or is empty, the entire card smoothly collapses.
+ */
+export const NativeCardAd: React.FC<{
+  slotId: string;
+  slotIndex?: number;
+  className?: string;
+  label?: string;
+}> = ({ slotId, slotIndex = 0, className = '', label = 'Featured Partner' }) => {
+  const [collapsed, setCollapsed] = useState<boolean>(false);
+
+  if (collapsed) return null;
+
+  return (
+    <div
+      className={`col-span-full w-full max-w-xl mx-auto my-2.5 p-2 rounded-xl bg-[#0f111c]/90 border border-zinc-800/80 shadow-md flex flex-col items-center justify-center gap-1.5 transition-all duration-200 ${className}`}
+    >
+      <div className="w-full flex items-center justify-between px-2 text-[9px] font-mono text-zinc-500 uppercase tracking-widest">
+        <span>{label}</span>
+        <span className="text-[8px] px-1 rounded bg-zinc-900 border border-zinc-800 text-zinc-400 font-bold">
+          AD
+        </span>
+      </div>
+      <DualNetworkBannerFrame
+        slotId={slotId}
+        slotIndex={slotIndex}
+        preferFormat="banner"
+        maxHeight={80}
+        title={label}
+        onCollapse={() => setCollapsed(true)}
+      />
     </div>
   );
 };
@@ -876,9 +1071,19 @@ export const FullWidthShowcaseAd: React.FC<{ slotId: string }> = ({ slotId }) =>
 export const InFeedBannerAd: React.FC<{
   slotId: string;
   slotIndex?: number;
-  size?: 'auto' | 'large' | 'wide';
+  size?: 'auto' | 'large' | 'wide' | 'compact';
 }> = ({ slotId, slotIndex = 0, size = 'auto' }) => {
-  const preferFormat = size === 'large' ? 'square' : size === 'wide' ? 'wide' : 'banner';
+  const [collapsed, setCollapsed] = useState<boolean>(false);
+  const preferFormat =
+    size === 'large'
+      ? 'square'
+      : size === 'wide'
+      ? 'wide'
+      : size === 'compact'
+      ? 'compact'
+      : 'banner';
+
+  if (collapsed) return null;
 
   return (
     <div className="col-span-full w-full max-w-4xl mx-auto my-2 flex items-center justify-center">
@@ -887,6 +1092,7 @@ export const InFeedBannerAd: React.FC<{
         slotIndex={slotIndex}
         preferFormat={preferFormat}
         title={`In-Feed Banner ${slotId}`}
+        onCollapse={() => setCollapsed(true)}
       />
     </div>
   );

@@ -60,7 +60,7 @@ export interface VideoEditLogRecord {
   actionType: VideoEditActionType;
   projectTitle: string;
   clipCount: number;
-  resolution: '720p' | '1080p' | '4K';
+  resolution: '420p' | '720p' | '1080p';
   aspectRatio: '16:9' | '9:16' | '1:1' | '4:5' | '21:9' | '4:3';
   exportDurationSec: number;
   deviceType: DeviceCategory;
@@ -486,7 +486,7 @@ export async function recordGenerationActivity(params: {
   }
 }
 
-const VALID_VIDEO_RESOLUTIONS = ['720p', '1080p', '4K'] as const;
+const VALID_VIDEO_RESOLUTIONS = ['420p', '720p', '1080p'] as const;
 const VALID_ASPECT_RATIOS = ['16:9', '9:16', '1:1', '4:5', '21:9', '4:3'] as const;
 
 export async function recordVideoEditorActivity(params: {
@@ -508,8 +508,8 @@ export async function recordVideoEditorActivity(params: {
   const path = `video_edit_logs/${editId}`;
 
   const safeResolution = (VALID_VIDEO_RESOLUTIONS as readonly string[]).includes(String(params.resolution))
-    ? (params.resolution as '720p' | '1080p' | '4K')
-    : '1080p';
+    ? (params.resolution as '420p' | '720p' | '1080p')
+    : '720p';
   const safeRatio = (VALID_ASPECT_RATIOS as readonly string[]).includes(String(params.aspectRatio))
     ? (params.aspectRatio as '16:9' | '9:16' | '1:1' | '4:5' | '21:9' | '4:3')
     : '16:9';

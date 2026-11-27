@@ -40,6 +40,12 @@ export type AudioSynthKind =
   | 'trailer'
   | 'electronic'
   | 'upbeat'
+  | 'music_horror'
+  | 'music_romance'
+  | 'music_malayalam'
+  | 'music_birthday'
+  | 'music_action_brass'
+  | 'music_hiphop'
   | 'sfx_whoosh'
   | 'sfx_glass_break'
   | 'sfx_fire_burn'
@@ -504,13 +510,123 @@ export function scheduleSynthPreset(
       return dur;
     }
 
+    case 'music_horror': {
+      // Eerie sub-bass drone + dissonant tritone strings + slow heartbeat pulse + high ghost chime
+      osc('sine', 55, startAt, startAt + dur, 0.34);
+      osc('sawtooth', 77.78, startAt, startAt + dur, 0.09); // dissonant minor/tritone tension
+      const beats = Math.max(2, Math.floor(dur / 0.9));
+      for (let i = 0; i < beats; i += 1) {
+        const t = startAt + i * 0.9;
+        const { o: thump } = osc('sine', 95, t, t + 0.25, 0.42);
+        thump.frequency.exponentialRampToValueAtTime(34, t + 0.22);
+        if (i % 2 === 1) {
+          osc('sine', 1318.5 + (seed % 5) * 40, t + 0.15, t + 0.75, 0.08);
+        }
+      }
+      return dur;
+    }
+
+    case 'music_romance': {
+      // Lush cinematic piano/pad arpeggio progression (Cmaj7 -> Am7 -> Fmaj7 -> G6)
+      const chords = [
+        [261.63, 329.63, 392.0, 493.88],
+        [220.0, 261.63, 329.63, 392.0],
+        [174.61, 220.0, 261.63, 329.63],
+        [196.0, 246.94, 293.66, 329.63],
+      ];
+      const step = 0.28;
+      const steps = Math.max(4, Math.floor(dur / step));
+      for (let i = 0; i < steps; i += 1) {
+        const t = startAt + i * step;
+        const ch = chords[Math.floor(i / 4) % chords.length];
+        const note = ch[i % ch.length];
+        osc('sine', note, t, t + 0.65, 0.2);
+        if (i % 4 === 0) {
+          osc('triangle', ch[0] * 0.5, t, t + 1.1, 0.18);
+        }
+      }
+      return dur;
+    }
+
+    case 'music_malayalam': {
+      // Energetic South-Indian mass rhythm + soaring pentatonic brass/synth hook
+      const melody = [293.66, 349.23, 392.0, 440.0, 523.25, 440.0, 392.0, 349.23];
+      const step = 0.19;
+      const steps = Math.max(4, Math.floor(dur / step));
+      for (let i = 0; i < steps; i += 1) {
+        const t = startAt + i * step;
+        if (i % 2 === 0) {
+          const { o: drum } = osc('sine', 135, t, t + 0.14, 0.4);
+          drum.frequency.exponentialRampToValueAtTime(46, t + 0.12);
+        }
+        const f = melody[(i + seed) % melody.length];
+        osc('sawtooth', f, t, t + step * 0.85, 0.16);
+        osc('triangle', f * 0.5, t, t + step * 0.9, 0.14);
+      }
+      return dur;
+    }
+
+    case 'music_birthday': {
+      // Joyful Happy Birthday celebration melody + sparkling bell chimes
+      const notes = [261.63, 261.63, 293.66, 261.63, 349.23, 329.63, 261.63, 261.63, 293.66, 261.63, 392.0, 349.23];
+      const step = 0.34;
+      const steps = Math.max(4, Math.floor(dur / step));
+      for (let i = 0; i < steps; i += 1) {
+        const t = startAt + i * step;
+        const f = notes[i % notes.length];
+        osc('triangle', f, t, t + step * 0.9, 0.24);
+        osc('sine', f * 2, t, t + step * 0.45, 0.09);
+      }
+      return dur;
+    }
+
+    case 'music_action_brass':
+    case 'trailer': {
+      // Epic trailer impact drums + deep octave brass stabs
+      const step = 0.25;
+      const steps = Math.max(4, Math.floor(dur / step));
+      const rootNotes = [110, 110, 130.81, 146.83, 110, 164.81, 146.83, 130.81];
+      for (let i = 0; i < steps; i += 1) {
+        const t = startAt + i * step;
+        const f = rootNotes[(i + seed) % rootNotes.length];
+        osc('sawtooth', f, t, t + step * 0.88, 0.2);
+        osc('sawtooth', f * 1.5, t, t + step * 0.8, 0.12);
+        if (i % 4 === 0) {
+          const { o: boom } = osc('sine', 120, t, t + 0.32, 0.48);
+          boom.frequency.exponentialRampToValueAtTime(34, t + 0.28);
+        }
+      }
+      return dur;
+    }
+
+    case 'music_hiphop': {
+      // Punchy 808 kick + hi-hat snap + dark trap synth progression
+      const step = 0.22;
+      const steps = Math.max(4, Math.floor(dur / step));
+      const trapNotes = [196.0, 233.08, 261.63, 293.66, 233.08, 196.0];
+      for (let i = 0; i < steps; i += 1) {
+        const t = startAt + i * step;
+        if (i % 4 === 0 || i % 8 === 5) {
+          const { o: kick } = osc('sine', 110, t, t + 0.22, 0.46);
+          kick.frequency.exponentialRampToValueAtTime(38, t + 0.18);
+        }
+        if (i % 2 === 1) {
+          osc('square', 6400, t, t + 0.04, 0.05);
+        }
+        if (i % 2 === 0) {
+          osc('triangle', trapNotes[(i + seed) % trapNotes.length], t, t + 0.36, 0.18);
+        }
+      }
+      return dur;
+    }
+
     case 'comedy':
     case 'comedy_chase':
     case 'comedy_ukulele':
     case 'comedy_whistle':
     case 'upbeat':
     default: {
-      // Rhythmic bouncy comedy/upbeat loop
+      // Rhythmic bouncy comedy/upbeat/cinema loop
       const melody =
         preset === 'comedy_chase'
           ? [392, 440, 493.88, 523.25, 587.33, 523.25, 493.88, 440]
@@ -519,18 +635,21 @@ export function scheduleSynthPreset(
           : preset === 'lofi' || preset === 'cinematic'
           ? [220, 261.63, 329.63, 293.66, 246.94]
           : [261.63, 329.63, 392, 329.63, 440, 392, 349.23, 293.66];
-      const step = preset === 'comedy_chase' ? 0.14 : preset === 'lofi' || preset === 'cinematic' ? 0.52 : 0.24;
+      const step = preset === 'comedy_chase' ? 0.14 : preset === 'lofi' || preset === 'cinematic' ? 0.46 : 0.24;
       const steps = Math.max(4, Math.floor(dur / step));
       const wave: OscillatorType =
         preset === 'comedy_whistle' || preset === 'lofi'
           ? 'sine'
-          : preset === 'electronic' || preset === 'trailer'
+          : preset === 'electronic'
           ? 'sawtooth'
           : 'triangle';
       for (let i = 0; i < steps; i += 1) {
         const t = startAt + i * step;
         const f = melody[(i + seed) % melody.length];
         osc(wave, f, t, t + step * 0.85, 0.2);
+        if (i % 4 === 0 && (preset === 'cinematic' || preset === 'lofi' || preset === 'upbeat')) {
+          osc('sine', f * 0.5, t, t + step * 1.8, 0.15);
+        }
       }
       return dur;
     }

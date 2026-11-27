@@ -1,5 +1,17 @@
 import { GoogleGenAI, ThinkingLevel } from '@google/genai';
-import { generateStoryAnglesLocal, mergeAnglesEnsuringAllCategories } from '../src/lib/storyEngine';
+import {
+  DialogueMode,
+  generateStoryAnglesLocal,
+  isExplicitlySilent,
+  mapGroupToGenreKey,
+  mergeAnglesEnsuringAllCategories,
+} from '../src/lib/storyEngine';
+import {
+  STORY_CATEGORIES,
+  getCategoryById,
+  getCategoryGroup,
+  type StoryCategory,
+} from '../src/lib/storyCategories';
 import { AppLang, getLangConfig } from '../src/lib/i18n';
 
 function getGeminiClient(): GoogleGenAI | null {
@@ -40,9 +52,11 @@ export default async function handler(req: any, res: any) {
     const {
       script,
       language = 'ml',
-      dialogueMode = 'dynamic',
+      dialogueMode = 'dialogue',
       targetShotCount = 8,
       durationDisplay = '',
+      categoryId = 'all',
+      fastMode = false,
     } = body;
 
     if (!script || typeof script !== 'string' || script.trim().length === 0) {
@@ -51,86 +65,227 @@ export default async function handler(req: any, res: any) {
 
     const langConfig = getLangConfig(language);
     const langCode = langConfig.code as AppLang;
-    const clipCount = Math.max(4, Number(targetShotCount) || 8);
-    const modeNote =
-      dialogueMode === 'silent'
-        ? 'Format every variation for PURE VISUAL / SLAPSTICK SILENT COMEDY or VISUAL STORYTELLING (zero spoken dialogue, rich visual humor and reactions).'
-        : dialogueMode === 'dialogue'
-        ? 'Include crisp, varied spoken dialogue cues with zero repeated lines across situations.'
-        : 'Blend punchy dialogue moments with hilarious silent visual-comedy reactions dynamically.';
+    const clipCount = Math.max(1, Number(targetShotCount) || 8);
+    const rawMode: DialogueMode =
+      dialogueMode === 'silent' || dialogueMode === 'dialogue' ? dialogueMode : 'dynamic';
+    const effectiveMode: DialogueMode = isExplicitlySilent(script) ? 'silent' : rawMode;
+    const selectedCategory =
+      categoryId && categoryId !== 'all' ? getCategoryById(categoryId) : undefined;
 
-    // Ultra-fast 4 parallel small AI batches (2-4 angles each) for crisp ~3-5s generation
+    if (fastMode) {
+      const angles = generateStoryAnglesLocal(
+        script,
+        langCode,
+        clipCount,
+        selectedCategory?.id || 'all',
+        effectiveMode
+      );
+      return res.status(200).json({ angles });
+    }
+
     const ai = getGeminiClient();
-    if (ai) {
-      try {
-        const generateBatch = async (cats: string[], countPerCat: number) => {
-          const total = cats.length * countPerCat;
-          const nativeOnlyRule =
-            langCode === 'en'
-              ? 'Write all fields clearly in natural English.'
-              : `100% PURE ${langConfig.geminiLangName} ONLY: Write ALL fields (genre, title, mood, bgm, continuity, characters, storySummary) strictly in pure ${langConfig.geminiLangName} Unicode script. ZERO English words or foreign letters.`;
+    if (!ai) {
+      return res.status(503).json({
+        error: 'Gemini API key is not configured on the server.',
+      });
+    }
 
-          const systemInstruction = `Master Film Screenwriter: Transform the user's brief story idea into ${total} COMPLETELY DIFFERENT multi-character film stories (${countPerCat} distinct storylines per category for: ${JSON.stringify(cats)}).
-CRITICAL NON-REPETITION & STORY EXPANSION RULES:
-1. SEED USED ONCE ONLY (ZERO REPETITION): Treat the user's input STRICTLY as Sentence 1 (the opening hook). NEVER repeat, echo, or re-paste the user's opening lines again in later sentences of "storySummary"! Every sentence after Sentence 1 must introduce brand-new events.
-2. EXPAND WITH NEW CHARACTERS & MULTIPLE SITUATIONS FOR A ${clipCount}-CLIP (${durationDisplay || `${clipCount} shots`}) VIDEO:
-   - Invent 2 to 4 NEW supporting characters with natural local names in "characters" suited to each category.
-   - Write a flowing 4 to 5 sentence narrative story in "storySummary":
-     * Sentence 1: Opening moment adapted from the user's seed.
-     * Sentence 2: A NEW named character enters and sparks a concrete problem, threat, or comic misunderstanding.
-     * Sentence 3: An escalating second situation / chase / emotional twist involving another obstacle.
-     * Sentence 4: Surprising turning point + concrete climax resolution & satisfying ending.
-3. Each variation across ${JSON.stringify(cats)} must tell a TOTALLY different story plot, conflict, and ending matching its category (Thriller mystery vs Comedy chaos vs Action escape vs Folk horror vs Sci-Fi twist vs Emotional Drama vs Commercial Ad).
-4. ${modeNote}
-5. ${nativeOnlyRule}
-6. Include rich "bgm" (background music & SFX) and "continuity" (visual wardrobe/prop continuity). Keep "catKey" strictly as the exact lowercase ASCII tag from ${JSON.stringify(cats)}.
+    const modeNote =
+      effectiveMode === 'silent'
+        ? 'Format every variation for PURE VISUAL / WORDLESS STORYTELLING (zero spoken dialogue anywhere — express plot, emotion, and tension purely through eyes, action, lighting, props, and ambient SFX).'
+        : effectiveMode === 'dialogue'
+        ? 'Even though the user may have provided only a brief situation with NO dialogues, automatically craft natural, character-specific spoken dialogue moments tailored strictly to the category and characters with zero repeated lines.'
+        : 'Dynamically blend crisp character-driven spoken dialogue beats with expressive silent visual-reaction moments.';
 
-JSON only:
-{ "angles": [{ "catKey": "${cats[0]}", "genre": "...", "title": "...", "mood": "...", "bgm": "...", "continuity": "...", "characters": "...", "storySummary": "..." }] }`;
+    const nativeOnlyRule =
+      langCode === 'en'
+        ? 'Write genre, title, mood, bgm, continuity, characters, and storySummary clearly in natural English.'
+        : `100% PURE ${langConfig.geminiLangName} ONLY: Write genre, title, mood, bgm, continuity, characters, and storySummary strictly in pure ${langConfig.geminiLangName} Unicode script. ZERO English letters in narrative/dialogue text.`;
 
-          const resBatch = await withTimeout(
+    const normalizeAiAngle = (a: any, idx: number, cat: StoryCategory) => {
+      const grp = getCategoryGroup(cat.groupId);
+      const summary = a.storySummary || a.synopsis || script.trim();
+      const chars = a.characters || '';
+      const bgm = a.bgm || `${cat.bgmVibe} (${cat.pacing})`;
+      const continuity = a.continuity || `${cat.visualStyle}; ${cat.settingCue}`;
+      return {
+        ...a,
+        id: `angle-${idx + 1}`,
+        catKey: mapGroupToGenreKey(cat.groupId),
+        categoryId: cat.id,
+        categoryName: cat.name,
+        categoryGroup: cat.groupId,
+        visualStyle: cat.visualStyle,
+        cameraFocus: cat.cameraFocus,
+        genre: a.genre || `${grp.labels[langCode] || grp.labels.en} · ${cat.name}`,
+        synopsis: a.synopsis || a.mood || cat.tone,
+        bgm,
+        continuity,
+        scriptText:
+          a.scriptText ||
+          `${summary}\n\n[CATEGORY_ID: ${cat.id}]\n[CHARACTERS: ${chars}]\n[BGM STYLE: ${bgm}]\n[CONTINUITY: ${continuity}]`,
+      };
+    };
+
+    const callGeminiWithRetry = async (contents: string, systemInstruction: string, timeoutMs = 18000) => {
+      let lastErr: any;
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          const response = await withTimeout(
             ai.models.generateContent({
-              model: 'gemini-3.1-flash-lite',
-              contents: `Language: ${langConfig.geminiLangName}\nDialogue Mode: ${dialogueMode}\nVideo Length: ${clipCount} clips (${durationDisplay || `${clipCount} shots`})\nUser's Short Opening Seed: "${script.trim()}"`,
+              model: 'gemini-4-hydrogen',
+              contents,
               config: {
                 systemInstruction,
                 responseMimeType: 'application/json',
                 thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
               },
             }),
-            16000
+            timeoutMs
           );
-          const parsed = JSON.parse(resBatch.text || '{}');
-          return Array.isArray(parsed.angles) ? parsed.angles : [];
-        };
-
-        const settled = await Promise.allSettled([
-          generateBatch(['thriller', 'drama'], 2),
-          generateBatch(['action', 'folk'], 2),
-          generateBatch(['scifi', 'comedy'], 2),
-          generateBatch(['ad'], 2),
-        ]);
-
-        const fallbackAngles = generateStoryAnglesLocal(script, langCode, clipCount);
-        const combined = settled.flatMap((r) => (r.status === 'fulfilled' ? r.value : []));
-        if (combined.length >= 4) {
-          const normalized = combined.map((a: any, idx: number) => ({
-            ...a,
-            id: `angle-${idx + 1}`,
-            synopsis: a.synopsis || a.mood || a.genre,
-            scriptText:
-              a.scriptText ||
-              `${a.storySummary || script.trim()}\n\n[CHARACTERS: ${a.characters || ''}]\n[BGM STYLE: ${a.bgm || ''}]\n[CONTINUITY: ${a.continuity || ''}]`,
-          }));
-          return res.status(200).json({ angles: mergeAnglesEnsuringAllCategories(normalized, fallbackAngles) });
+          const parsed = JSON.parse(response.text || '{}');
+          if (Array.isArray(parsed.angles) && parsed.angles.length > 0) {
+            return parsed.angles;
+          }
+          lastErr = new Error('Empty story angles array returned by Gemini.');
+        } catch (err: any) {
+          lastErr = err;
         }
+      }
+      throw lastErr;
+    };
+
+    if (selectedCategory) {
+      const grp = getCategoryGroup(selectedCategory.groupId);
+      const twistsA = [
+        'Intimate Face-to-Face Focus (eyes, proximity, micro-expressions)',
+        'Atmospheric Visual Poetry (lighting, rain/shadow textures, silence)',
+        'Unexpected Plot Twist (sudden reveal flipping character dynamic)',
+        'Escalating Pace & Stakes (tight reactions, heightened tension)',
+      ];
+      const twistsB = [
+        'Heart-First Emotional Resonance (vulnerability & honesty)',
+        'Suspenseful Hidden-Motive Subtext (glances concealing secrets)',
+        'Playful Spontaneous Chemistry (witty timing & warmth)',
+        'Grand Signature Finale (sweeping closing frame & payoff)',
+      ];
+
+      const runFocusedBatch = async (twists: string[], batchOffset: number) => {
+        const systemInstruction = `Master Film Screenwriter: Generate ${twists.length} COMPLETELY DISTINCT cinematic screenplay variations of the user's situation, ALL strictly tailored to this exact film category:
+CATEGORY PROFILE:
+- Category: ${selectedCategory.name} (Group: ${grp.labels.en})
+- Tone: ${selectedCategory.tone}
+- Visual Look & Lighting: ${selectedCategory.visualStyle}
+- Camera Direction: ${selectedCategory.cameraFocus}
+- Pacing: ${selectedCategory.pacing}
+- Dialogue Style: ${selectedCategory.dialogueStyle}
+- Setting & Atmosphere: ${selectedCategory.settingCue}
+- BGM / Sound Vibe: ${selectedCategory.bgmVibe}
+
+DIRECTORIAL ANGLES TO COVER (1 distinct story per item, in order):
+${twists.map((tw, i) => `${i + 1}. ${tw}`).join('\n')}
+
+RULES:
+1. Expand each variation into a rich visual + dramatic/situational mini-arc fitted for ${clipCount} clip(s) (${durationDisplay || `${clipCount} shots`}) without repeating the prompt verbatim.
+2. ${modeNote}
+3. ${nativeOnlyRule}
+4. Each variation must have unique character names, blocking, lighting details, and plot progression matching "${selectedCategory.name}".
+
+Return JSON only:
+{ "angles": [{ "genre": "...", "title": "...", "mood": "...", "bgm": "...", "continuity": "...", "characters": "...", "storySummary": "..." }] }`;
+
+        const rawAngles = await callGeminiWithRetry(
+          `Language: ${langConfig.geminiLangName}\nCategory: ${selectedCategory.name}\nDialogue Mode: ${effectiveMode}\nTarget Length: ${durationDisplay || `${clipCount} clips`} (${clipCount} clips)\nSituation Seed: "${script.trim()}"`,
+          systemInstruction
+        );
+        return rawAngles.map((a: any, idx: number) => normalizeAiAngle(a, batchOffset + idx, selectedCategory));
+      };
+
+      try {
+        const [batchA, batchB] = await Promise.all([
+          runFocusedBatch(twistsA, 0),
+          runFocusedBatch(twistsB, 4),
+        ]);
+        return res.status(200).json({ angles: [...batchA, ...batchB] });
       } catch (geminiErr: any) {
-        console.warn('Gemini fast story angles notice, using local fallback:', geminiErr?.message);
+        return res.status(502).json({
+          error: geminiErr?.message || 'Failed to generate category story variations from Gemini.',
+        });
       }
     }
 
-    const angles = generateStoryAnglesLocal(script, langCode, clipCount);
-    return res.status(200).json({ angles });
+    const exploreCategories: StoryCategory[] = [
+      getCategoryById('rom-first-eye-contact'),
+      getCategoryById('thr-interrogation-room'),
+      getCategoryById('act-alley-ambush'),
+      getCategoryById('com-awkward-first-date'),
+      getCategoryById('dra-unspoken-father-son'),
+      getCategoryById('emo-mother-airport-tiffin'),
+      getCategoryById('hor-attic-footsteps'),
+      getCategoryById('sci-time-loop-cafe'),
+      getCategoryById('mys-locked-room-manor'),
+      getCategoryById('cri-diamond-vault-blueprint'),
+      getCategoryById('fam-sunday-lunch-reunion'),
+      getCategoryById('fan-enchanted-sword-shrine'),
+      getCategoryById('yth-college-canteen-banter'),
+      getCategoryById('comml-smart-tech-morning-save'),
+    ].filter((c): c is StoryCategory => Boolean(c));
+
+    const runExploreBatch = async (cats: StoryCategory[], batchOffset: number) => {
+      const catDescriptors = cats.map((c) => {
+        const g = getCategoryGroup(c.groupId);
+        return `- categoryId "${c.id}": ${c.name} (${g.labels.en}) | Tone: ${c.tone} | Visual: ${c.visualStyle} | Camera: ${c.cameraFocus} | Dialogue: ${c.dialogueStyle}`;
+      });
+
+      const systemInstruction = `Master Film Screenwriter: Adapt the user's situation into ${cats.length} COMPLETELY DIFFERENT cinematic genres & scenes (1 per specified category below):
+${catDescriptors.join('\n')}
+
+CRITICAL RULES:
+1. Keep the user's core premise recognizable, but transform plot, lighting, camera style, and conflict to authentically embody each category!
+2. ${modeNote}
+3. ${nativeOnlyRule}
+4. Preserve "categoryId" as the exact string listed above.
+
+Return JSON only:
+{ "angles": [{ "categoryId": "${cats[0].id}", "genre": "...", "title": "...", "mood": "...", "bgm": "...", "continuity": "...", "characters": "...", "storySummary": "..." }] }`;
+
+      const rawAngles = await callGeminiWithRetry(
+        `Language: ${langConfig.geminiLangName}\nDialogue Mode: ${effectiveMode}\nTarget Length: ${durationDisplay || `${clipCount} clips`} (${clipCount} clips)\nUser Situation: "${script.trim()}"`,
+        systemInstruction,
+        20000
+      );
+
+      return rawAngles.map((a: any, idx: number) => {
+        const matchedCat =
+          (a.categoryId ? getCategoryById(String(a.categoryId)) : undefined) ||
+          cats[idx % cats.length] ||
+          STORY_CATEGORIES[0];
+        return normalizeAiAngle(a, batchOffset + idx, matchedCat);
+      });
+    };
+
+    try {
+      const settled = await Promise.allSettled([
+        runExploreBatch(exploreCategories.slice(0, 4), 0),
+        runExploreBatch(exploreCategories.slice(4, 8), 4),
+        runExploreBatch(exploreCategories.slice(8, 11), 8),
+        runExploreBatch(exploreCategories.slice(11, 14), 11),
+      ]);
+
+      const combined = settled.flatMap((r) => (r.status === 'fulfilled' ? r.value : []));
+      if (combined.length > 0) {
+        const localReference = generateStoryAnglesLocal(script, langCode, clipCount, 'all', effectiveMode);
+        return res.status(200).json({ angles: mergeAnglesEnsuringAllCategories(combined, localReference) });
+      }
+      const firstErr = settled.find((r) => r.status === 'rejected') as PromiseRejectedResult | undefined;
+      return res.status(502).json({
+        error: firstErr?.reason?.message || 'Gemini failed to generate multi-category story options.',
+      });
+    } catch (geminiErr: any) {
+      return res.status(502).json({
+        error: geminiErr?.message || 'Failed to generate story angles from Gemini.',
+      });
+    }
   } catch (error: any) {
     console.error('Error generating story angles:', error);
     return res.status(500).json({

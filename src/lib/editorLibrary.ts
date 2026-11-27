@@ -1,5 +1,5 @@
 export type AspectRatioId = '16:9' | '9:16' | '1:1' | '4:3' | '3:4' | '4:5' | '2.35:1';
-export type ExportResolutionId = '4k' | '1080p' | '720p' | '480p';
+export type ExportResolutionId = '1080p' | '720p' | '420p';
 export type ExportFormatId = 'auto' | 'mp4' | 'webm';
 
 export type MotionPresetId =
@@ -72,10 +72,9 @@ export const ASPECT_RATIO_OPTIONS: Array<{
     label: '16:9',
     ratio: 16 / 9,
     dims: {
-      '4k': { width: 3840, height: 2160 },
       '1080p': { width: 1920, height: 1080 },
       '720p': { width: 1280, height: 720 },
-      '480p': { width: 854, height: 480 },
+      '420p': { width: 748, height: 420 },
     },
   },
   {
@@ -83,10 +82,9 @@ export const ASPECT_RATIO_OPTIONS: Array<{
     label: '9:16',
     ratio: 9 / 16,
     dims: {
-      '4k': { width: 2160, height: 3840 },
       '1080p': { width: 1080, height: 1920 },
       '720p': { width: 720, height: 1280 },
-      '480p': { width: 480, height: 854 },
+      '420p': { width: 420, height: 748 },
     },
   },
   {
@@ -94,10 +92,9 @@ export const ASPECT_RATIO_OPTIONS: Array<{
     label: '1:1',
     ratio: 1,
     dims: {
-      '4k': { width: 2160, height: 2160 },
       '1080p': { width: 1080, height: 1080 },
       '720p': { width: 720, height: 720 },
-      '480p': { width: 480, height: 480 },
+      '420p': { width: 420, height: 420 },
     },
   },
   {
@@ -105,10 +102,9 @@ export const ASPECT_RATIO_OPTIONS: Array<{
     label: '4:3',
     ratio: 4 / 3,
     dims: {
-      '4k': { width: 2880, height: 2160 },
       '1080p': { width: 1440, height: 1080 },
       '720p': { width: 960, height: 720 },
-      '480p': { width: 640, height: 480 },
+      '420p': { width: 560, height: 420 },
     },
   },
   {
@@ -116,10 +112,9 @@ export const ASPECT_RATIO_OPTIONS: Array<{
     label: '3:4',
     ratio: 3 / 4,
     dims: {
-      '4k': { width: 2160, height: 2880 },
       '1080p': { width: 1080, height: 1440 },
       '720p': { width: 720, height: 960 },
-      '480p': { width: 480, height: 640 },
+      '420p': { width: 420, height: 560 },
     },
   },
   {
@@ -127,10 +122,9 @@ export const ASPECT_RATIO_OPTIONS: Array<{
     label: '4:5',
     ratio: 4 / 5,
     dims: {
-      '4k': { width: 2160, height: 2700 },
       '1080p': { width: 1080, height: 1350 },
       '720p': { width: 720, height: 900 },
-      '480p': { width: 480, height: 600 },
+      '420p': { width: 420, height: 526 },
     },
   },
   {
@@ -138,10 +132,9 @@ export const ASPECT_RATIO_OPTIONS: Array<{
     label: '2.35:1',
     ratio: 2.35,
     dims: {
-      '4k': { width: 3840, height: 1634 },
       '1080p': { width: 1920, height: 816 },
       '720p': { width: 1280, height: 544 },
-      '480p': { width: 854, height: 364 },
+      '420p': { width: 980, height: 420 },
     },
   },
 ];

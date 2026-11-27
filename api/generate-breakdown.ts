@@ -3,8 +3,14 @@ import {
   DialogueMode,
   expandShotsToTargetCount,
   generateBreakdownLocal,
+  inferCategoryFromScript,
   isExplicitlySilent,
 } from '../src/lib/storyEngine';
+import {
+  getCategoryById,
+  getCategoryGroup,
+  type StoryCategory,
+} from '../src/lib/storyCategories';
 import { AppLang, getLangConfig } from '../src/lib/i18n';
 
 function getGeminiClient(): GoogleGenAI | null {
@@ -45,11 +51,12 @@ export default async function handler(req: any, res: any) {
     const {
       script,
       preferredShotDuration = 8,
-      targetShotCount = 20,
+      targetShotCount = 1,
       characterPhotos = [],
       fastMode = false,
       language = 'ml',
-      dialogueMode = 'dynamic',
+      dialogueMode = 'dialogue',
+      categoryId = 'all',
     } = body;
 
     if (!script || typeof script !== 'string' || script.trim().length === 0) {
@@ -62,51 +69,88 @@ export default async function handler(req: any, res: any) {
       dialogueMode === 'silent' || dialogueMode === 'dialogue' ? dialogueMode : 'dynamic';
     const effectiveMode: DialogueMode = isExplicitlySilent(script) ? 'silent' : rawMode;
     const allowDialogue = effectiveMode !== 'silent';
-    const totalRequested = Math.max(1, Number(targetShotCount) || 8);
-    const coreAiShotCount = Math.max(4, Math.min(totalRequested, 16));
+    const clipDurationSec = Math.max(2, Number(preferredShotDuration) || 8);
+    const totalRequested = Math.max(1, Number(targetShotCount) || 1);
+    const coreAiShotCount = Math.min(totalRequested, 16);
+
+    const resolvedCategory: StoryCategory =
+      (categoryId && categoryId !== 'all' ? getCategoryById(categoryId) : undefined) ||
+      inferCategoryFromScript(script);
+    const resolvedGroup = getCategoryGroup(resolvedCategory.groupId);
+
+    if (fastMode) {
+      const instantBreakdown = generateBreakdownLocal(
+        script,
+        clipDurationSec,
+        characterPhotos,
+        totalRequested,
+        langCode,
+        effectiveMode,
+        resolvedCategory.id
+      );
+      return res.status(200).json(instantBreakdown);
+    }
 
     const ai = getGeminiClient();
-    if (ai && !fastMode) {
-      try {
-        const dialogueRule =
-          effectiveMode === 'silent'
-            ? `STRICT NO-DIALOGUE / VISUAL COMEDY RULE: Set "malayalamDialogue": "" and "dialogueEnglish": "" on EVERY shot. Tell the story & humor 100% visually via expressive faces, slapstick timing, gestures, and ambient SFX.`
-            : effectiveMode === 'dialogue'
-            ? `DIALOGUE-DRIVEN RULE: Every conversational/dramatic shot MUST feature a completely fresh, non-repeated spoken dialogue line in "malayalamDialogue" (pure ${langConfig.geminiLangName}) and "dialogueEnglish". NEVER repeat or recycle the same dialogue sentence or phrase across shots.`
-            : `FLEXIBLE DIALOGUE & VISUAL COMEDY MIX RULE: Dynamically alternate between crisp dialogue-led shots ("malayalamDialogue" in pure ${langConfig.geminiLangName}) and pure silent/visual-comedy shots (leave "malayalamDialogue": "" and "dialogueEnglish": "" on physical gag / silent reaction beats!). STRICTLY ZERO repeated dialogue lines across the entire story.`;
+    if (!ai) {
+      return res.status(503).json({
+        error: 'Gemini API key is not configured on the server.',
+      });
+    }
 
-        const arcMapGuide = `8-PART ESCALATING VARIETY ARC (ABSOLUTE ZERO REPETITION):
-- Part 1: Clear Introduction & Opening Setup (establishing characters & premise)
-- Part 2: First Situational Problem / Funny Misunderstanding
-- Part 3: Pure Visual / Physical Twist or Comedic Mishap (distinct situation!)
-- Part 4: Escalating Second Problem (neighbor/family/outsider arrives or new hurdle!)
-- Part 5: Clever Attempt Backfires (unexpected reversal & messy gag!)
-- Part 6: Peak Comedic/Dramatic Climax Chaos (all threads collide!)
-- Part 7: Heartwarming or Clever Turning Point (surprise clue/good deed shifts mood!)
-- Part 8: Satisfying Conclusion & Memorable Closing Punchline (wraps up Part 1)`;
+    const dialogueRule =
+      effectiveMode === 'silent'
+        ? `STRICT NO-DIALOGUE / PURE VISUAL SCRIPT RULE: Dialogue is OFF. Set "malayalamDialogue": "" and "dialogueEnglish": "" on EVERY shot. NEVER invent spoken lines. Tell the entire story 100% visually via framing, micro-expressions, blocking, lighting, and natural ambient SFX/foley.`
+        : effectiveMode === 'dialogue'
+        ? `AUTOMATIC DIALOGUE SYNTHESIS RULE: Dialogue is ON. Even if the user entered only a short situation WITHOUT any dialogues, automatically write natural, emotionally grounded spoken dialogue in "malayalamDialogue" (strictly pure ${langConfig.geminiLangName}) and "dialogueEnglish" tailored to "${resolvedCategory.name}" (${resolvedCategory.dialogueStyle}). Pace dialogue concisely to fit naturally inside ${clipDurationSec} seconds, with ZERO repeated lines across shots.`
+        : `SMART MIX DIALOGUE & VISUAL BEATS RULE: Alternate between crisp category-specific spoken dialogue ("malayalamDialogue" in pure ${langConfig.geminiLangName}) and pure silent reaction/action beats (set "malayalamDialogue": "" and "dialogueEnglish": "" on silent beats). ZERO repeated lines.`;
 
-        const generateRange = async (startNum: number, endNum: number, arcPhase: string) => {
-          const count = endNum - startNum + 1;
-          const systemInstruction = `Master Cinematographer & Story Comedy/Drama Director: Generate shots ${startNum} to ${endNum} (${count} unique chronological scenes of ${preferredShotDuration}s each) for "${arcPhase}" of the user's story.
-${arcMapGuide}
+    const singleClipRule =
+      totalRequested === 1
+        ? `SINGLE ${clipDurationSec}s CLIP STRUCTURE: Divide Shot 01 internally into 3 tightly timed visual beats inside "action" (opening hook -> middle turning beat -> closing frame) so even an ${clipDurationSec}s scene feels complete and cinematic.`
+        : `MULTI-SHOT ESCALATING ARC: Each chronological shot must advance the situation cleanly without repeating actions or dialogues.`;
 
-CRITICAL NO-REPETITION & CONTINUITY RULES:
-1. ABSOLUTE VARIETY — ZERO REPEATS: Every single shot from ${startNum} to ${endNum} MUST introduce a BRAND-NEW situational problem, twist, prop interaction, or comedic/story beat. NEVER repeat the same problem, same action, or same dialogue across parts!
-2. 100% STORY-ANCHORED PROGRESSION: Stay rooted in the exact characters, home/setting, and premise of the user's input while escalating smoothly from Introduction -> Escalating Problems -> Resolution.
-3. UNBROKEN VISUAL CONTINUITY: Maintain the EXACT same character face, wardrobe, props, and location continuity seamlessly from Shot ${Math.max(1, startNum - 1)} into Shot ${endNum}. Write this inside "continuity".
-4. SEPARATE STATIC PHOTO vs MOTION VIDEO PROMPTS:
-   - "imagePrompt": Must start with "[PHOTO KEYFRAME PROMPT — SHOT ${startNum.toString().padStart(2, '0')}]:" (matching each shotNumber) describing ONLY a static 35mm film still (framing, distinct pose/expression, wardrobe/prop continuity, lighting). NO motion verbs or audio!
-   - "videoPrompt": Must start with "[VIDEO MOTION PROMPT — SHOT ${startNum.toString().padStart(2, '0')}]:" (matching each shotNumber) describing continuous 24fps camera/subject motion continuing from Shot (N-1), Continuity Lock, Spoken Dialogue (ONLY if this shot has dialogue; otherwise explicitly state Visual Comedy / Ambient SFX Only), and distinct evolving BGM ("bgm").
-5. LANGUAGE: Write "action" and "malayalamDialogue" strictly in pure ${langConfig.geminiLangName}. Write "bgm", "continuity", "imagePrompt", and "videoPrompt" clearly in English (keeping quoted ${langConfig.geminiLangName} dialogue exact if present).
-6. ${dialogueRule}
+    const categoryProfileBlock = `CATEGORY DIRECTION PROFILE:
+- Category: ${resolvedCategory.name} (${resolvedGroup.labels.en})
+- Emotional Tone: ${resolvedCategory.tone}
+- Visual & Lighting Style: ${resolvedCategory.visualStyle}
+- Camera Direction: ${resolvedCategory.cameraFocus}
+- Pacing: ${resolvedCategory.pacing}
+- Dialogue Style: ${resolvedCategory.dialogueStyle}
+- Setting Cues: ${resolvedCategory.settingCue}
+- BGM / Soundscape: ${resolvedCategory.bgmVibe}`;
+
+    const generateRange = async (startNum: number, endNum: number, arcPhase: string) => {
+      const count = endNum - startNum + 1;
+      const systemInstruction = `Master Film Director, Cinematographer & Screenwriter:
+Expand the user's situation into ${count} rich scene-by-scene shot breakdown(s) (Shot ${startNum} to ${endNum}, each ${clipDurationSec}s long) for phase "${arcPhase}".
+
+${categoryProfileBlock}
+
+${singleClipRule}
+
+CRITICAL RULES:
+1. CATEGORY FIDELITY: Every visual choice, camera angle, lighting cue, pacing note, and dialogue line MUST unmistakably reflect "${resolvedCategory.name}" (${resolvedCategory.tone}).
+2. CONTINUITY LOCK: Keep character faces, outfits, props, and location continuity cohesive across every shot in "continuity".
+3. STRUCTURED FIELDS PER SHOT:
+   - "cameraAngle": Exact lens/framing/movement cue.
+   - "lightingCue": Lighting, color palette & atmosphere matching ${resolvedCategory.visualStyle}.
+   - "action": Scene action description in pure ${langConfig.geminiLangName}.
+   - "imagePrompt": Must start with "[PHOTO KEYFRAME PROMPT — SHOT ${startNum.toString().padStart(2, '0')}]:" describing a static 35mm still frame.
+   - "videoPrompt": Must start with "[VIDEO MOTION PROMPT — SHOT ${startNum.toString().padStart(2, '0')}]:" describing 24fps motion, camera work, spoken dialogue ONLY if non-empty (or explicit Pure Visual / Ambient SFX if silent), and BGM.
+4. LANGUAGE: Write "action" and "malayalamDialogue" strictly in pure ${langConfig.geminiLangName}. Write "cameraAngle", "lightingCue", "bgm", "continuity", "imagePrompt", and "videoPrompt" in clear English.
+5. ${dialogueRule}
 
 Return valid JSON only:
-{ "shots": [{ "shotNumber": ${startNum}, "durationSeconds": ${preferredShotDuration}, "timing": "Shot ${startNum.toString().padStart(2, '0')} — ${preferredShotDuration}s", "action": "...", "characters": [], "bgm": "...", "continuity": "...", "malayalamDialogue": "", "dialogueEnglish": "", "imagePrompt": "[PHOTO KEYFRAME PROMPT — SHOT ${startNum.toString().padStart(2, '0')}]: ...", "videoPrompt": "[VIDEO MOTION PROMPT — SHOT ${startNum.toString().padStart(2, '0')}]: ..." }] }`;
+{ "shots": [{ "shotNumber": ${startNum}, "durationSeconds": ${clipDurationSec}, "timing": "Shot ${startNum.toString().padStart(2, '0')} — ${clipDurationSec}s", "cameraAngle": "...", "lightingCue": "...", "action": "...", "characters": [], "bgm": "...", "continuity": "...", "malayalamDialogue": "", "dialogueEnglish": "", "imagePrompt": "[PHOTO KEYFRAME PROMPT — SHOT ${startNum.toString().padStart(2, '0')}]: ...", "videoPrompt": "[VIDEO MOTION PROMPT — SHOT ${startNum.toString().padStart(2, '0')}]: ..." }] }`;
 
+      let lastErr: any;
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
           const resRange = await withTimeout(
             ai.models.generateContent({
               model: 'gemini-4-hydrogen',
-              contents: `Language: ${langConfig.geminiLangName}\nDialogue Mode: ${effectiveMode}\nShot Range: ${startNum} to ${endNum} (Total film shots: ${totalRequested})\nClip Duration: ${preferredShotDuration}s\nStory:\n"""${script.trim()}"""`,
+              contents: `Language: ${langConfig.geminiLangName}\nCategory: ${resolvedCategory.name} (${resolvedGroup.labels.en})\nDialogue Mode: ${effectiveMode}\nShot Range: ${startNum} to ${endNum} (Total shots: ${totalRequested})\nClip Duration: ${clipDurationSec}s\nSituation / Script:\n"""${script.trim()}"""`,
               config: {
                 systemInstruction,
                 responseMimeType: 'application/json',
@@ -116,62 +160,57 @@ Return valid JSON only:
             24000
           );
           const parsed = JSON.parse(resRange.text || '{}');
-          return Array.isArray(parsed.shots) ? parsed.shots : [];
-        };
-
-        const ranges: { start: number; end: number; phase: string }[] = [];
-        const chunkSize = 4;
-        const arcLabels = [
-          'Parts 1-4: Clear Introduction, First Problem, Visual Comedy Beat & Outsider Complication',
-          'Parts 5-8: Backfired Plan Twist, Peak Climax Chaos, Turning Point & Satisfying Ending (ZERO overlap with Shots 1-4)',
-          'Escalation Wave 3: Fresh Sub-Plots & Comedic Turns',
-          'Final Resolution Wave: Closing Arc Beats',
-        ];
-        for (let s = 1, chunkIdx = 0; s <= coreAiShotCount; s += chunkSize, chunkIdx++) {
-          const e = Math.min(coreAiShotCount, s + chunkSize - 1);
-          ranges.push({
-            start: s,
-            end: e,
-            phase:
-              chunkIdx === 0 && e === coreAiShotCount
-                ? 'Full 8-Stage Beginning -> Escalating Unique Problems -> Ending Arc'
-                : `${arcLabels[chunkIdx % arcLabels.length]} (continuing seamlessly from Shot ${Math.max(1, s - 1)})`,
-          });
+          if (Array.isArray(parsed.shots) && parsed.shots.length > 0) {
+            return parsed.shots;
+          }
+          lastErr = new Error('Empty shots array returned by Gemini.');
+        } catch (err: any) {
+          lastErr = err;
         }
-
-        const chunkResults = await Promise.all(
-          ranges.map((r) => generateRange(r.start, r.end, r.phase))
-        );
-        const aiShots = chunkResults.flat();
-
-        if (aiShots.length > 0) {
-          const expandedShots = expandShotsToTargetCount(
-            aiShots,
-            totalRequested,
-            preferredShotDuration,
-            allowDialogue,
-            langCode,
-            effectiveMode
-          );
-          return res.status(200).json({ shots: expandedShots });
-        }
-      } catch (geminiError: any) {
-        console.warn('Gemini fast breakdown notice, using fallback:', geminiError?.message);
       }
+      throw lastErr;
+    };
+
+    const ranges: { start: number; end: number; phase: string }[] = [];
+    const chunkSize = 4;
+    const arcLabels = [
+      'Opening Situation, Character Presence & Rising Chemistry/Tension',
+      'Escalation, Turning Point & Peak Climax Beat',
+      'Complication Wave & Shifting Dynamics',
+      'Resolution & Memorable Closing Frame',
+    ];
+    for (let s = 1, chunkIdx = 0; s <= coreAiShotCount; s += chunkSize, chunkIdx++) {
+      const e = Math.min(coreAiShotCount, s + chunkSize - 1);
+      ranges.push({
+        start: s,
+        end: e,
+        phase:
+          chunkIdx === 0 && e === coreAiShotCount
+            ? totalRequested === 1
+              ? `Complete ${clipDurationSec}s 3-Beat Mini-Scene`
+              : 'Full Chronological Story Arc'
+            : `${arcLabels[chunkIdx % arcLabels.length]} (continuing seamlessly from Shot ${Math.max(1, s - 1)})`,
+      });
     }
 
-    const fallbackBreakdown = generateBreakdownLocal(
-      script,
-      preferredShotDuration,
-      characterPhotos,
-      targetShotCount,
-      langCode,
-      effectiveMode
+    const chunkResults = await Promise.all(
+      ranges.map((r) => generateRange(r.start, r.end, r.phase))
     );
-    return res.status(200).json(fallbackBreakdown);
+    const aiShots = chunkResults.flat();
+
+    const expandedShots = expandShotsToTargetCount(
+      aiShots,
+      totalRequested,
+      clipDurationSec,
+      allowDialogue,
+      langCode,
+      effectiveMode,
+      resolvedCategory.id
+    );
+    return res.status(200).json({ shots: expandedShots });
   } catch (error: any) {
     console.error('Error generating breakdown:', error);
-    return res.status(500).json({
+    return res.status(502).json({
       error: error?.message || 'Failed to generate shot prompts',
     });
   }

@@ -35,7 +35,11 @@ import {
   tryLockLandscapeOrientation,
   unlockScreenOrientation,
 } from '../lib/deviceEnvironment';
-import { EditorBottomVideoAdBar, ExportModalVideoAdPlayer } from './AdsterraAds';
+import {
+  EditorBottomVideoAdBar,
+  ExportModalVideoAdPlayer,
+  CompactSmallBannerAd,
+} from './AdsterraAds';
 import {
   CircularToolWheel,
   WHEEL_CATEGORIES,
@@ -81,17 +85,21 @@ import {
 } from './videoStudioLibrary';
 import {
   DEFAULT_CHROMA_KEY_CONFIG,
+  DEFAULT_EMBLEM_TRAILER_CONFIG,
   DEFAULT_SPLIT_SCREEN_CONFIG,
   TRAILER_PRESET_PACKS,
   drawAnimatedCinemaTitle,
   drawChromaBackground,
   drawChromaKeyedSource,
+  drawEmblemTrailerOverlay,
   drawSplitScreenComposition,
   drawTrailerCardOnCanvas,
   drawTrailerFxOverlay,
   type ChromaKeyConfig,
+  type EmblemTrailerConfig,
   type SplitScreenConfig,
   type TitleAnimationType,
+  type TitleStyleMode,
   type TitleThemeType,
   type TrailerCardAnimation,
   type TrailerCardLayer,
@@ -104,6 +112,7 @@ import {
   runWebCodecsMp4Export,
   waitForVideoSeekReady,
   type ExportAudioSourceClip,
+  type StudioExportResolution,
 } from '../lib/mp4ExportEngine';
 import {
   getOrRenderPresetWavUrl,
@@ -114,6 +123,7 @@ import {
   type ColorGradeAdjustments,
 } from './ColorWheelPad';
 import {
+  CATEGORY_THEME_PRESETS,
   renderActionVfxProp,
   type ActionVfxPreset,
   type ActionVfxType,
@@ -387,7 +397,7 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
       actionType: 'open_editor',
       projectTitle: 'CineStudio Project',
       clipCount: 0,
-      resolution: '1080p',
+      resolution: '720p',
       aspectRatio: '16:9',
       exportDurationSec: 0,
       user: currentUser,
@@ -466,8 +476,15 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
   const [showTitleOverlay, setShowTitleOverlay] = useState<boolean>(false);
   const [movieTitle, setMovieTitle] = useState<string>('');
   const [subtitle, setSubtitle] = useState<string>('');
+  const [titleLine3, setTitleLine3] = useState<string>('');
+  const [titleLine4, setTitleLine4] = useState<string>('');
   const [titleAnimType, setTitleAnimType] = useState<TitleAnimationType>('zoom_slam');
   const [titleThemeType, setTitleThemeType] = useState<TitleThemeType>('blockbuster_gold');
+  const [titleStyleMode, setTitleStyleMode] = useState<TitleStyleMode>('stacked_4line');
+  const [titleCustomColor, setTitleCustomColor] = useState<string>('');
+  const [activeCategoryThemeId, setActiveCategoryThemeId] = useState<string>('natural');
+  const [activeActionReelId, setActiveActionReelId] = useState<string | null>(null);
+  const [emblemConfig, setEmblemConfig] = useState<EmblemTrailerConfig>(DEFAULT_EMBLEM_TRAILER_CONFIG);
 
   const [activeStickers, setActiveStickers] = useState<TimelineStickerLayer[]>([]);
   const [lastAddedSticker, setLastAddedSticker] = useState<StickerItem | null>(null);
@@ -514,9 +531,9 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
   const [undoStack, setUndoStack] = useState<EditorSnapshot[]>([]);
   const [redoStack, setRedoStack] = useState<EditorSnapshot[]>([]);
 
-  // Export Modal State
+  // Export Modal State (420p SD / 720p HD / 1080p Full HD)
   const [showExportModal, setShowExportModal] = useState<boolean>(false);
-  const [exportResolution, setExportResolution] = useState<'4K' | '1080p' | '720p'>('1080p');
+  const [exportResolution, setExportResolution] = useState<StudioExportResolution>('720p');
   const [exportFps, setExportFps] = useState<30 | 60>(30);
   const [isExporting, setIsExporting] = useState<boolean>(false);
   const [exportProgress, setExportProgress] = useState<number>(0);
@@ -547,6 +564,7 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
   const splitLeftInputRef = useRef<HTMLInputElement | null>(null);
   const splitRightInputRef = useRef<HTMLInputElement | null>(null);
   const trailerCardInputRef = useRef<HTMLInputElement | null>(null);
+  const emblemLogoInputRef = useRef<HTMLInputElement | null>(null);
 
   const mediaCacheRef = useRef<Map<string, HTMLImageElement | HTMLVideoElement>>(new Map());
   const videoFrameCacheRef = useRef<Map<string, HTMLCanvasElement>>(new Map());
@@ -1468,11 +1486,13 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
       });
     }
 
-    if (showTitleOverlay && !titlesDisabled && (movieTitle.trim() || subtitle.trim())) {
+    if (showTitleOverlay && !titlesDisabled && (movieTitle.trim() || subtitle.trim() || titleLine3.trim() || titleLine4.trim())) {
       drawAnimatedCinemaTitle(ctx, w, h, {
         movieTitle: movieTitle || 'CINE TITLE',
         subtitle,
         directorText: '',
+        extraLine3: titleLine3,
+        extraLine4: titleLine4,
         titleXPct: 50,
         titleYPct: 50,
         titleScale: 1,
@@ -1481,8 +1501,17 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
         globalTimeSec: tSec,
         animationType: titleAnimType,
         themeType: titleThemeType,
+        titleStyleMode,
+        customColor: titleCustomColor || undefined,
         exportScaleRatio: w / 1280,
       });
+    }
+
+    if (emblemConfig.enabled && !disabledCategoryIds.includes('emblem_trailer')) {
+      const emblemImg = emblemConfig.customLogoUrl
+        ? getOrLoadSource(emblemConfig.customLogoUrl, 'photo')
+        : null;
+      drawEmblemTrailerOverlay(ctx, w, h, emblemConfig, emblemImg, tSec);
     }
 
     if (
@@ -2063,7 +2092,7 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
     if (activeFilter.id !== 'f_none' || activeColorGradeId) ids.push('filters');
     if (hasUserPickedAudio) ids.push('music');
     if (activeDialogue) ids.push('dialogues');
-    if (showTitleOverlay && movieTitle.trim()) ids.push('titles');
+    if (showTitleOverlay && (movieTitle.trim() || subtitle.trim() || titleLine3.trim() || titleLine4.trim())) ids.push('titles');
     if (activeStickers.length > 0) ids.push('stickers');
     if (vfxLayers.length > 0) ids.push('vfx');
     if (trailerCardLayers.length > 0) ids.push('card');
@@ -2072,6 +2101,8 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
     if (selectedTransitionId) ids.push('transitions');
     if (activeEffect) ids.push('effects');
     if (activeTemplate) ids.push('templates');
+    if (activeActionReelId) ids.push('action_reel');
+    if (emblemConfig.enabled) ids.push('emblem_trailer');
     return ids;
   }, [
     timelineClips,
@@ -2082,6 +2113,9 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
     activeDialogue,
     showTitleOverlay,
     movieTitle,
+    subtitle,
+    titleLine3,
+    titleLine4,
     activeStickers.length,
     vfxLayers.length,
     trailerCardLayers.length,
@@ -2090,6 +2124,8 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
     selectedTransitionId,
     activeEffect,
     activeTemplate,
+    activeActionReelId,
+    emblemConfig.enabled,
   ]);
 
   const activeColorGradeObj = useMemo(
@@ -2725,6 +2761,26 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
           e.target.value = '';
         }}
       />
+      <input
+        ref={emblemLogoInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file) {
+            const url = URL.createObjectURL(file);
+            getOrLoadSource(url, 'photo');
+            setDisabledCategoryIds((p) => p.filter((x) => x !== 'emblem_trailer'));
+            setEmblemConfig((prev) => ({
+              ...prev,
+              enabled: true,
+              customLogoUrl: url,
+            }));
+          }
+          e.target.value = '';
+        }}
+      />
 
       {/* MAIN UPPER WORKSPACE ROW: Left Thin Rail + Center Preview + Right Circular Wheel */}
       <div className="flex-1 min-h-0 flex overflow-hidden">
@@ -3097,7 +3153,22 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                   setColorAdjust(updater);
                 }}
                 onResetColorAdjust={() => {
+                  setActiveCategoryThemeId('natural');
                   setColorAdjust(DEFAULT_COLOR_GRADE_ADJUSTMENTS);
+                }}
+                activeCategoryThemeId={activeCategoryThemeId}
+                onSelectCategoryTheme={(th) => {
+                  setActiveCategoryThemeId(th.id);
+                  setDisabledCategoryIds((p) => p.filter((x) => x !== 'filters'));
+                  setColorAdjust((prev) => ({
+                    ...prev,
+                    brightness: th.brightness,
+                    contrast: th.contrast,
+                    saturation: th.saturation,
+                    warmth: th.warmth,
+                    tint: th.tint,
+                    vignette: th.vignette,
+                  }));
                 }}
                 vfxLayers={vfxLayers}
                 selectedVfxLayerId={selectedVfxLayerId}
@@ -3266,8 +3337,12 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                 showTitleOverlay={showTitleOverlay}
                 movieTitle={movieTitle}
                 subtitle={subtitle}
+                titleLine3={titleLine3}
+                titleLine4={titleLine4}
                 titleAnimType={titleAnimType}
                 titleThemeType={titleThemeType}
+                titleStyleMode={titleStyleMode}
+                titleCustomColor={titleCustomColor}
                 onApplyTitlePreset={(preset: TitleItem) => {
                   pushUndoCheckpoint();
                   setDisabledCategoryIds((p) => p.filter((x) => x !== 'titles'));
@@ -3279,10 +3354,119 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                   setDisabledCategoryIds((p) => p.filter((x) => x !== 'titles'));
                   setMovieTitle(t);
                   setSubtitle(sub);
-                  setShowTitleOverlay(Boolean(t.trim() || sub.trim()));
+                  setShowTitleOverlay(Boolean(t.trim() || sub.trim() || titleLine3.trim() || titleLine4.trim()));
+                }}
+                onChangeTitleExtraLines={(l3, l4) => {
+                  setDisabledCategoryIds((p) => p.filter((x) => x !== 'titles'));
+                  setTitleLine3(l3);
+                  setTitleLine4(l4);
+                  setShowTitleOverlay(Boolean(movieTitle.trim() || subtitle.trim() || l3.trim() || l4.trim()));
                 }}
                 onChangeTitleAnim={setTitleAnimType}
-                onChangeTitleTheme={setTitleThemeType}
+                onChangeTitleTheme={(th) => {
+                  setTitleCustomColor('');
+                  setTitleThemeType(th);
+                }}
+                onChangeTitleStyleMode={(m) => {
+                  setTitleStyleMode(m);
+                  setShowTitleOverlay(true);
+                }}
+                onChangeTitleCustomColor={(col) => {
+                  setTitleCustomColor(col);
+                  setShowTitleOverlay(true);
+                }}
+                onClearTitleOverlay={() => {
+                  setMovieTitle('');
+                  setSubtitle('');
+                  setTitleLine3('');
+                  setTitleLine4('');
+                  setShowTitleOverlay(false);
+                }}
+                activeActionReelId={activeActionReelId}
+                onApplyActionReelPreset={(spec) => {
+                  pushUndoCheckpoint();
+                  setDisabledCategoryIds((p) => p.filter((x) => x !== 'action_reel' && x !== 'vfx' && x !== 'titles'));
+                  setActiveActionReelId(spec.id);
+                  setPlaybackSpeed(spec.motionSpeed);
+                  const th = CATEGORY_THEME_PRESETS.find((t) => t.id === spec.themeId) || CATEGORY_THEME_PRESETS[0];
+                  setActiveCategoryThemeId(th.id);
+                  setColorAdjust((prev) => ({
+                    ...prev,
+                    brightness: th.brightness,
+                    contrast: th.contrast,
+                    saturation: th.saturation,
+                    warmth: th.warmth,
+                    tint: th.tint,
+                    vignette: th.vignette,
+                  }));
+                  setMovieTitle(spec.lines[0] || spec.name);
+                  setSubtitle(spec.lines[1] || '');
+                  setTitleLine3(spec.lines[2] || '');
+                  setTitleLine4(spec.lines[3] || '');
+                  setTitleStyleMode('stacked_4line');
+                  setShowTitleOverlay(true);
+                  const newVfxId = `vfx_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`;
+                  const synthVfx: CinemaVfxItem = {
+                    id: `ar_${spec.id}`,
+                    name: spec.name,
+                    category: 'Action Video',
+                    kind:
+                      spec.vfxType === 'bullet_tracer'
+                        ? 'bullet_tracer'
+                        : spec.vfxType === 'lightning_arc'
+                          ? 'lightning'
+                          : spec.vfxType === 'glass_shatter'
+                            ? 'glass_shatter'
+                            : spec.vfxType === 'sparks_shower'
+                              ? 'sparks'
+                              : spec.vfxType === 'fire_blast'
+                                ? 'fireball'
+                                : 'explosion',
+                    emoji: '💥',
+                    primaryColor: '#ff7a18',
+                    secondaryColor: '#f43f5e',
+                    defaultDurationSec: 4,
+                    hasMotionRoute: spec.vfxType === 'bullet_tracer',
+                    description: spec.name,
+                  };
+                  setSelectedVfxLayerId(newVfxId);
+                  setVfxLayers((prev) => [
+                    ...prev,
+                    {
+                      id: newVfxId,
+                      vfx: synthVfx,
+                      proVfx: {
+                        id: `ar_vfx_${spec.id}`,
+                        name: spec.name,
+                        category: 'Action Video',
+                        vfxType: spec.vfxType,
+                        seed: Math.floor(Math.random() * 99999),
+                        defaultScale: 1.15,
+                        defaultBlend: spec.vfxType === 'glass_shatter' || spec.vfxType === 'bullet_tracer' ? 'source-over' : 'screen',
+                        hueShift: 0,
+                        density: 1.1,
+                        swatch: 'from-orange-500 to-black',
+                        sub: spec.name,
+                      },
+                      startTimeSec: currentTimeRef.current,
+                      durationSec: 4,
+                      startXPct: spec.vfxType === 'bullet_tracer' ? 24 : 50,
+                      startYPct: 52,
+                      endXPct: spec.vfxType === 'bullet_tracer' ? 78 : 50,
+                      endYPct: spec.vfxType === 'bullet_tracer' ? 46 : 52,
+                      scale: 1.15,
+                      opacity: 100,
+                      speed: 1,
+                      includeImpactBlood: false,
+                    },
+                  ]);
+                }}
+                emblemConfig={emblemConfig}
+                onUpdateEmblemConfig={(updater) => {
+                  setDisabledCategoryIds((p) => p.filter((x) => x !== 'emblem_trailer'));
+                  setEmblemConfig(updater);
+                }}
+                onPickEmblemLogo={() => emblemLogoInputRef.current?.click()}
                 onAddSticker={(st) => {
                   pushUndoCheckpoint();
                   setDisabledCategoryIds((p) => p.filter((x) => x !== 'stickers'));
@@ -3702,19 +3886,37 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
 
             {!isExporting && !exportedVideoUrl && (
               <>
+                <div className="px-2.5 py-1.5 rounded-lg bg-teal-500/10 border border-teal-500/25 text-[10.5px] text-teal-200 leading-snug">
+                  {lang === 'ml'
+                    ? '100% ലോക്കൽ ഡിവൈസ് എക്സ്പോർട്ട് — ക്ലൗഡ് സ്റ്റോറേജോ ലോഗിനോ ആവശ്യമില്ലാതെ നേരിട്ട് ഫോണിൽ/ബ്രൗസറിൽ സേവ് ആകുന്നു.'
+                    : '100% Local Device Export — Rendered in your browser and saved directly to your device with zero cloud storage required.'}
+                </div>
                 <div className="grid grid-cols-3 gap-2">
-                  {(['720p', '1080p', '4K'] as const).map((res) => (
+                  {(
+                    [
+                      { id: '420p', label: '420p', sub: 'Standard SD' },
+                      { id: '720p', label: '720p', sub: 'HD' },
+                      { id: '1080p', label: '1080p', sub: 'Full HD' },
+                    ] as const
+                  ).map((opt) => (
                     <button
-                      key={res}
+                      key={opt.id}
                       type="button"
-                      onClick={() => setExportResolution(res)}
-                      className={`py-2 rounded-xl border text-xs font-bold cursor-pointer ${
-                        exportResolution === res
+                      onClick={() => setExportResolution(opt.id)}
+                      className={`py-2 px-1.5 rounded-xl border text-center cursor-pointer transition-colors ${
+                        exportResolution === opt.id
                           ? 'bg-teal-400 text-black border-teal-200'
-                          : 'bg-[#171e2b] text-zinc-200 border-zinc-800'
+                          : 'bg-[#171e2b] text-zinc-200 border-zinc-800 hover:border-zinc-700'
                       }`}
                     >
-                      {res}
+                      <div className="text-xs font-extrabold leading-tight">{opt.label}</div>
+                      <div
+                        className={`text-[9px] font-semibold mt-0.5 ${
+                          exportResolution === opt.id ? 'text-black/80' : 'text-zinc-400'
+                        }`}
+                      >
+                        {opt.sub}
+                      </div>
                     </button>
                   ))}
                 </div>
@@ -3734,6 +3936,8 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                     </button>
                   ))}
                 </div>
+                {/* Clean, subtle compact sponsor banner before render starts */}
+                <CompactSmallBannerAd slotId="export-modal-small-ad" slotIndex={2} />
                 <button
                   type="button"
                   onClick={() => void handleStartExport()}
