@@ -109,12 +109,23 @@ import {
   getOrRenderPresetWavUrl,
   scheduleSynthPreset,
 } from '../lib/comedyAudioSynth';
+import {
+  DEFAULT_COLOR_GRADE_ADJUSTMENTS,
+  type ColorGradeAdjustments,
+} from './ColorWheelPad';
+import {
+  renderActionVfxProp,
+  type ActionVfxPreset,
+  type ActionVfxType,
+} from '../lib/proVfxEngine';
 
 export interface VideoEditorStudioProps {
   lang: AppLang;
   currentUser?: FirebaseUser | null;
   onBackToStoryboard: () => void;
   onOpenTerms?: () => void;
+  studioMode?: 'editing' | 'vfx' | 'color';
+  onChangeStudioMode?: (mode: 'editing' | 'vfx' | 'color') => void;
 }
 
 export type AspectRatioType = '16:9' | '9:16' | '1:1' | '4:5' | '21:9' | '4:3';
@@ -152,6 +163,7 @@ export interface TimelineStickerLayer {
 export interface TimelineVfxLayer {
   id: string;
   vfx: CinemaVfxItem;
+  proVfx?: ActionVfxPreset;
   startTimeSec: number;
   durationSec: number;
   startXPct: number;
@@ -168,6 +180,7 @@ interface EditorSnapshot {
   clips: TimelineClip[];
   filterId: string;
   colorGradeId: string | null;
+  colorAdjust?: ColorGradeAdjustments;
   audioId: string;
   showTitleOverlay: boolean;
   movieTitle: string;
@@ -233,40 +246,96 @@ async function extractAudioDuration(url: string): Promise<number> {
   });
 }
 
+const mapCinemaKindToActionVfx = (kind?: CinemaVfxItem['kind']): ActionVfxType => {
+  switch (kind) {
+    case 'bullet_tracer':
+      return 'bullet_tracer';
+    case 'muzzle_flash':
+      return 'muzzle_flash';
+    case 'smoke':
+      return 'gun_smoke';
+    case 'explosion':
+    case 'shockwave':
+      return 'explosion_boom';
+    case 'fireball':
+    case 'person_ablaze':
+    case 'matchstick_strike':
+    case 'fire_tornado':
+      return 'fire_blast';
+    case 'building_inferno':
+      return 'building_fire';
+    case 'blood_splatter':
+      return 'blood_splatter';
+    case 'sparks':
+      return 'sparks_shower';
+    case 'glass_shatter':
+      return 'glass_shatter';
+    case 'lightning':
+    case 'laser_beam':
+    case 'portal':
+      return 'lightning_arc';
+    case 'sword_slash':
+      return 'sword_slash';
+    case 'rain_storm':
+      return 'fog_atmosphere';
+    default:
+      return 'explosion_boom';
+  }
+};
+
+const scaleCssFilterByRatio = (css: string, ratio: number): string => {
+  if (!css || ratio >= 0.99) return css;
+  if (ratio <= 0.01) return '';
+  return css
+    .replace(/(brightness|contrast|saturate)\(([\d.]+)%\)/g, (_, fn: string, num: string) => {
+      const val = 100 + (parseFloat(num) - 100) * ratio;
+      return `${fn}(${Math.max(0, val).toFixed(1)}%)`;
+    })
+    .replace(/(sepia|grayscale|invert)\(([\d.]+)%\)/g, (_, fn: string, num: string) => {
+      const val = parseFloat(num) * ratio;
+      return `${fn}(${Math.max(0, val).toFixed(1)}%)`;
+    })
+    .replace(/hue-rotate\(([-\d.]+)deg\)/g, (_, num: string) => {
+      const val = parseFloat(num) * ratio;
+      return `hue-rotate(${val.toFixed(1)}deg)`;
+    })
+    .replace(/blur\(([\d.]+)px\)/g, (_, num: string) => {
+      const val = parseFloat(num) * ratio;
+      return `blur(${Math.max(0, val).toFixed(2)}px)`;
+    });
+};
+
 const drawCinemaVfxOnCanvas = (
   ctx: CanvasRenderingContext2D,
   w: number,
   h: number,
   layer: TimelineVfxLayer,
-  globalTimeSec: number
+  globalTimeSec: number,
+  isPaused = false
 ) => {
   const dur = Math.max(0.2, layer.durationSec / Math.max(0.25, layer.speed || 1));
   if (globalTimeSec < layer.startTimeSec || globalTimeSec > layer.startTimeSec + dur) return;
-  const prog = Math.max(0, Math.min(1, (globalTimeSec - layer.startTimeSec) / dur));
-  const sx = (layer.startXPct / 100) * w;
-  const sy = (layer.startYPct / 100) * h;
-  const ex = (layer.endXPct / 100) * w;
-  const ey = (layer.endYPct / 100) * h;
-  const unit = Math.min(w, h) * 0.08 * (layer.scale || 1);
+  const rawProg = Math.max(0, Math.min(1, (globalTimeSec - layer.startTimeSec) / dur));
+  const prog = isPaused && rawProg < 0.02 ? 0.36 : rawProg;
 
-  ctx.save();
-  ctx.globalAlpha = Math.max(0, Math.min(1, (layer.opacity ?? 100) / 100));
-  ctx.globalCompositeOperation = 'screen';
+  const hasMotion = Boolean(layer.vfx?.hasMotionRoute);
+  const curXPct = hasMotion ? layer.startXPct + (layer.endXPct - layer.startXPct) * prog : layer.startXPct;
+  const curYPct = hasMotion ? layer.startYPct + (layer.endYPct - layer.startYPct) * prog : layer.startYPct;
 
-  const curX = layer.vfx.hasMotionRoute ? sx + (ex - sx) * prog : sx;
-  const curY = layer.vfx.hasMotionRoute ? sy + (ey - sy) * prog : sy;
-  const r = unit * (0.9 + Math.sin(prog * Math.PI) * 1.4);
-
-  const grad = ctx.createRadialGradient(curX, curY, 2, curX, curY, r);
-  grad.addColorStop(0, '#ffffff');
-  grad.addColorStop(0.35, layer.vfx.primaryColor);
-  grad.addColorStop(0.75, layer.vfx.secondaryColor);
-  grad.addColorStop(1, 'rgba(0,0,0,0)');
-  ctx.fillStyle = grad;
-  ctx.beginPath();
-  ctx.arc(curX, curY, r, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.restore();
+  const vfxType: ActionVfxType = layer.proVfx?.vfxType || mapCinemaKindToActionVfx(layer.vfx?.kind);
+  renderActionVfxProp(ctx, w, h, {
+    vfxType,
+    seed: layer.proVfx?.seed ?? (layer.id.charCodeAt(layer.id.length - 1) || 7) * 131,
+    xNorm: Math.max(0.02, Math.min(0.98, curXPct / 100)),
+    yNorm: Math.max(0.02, Math.min(0.98, curYPct / 100)),
+    scale: (layer.scale || 1) * (layer.proVfx?.defaultScale || 1),
+    rotationDeg: 0,
+    opacity: Math.max(0, Math.min(1, (layer.opacity ?? 100) / 100)),
+    blendMode: layer.proVfx?.defaultBlend || 'screen',
+    density: layer.proVfx?.density ?? 1.15,
+    hueShift: layer.proVfx?.hueShift ?? 0,
+    progress: prog,
+  });
 };
 
 export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
@@ -274,6 +343,8 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
   currentUser = null,
   onBackToStoryboard,
   onOpenTerms,
+  studioMode = 'editing',
+  onChangeStudioMode,
 }) => {
   // Layout & Orientation State (launches directly in 16:9 widescreen)
   const [selectedAspectRatio, setSelectedAspectRatio] = useState<AspectRatioType>('16:9');
@@ -330,10 +401,29 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
   const [dynamicCategoryItems, setDynamicCategoryItems] = useState<DynamicCategoryItem[]>(
     DEFAULT_MUSIC_LYRICS_SEED
   );
-  const [selectedWheelCategoryId, setSelectedWheelCategoryId] = useState<string>('filters');
+  const [selectedWheelCategoryId, setSelectedWheelCategoryId] = useState<string>(() =>
+    studioMode === 'vfx' ? 'vfx' : 'filters'
+  );
   const [isWheelFeaturePanelOpen, setIsWheelFeaturePanelOpen] = useState<boolean>(true);
   const [isInspectorOpen, setIsInspectorOpen] = useState<boolean>(false);
   const [disabledCategoryIds, setDisabledCategoryIds] = useState<string[]>([]);
+
+  useEffect(() => {
+    setSelectedAspectRatio('16:9');
+    setAutoLandscapeRotate(true);
+    void tryLockLandscapeOrientation();
+    if (studioMode === 'vfx') {
+      setSelectedWheelCategoryId('vfx');
+      setIsWheelFeaturePanelOpen(true);
+      setIsInspectorOpen(false);
+    } else if (studioMode === 'color') {
+      setSelectedWheelCategoryId('filters');
+      setIsWheelFeaturePanelOpen(true);
+      setIsInspectorOpen(false);
+    } else {
+      setIsWheelFeaturePanelOpen(true);
+    }
+  }, [studioMode]);
 
   useEffect(() => {
     return subscribeDynamicEditorCatalog({
@@ -351,13 +441,9 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
   // Filters, Grading & Adjustments
   const [activeFilter, setActiveFilter] = useState<FilterItem>(FILTERS_LIST[0]); // Original Raw by default
   const [activeColorGradeId, setActiveColorGradeId] = useState<string | null>(null);
-  const [colorAdjust, setColorAdjust] = useState({
-    brightness: 100,
-    contrast: 100,
-    saturation: 100,
-    warmth: 0,
-    vignette: 12,
-  });
+  const [colorAdjust, setColorAdjust] = useState<ColorGradeAdjustments>(
+    DEFAULT_COLOR_GRADE_ADJUSTMENTS
+  );
 
   // Audio / Music / Dialogues
   const [userAudioLibrary, setUserAudioLibrary] = useState<AudioItem[]>([]);
@@ -386,6 +472,7 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
   const [activeStickers, setActiveStickers] = useState<TimelineStickerLayer[]>([]);
   const [lastAddedSticker, setLastAddedSticker] = useState<StickerItem | null>(null);
   const [vfxLayers, setVfxLayers] = useState<TimelineVfxLayer[]>([]);
+  const [selectedVfxLayerId, setSelectedVfxLayerId] = useState<string | null>(null);
   const [lastAddedVfx, setLastAddedVfx] = useState<CinemaVfxItem | null>(null);
   const [activeEffect, setActiveEffect] = useState<EffectItem | null>(null);
   const [selectedTransitionId, setSelectedTransitionId] = useState<string | null>(null);
@@ -442,6 +529,8 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
 
   // Refs for DOM, Media & 60fps Canvas Render Loop
   const previewCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const previewBoxRef = useRef<HTMLDivElement | null>(null);
+  const vfxDragRef = useRef<boolean>(false);
   const transCanvasARef = useRef<HTMLCanvasElement | null>(null);
   const transCanvasBRef = useRef<HTMLCanvasElement | null>(null);
   const timelineScrollRef = useRef<HTMLDivElement | null>(null);
@@ -560,6 +649,7 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
     clips: timelineClips,
     filterId: activeFilter.id,
     colorGradeId: activeColorGradeId,
+    colorAdjust,
     audioId: activeAudio.id,
     showTitleOverlay,
     movieTitle,
@@ -581,6 +671,7 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
     const f = FILTERS_LIST.find((x) => x.id === snap.filterId);
     if (f) setActiveFilter(f);
     setActiveColorGradeId(snap.colorGradeId);
+    if (snap.colorAdjust) setColorAdjust(snap.colorAdjust);
     const a = [...userAudioLibrary, ...SFX_FOLEY_LIST, ...MUSIC_BGM_LIST].find((x) => x.id === snap.audioId);
     if (a) setActiveAudio(a);
     setShowTitleOverlay(snap.showTitleOverlay);
@@ -1155,19 +1246,22 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
     const cardsDisabled = disabledCategoryIds.includes('card');
     const effectsDisabled = disabledCategoryIds.includes('effects');
 
-    // Compute CSS filter string (skip identity filter pass for raw/unadjusted video so GPU blit stays fast)
-    const activeCssFilter = !filtersDisabled && activeFilter.id !== 'f_none' ? activeFilter.cssFilter : '';
+    // Compute CSS filter string + Color Grading Intensity + Exposure
+    const rawCssFilter = !filtersDisabled && activeFilter.id !== 'f_none' ? activeFilter.cssFilter : '';
+    const lutRatio = Math.max(0, Math.min(1, (colorAdjust.lutIntensity ?? 100) / 100));
+    const activeCssFilter = rawCssFilter ? scaleCssFilterByRatio(rawCssFilter, lutRatio) : '';
+    const effectiveBrightness = Math.max(30, Math.min(200, colorAdjust.brightness + (colorAdjust.exposure || 0)));
     const hasAdj =
-      colorAdjust.brightness !== 100 ||
+      effectiveBrightness !== 100 ||
       colorAdjust.contrast !== 100 ||
       colorAdjust.saturation !== 100 ||
       colorAdjust.warmth > 0;
     const adjFilter = hasAdj
       ? [
-          colorAdjust.brightness !== 100 ? `brightness(${colorAdjust.brightness}%)` : '',
+          effectiveBrightness !== 100 ? `brightness(${effectiveBrightness}%)` : '',
           colorAdjust.contrast !== 100 ? `contrast(${colorAdjust.contrast}%)` : '',
           colorAdjust.saturation !== 100 ? `saturate(${colorAdjust.saturation}%)` : '',
-          colorAdjust.warmth > 0 ? `sepia(${Math.min(60, colorAdjust.warmth)}%)` : '',
+          colorAdjust.warmth > 0 ? `sepia(${Math.min(55, colorAdjust.warmth * 0.7)}%)` : '',
         ]
           .filter(Boolean)
           .join(' ')
@@ -1241,6 +1335,62 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
     ctx.translate(w / 2, h / 2);
     ctx.filter = 'none';
 
+    // Temperature (Cool/Warm), Tint (Green/Magenta), and 3-Way Color Wheels (Lift / Gamma / Gain)
+    if (colorAdjust.warmth > 4) {
+      ctx.save();
+      ctx.globalCompositeOperation = 'soft-light';
+      ctx.fillStyle = `rgba(255, 166, 70, ${Math.min(0.38, colorAdjust.warmth / 140)})`;
+      ctx.fillRect(-w / 2, -h / 2, w, h);
+      ctx.restore();
+    } else if (colorAdjust.warmth < -2) {
+      ctx.save();
+      ctx.globalCompositeOperation = 'soft-light';
+      ctx.fillStyle = `rgba(56, 175, 255, ${Math.min(0.45, Math.abs(colorAdjust.warmth) / 95)})`;
+      ctx.fillRect(-w / 2, -h / 2, w, h);
+      ctx.restore();
+    }
+
+    if (colorAdjust.tint > 2) {
+      ctx.save();
+      ctx.globalCompositeOperation = 'soft-light';
+      ctx.fillStyle = `rgba(244, 114, 182, ${Math.min(0.36, colorAdjust.tint / 110)})`;
+      ctx.fillRect(-w / 2, -h / 2, w, h);
+      ctx.restore();
+    } else if (colorAdjust.tint < -2) {
+      ctx.save();
+      ctx.globalCompositeOperation = 'soft-light';
+      ctx.fillStyle = `rgba(52, 211, 153, ${Math.min(0.36, Math.abs(colorAdjust.tint) / 110)})`;
+      ctx.fillRect(-w / 2, -h / 2, w, h);
+      ctx.restore();
+    }
+
+    if (colorAdjust.lift.strength > 2) {
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighten';
+      ctx.globalAlpha = Math.min(0.34, colorAdjust.lift.strength / 250);
+      ctx.fillStyle = colorAdjust.lift.hex;
+      ctx.fillRect(-w / 2, -h / 2, w, h);
+      ctx.restore();
+    }
+
+    if (colorAdjust.gamma.strength > 2) {
+      ctx.save();
+      ctx.globalCompositeOperation = 'soft-light';
+      ctx.globalAlpha = Math.min(0.55, colorAdjust.gamma.strength / 145);
+      ctx.fillStyle = colorAdjust.gamma.hex;
+      ctx.fillRect(-w / 2, -h / 2, w, h);
+      ctx.restore();
+    }
+
+    if (colorAdjust.gain.strength > 2) {
+      ctx.save();
+      ctx.globalCompositeOperation = 'screen';
+      ctx.globalAlpha = Math.min(0.42, colorAdjust.gain.strength / 185);
+      ctx.fillStyle = colorAdjust.gain.hex;
+      ctx.fillRect(-w / 2, -h / 2, w, h);
+      ctx.restore();
+    }
+
     // Subtle Vignette
     if (colorAdjust.vignette > 0) {
       const vig = ctx.createRadialGradient(0, 0, Math.min(w, h) * 0.35, 0, 0, Math.max(w, h) * 0.72);
@@ -1294,7 +1444,8 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
 
     // Screen-space Overlays (0..w, 0..h)
     if (!vfxDisabled) {
-      vfxLayers.forEach((vLayer) => drawCinemaVfxOnCanvas(ctx, w, h, vLayer, tSec));
+      const isPausedNow = !isPlayingRef.current;
+      vfxLayers.forEach((vLayer) => drawCinemaVfxOnCanvas(ctx, w, h, vLayer, tSec, isPausedNow));
     }
 
     if (!stickersDisabled) {
@@ -2718,7 +2869,79 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
             style={{ containerType: 'size' }}
           >
             <div
-              className="relative bg-black rounded-lg border border-zinc-800/90 overflow-hidden shadow-2xl flex items-center justify-center"
+              ref={previewBoxRef}
+              onPointerDown={(e) => {
+                if (selectedWheelCategoryId !== 'vfx' || vfxLayers.length === 0) return;
+                const box = previewBoxRef.current;
+                if (!box) return;
+                vfxDragRef.current = true;
+                try {
+                  e.currentTarget.setPointerCapture(e.pointerId);
+                } catch {}
+                const rect = box.getBoundingClientRect();
+                if (rect.width <= 0 || rect.height <= 0) return;
+                const rawX = isCssRotatedLandscape
+                  ? ((e.clientY - rect.top) / rect.height) * 100
+                  : ((e.clientX - rect.left) / rect.width) * 100;
+                const rawY = isCssRotatedLandscape
+                  ? (1 - (e.clientX - rect.left) / rect.width) * 100
+                  : ((e.clientY - rect.top) / rect.height) * 100;
+                const xPct = Math.max(4, Math.min(96, rawX));
+                const yPct = Math.max(4, Math.min(96, rawY));
+                const targetId = selectedVfxLayerId || vfxLayers[vfxLayers.length - 1].id;
+                setSelectedVfxLayerId(targetId);
+                setVfxLayers((prev) =>
+                  prev.map((vl) =>
+                    vl.id === targetId
+                      ? {
+                          ...vl,
+                          startXPct: xPct,
+                          startYPct: yPct,
+                          endXPct: vl.vfx.hasMotionRoute ? Math.min(96, xPct + 24) : xPct,
+                          endYPct: vl.vfx.hasMotionRoute ? Math.max(4, yPct - 8) : yPct,
+                        }
+                      : vl
+                  )
+                );
+              }}
+              onPointerMove={(e) => {
+                if (!vfxDragRef.current || selectedWheelCategoryId !== 'vfx' || vfxLayers.length === 0) return;
+                const box = previewBoxRef.current;
+                if (!box) return;
+                const rect = box.getBoundingClientRect();
+                if (rect.width <= 0 || rect.height <= 0) return;
+                const rawX = isCssRotatedLandscape
+                  ? ((e.clientY - rect.top) / rect.height) * 100
+                  : ((e.clientX - rect.left) / rect.width) * 100;
+                const rawY = isCssRotatedLandscape
+                  ? (1 - (e.clientX - rect.left) / rect.width) * 100
+                  : ((e.clientY - rect.top) / rect.height) * 100;
+                const xPct = Math.max(4, Math.min(96, rawX));
+                const yPct = Math.max(4, Math.min(96, rawY));
+                const targetId = selectedVfxLayerId || vfxLayers[vfxLayers.length - 1].id;
+                setVfxLayers((prev) =>
+                  prev.map((vl) =>
+                    vl.id === targetId
+                      ? {
+                          ...vl,
+                          startXPct: xPct,
+                          startYPct: yPct,
+                          endXPct: vl.vfx.hasMotionRoute ? Math.min(96, xPct + 24) : xPct,
+                          endYPct: vl.vfx.hasMotionRoute ? Math.max(4, yPct - 8) : yPct,
+                        }
+                      : vl
+                  )
+                );
+              }}
+              onPointerUp={() => {
+                vfxDragRef.current = false;
+              }}
+              onPointerCancel={() => {
+                vfxDragRef.current = false;
+              }}
+              className={`relative bg-black rounded-lg border border-zinc-800/90 overflow-hidden shadow-2xl flex items-center justify-center ${
+                selectedWheelCategoryId === 'vfx' && vfxLayers.length > 0 ? 'cursor-crosshair touch-none' : ''
+              }`}
               style={{
                 aspectRatio: `${activeAspectOpt.width} / ${activeAspectOpt.height}`,
                 width: `min(100cqw, calc(100cqh * ${activeAspectOpt.width / activeAspectOpt.height}))`,
@@ -2730,6 +2953,19 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                 height={activeAspectOpt.height}
                 className="w-full h-full object-contain block"
               />
+              {selectedWheelCategoryId === 'vfx' && vfxLayers.length > 0 && (() => {
+                const targetLayer =
+                  vfxLayers.find((x) => x.id === selectedVfxLayerId) || vfxLayers[vfxLayers.length - 1];
+                if (!targetLayer) return null;
+                return (
+                  <div
+                    className="pointer-events-none absolute w-5 h-5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-rose-400/90 shadow-[0_0_10px_rgba(251,113,133,0.8)] flex items-center justify-center"
+                    style={{ left: `${targetLayer.startXPct}%`, top: `${targetLayer.startYPct}%` }}
+                  >
+                    <div className="w-1.5 h-1.5 rounded-full bg-white" />
+                  </div>
+                );
+              })()}
             </div>
           </div>
 
@@ -2853,6 +3089,97 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                     setSelectedAspectRatio(mm.aspectRatio);
                   }
                 }}
+                studioMode={studioMode}
+                onChangeStudioMode={onChangeStudioMode}
+                colorAdjust={colorAdjust}
+                onUpdateColorAdjust={(updater) => {
+                  setDisabledCategoryIds((p) => p.filter((x) => x !== 'filters'));
+                  setColorAdjust(updater);
+                }}
+                onResetColorAdjust={() => {
+                  setColorAdjust(DEFAULT_COLOR_GRADE_ADJUSTMENTS);
+                }}
+                vfxLayers={vfxLayers}
+                selectedVfxLayerId={selectedVfxLayerId}
+                onSelectVfxLayer={setSelectedVfxLayerId}
+                onAddProVfx={(preset) => {
+                  pushUndoCheckpoint();
+                  setDisabledCategoryIds((p) => p.filter((x) => x !== 'vfx'));
+                  const newId = `vfx_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`;
+                  const synthItem: CinemaVfxItem = {
+                    id: preset.id,
+                    name: preset.name,
+                    category: preset.category,
+                    kind:
+                      preset.vfxType === 'bullet_tracer'
+                        ? 'bullet_tracer'
+                        : preset.vfxType === 'muzzle_flash'
+                          ? 'muzzle_flash'
+                          : preset.vfxType === 'gun_smoke'
+                            ? 'smoke'
+                            : preset.vfxType === 'blood_splatter'
+                              ? 'blood_splatter'
+                              : preset.vfxType === 'sparks_shower'
+                                ? 'sparks'
+                                : preset.vfxType === 'glass_shatter'
+                                  ? 'glass_shatter'
+                                  : preset.vfxType === 'lightning_arc'
+                                    ? 'lightning'
+                                    : preset.vfxType === 'sword_slash'
+                                      ? 'sword_slash'
+                                      : preset.vfxType === 'building_fire'
+                                        ? 'building_inferno'
+                                        : preset.vfxType === 'fire_blast'
+                                          ? 'fireball'
+                                          : 'explosion',
+                    emoji:
+                      preset.vfxType === 'building_fire' || preset.vfxType === 'fire_blast'
+                        ? '🔥'
+                        : preset.vfxType === 'building_collapse'
+                          ? '🏚️'
+                          : preset.vfxType === 'bullet_tracer'
+                            ? '🔫'
+                            : preset.vfxType === 'lightning_arc'
+                              ? '⚡'
+                              : '💥',
+                    primaryColor: '#ff7a18',
+                    secondaryColor: '#f43f5e',
+                    defaultDurationSec: preset.vfxType === 'building_fire' || preset.vfxType === 'fog_atmosphere' ? 5 : 3,
+                    hasMotionRoute: preset.vfxType === 'bullet_tracer' || preset.vfxType === 'sword_slash',
+                    description: preset.sub,
+                  };
+                  setLastAddedVfx(synthItem);
+                  setSelectedVfxLayerId(newId);
+                  setVfxLayers((prev) => [
+                    ...prev,
+                    {
+                      id: newId,
+                      vfx: synthItem,
+                      proVfx: preset,
+                      startTimeSec: currentTimeRef.current,
+                      durationSec: synthItem.defaultDurationSec,
+                      startXPct: preset.vfxType === 'bullet_tracer' ? 28 : 50,
+                      startYPct: 52,
+                      endXPct: preset.vfxType === 'bullet_tracer' ? 76 : 50,
+                      endYPct: preset.vfxType === 'bullet_tracer' ? 46 : 52,
+                      scale: preset.defaultScale || 1,
+                      opacity: 100,
+                      speed: 1,
+                      includeImpactBlood: true,
+                    },
+                  ]);
+                }}
+                onUpdateVfxLayer={(id, patch) => {
+                  setVfxLayers((prev) => prev.map((vl) => (vl.id === id ? { ...vl, ...patch } : vl)));
+                }}
+                onDeleteVfxLayer={(id) => {
+                  pushUndoCheckpoint();
+                  setVfxLayers((prev) => {
+                    const next = prev.filter((vl) => vl.id !== id);
+                    setSelectedVfxLayerId((cur) => (cur === id ? next[next.length - 1]?.id || null : cur));
+                    return next;
+                  });
+                }}
                 activeFilter={activeFilter}
                 onSelectFilter={(f) => {
                   pushUndoCheckpoint();
@@ -2865,16 +3192,17 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                   setDisabledCategoryIds((p) => p.filter((x) => x !== 'filters'));
                   if (!cg) {
                     setActiveColorGradeId(null);
-                    setColorAdjust({ brightness: 100, contrast: 100, saturation: 100, warmth: 0, vignette: 12 });
+                    setColorAdjust(DEFAULT_COLOR_GRADE_ADJUSTMENTS);
                   } else {
                     setActiveColorGradeId(cg.id);
-                    setColorAdjust({
+                    setColorAdjust((prev) => ({
+                      ...prev,
                       brightness: Math.max(40, Math.min(180, 100 + cg.brightness)),
                       contrast: Math.max(40, Math.min(200, 100 + cg.contrast)),
                       saturation: Math.max(0, Math.min(200, 100 + cg.saturation)),
                       warmth: cg.warmth,
                       vignette: cg.vignette,
-                    });
+                    }));
                   }
                 }}
                 userAudioLibrary={userAudioLibrary}
@@ -2978,10 +3306,12 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                   pushUndoCheckpoint();
                   setDisabledCategoryIds((p) => p.filter((x) => x !== 'vfx'));
                   setLastAddedVfx(v);
+                  const newId = `vfx_${Date.now()}`;
+                  setSelectedVfxLayerId(newId);
                   setVfxLayers((prev) => [
                     ...prev,
                     {
-                      id: `vfx_${Date.now()}`,
+                      id: newId,
                       vfx: v,
                       startTimeSec: currentTimeRef.current,
                       durationSec: v.defaultDurationSec,
@@ -3170,7 +3500,7 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
                 <button
                   type="button"
                   onClick={() => {
-                    setColorAdjust({ brightness: 100, contrast: 100, saturation: 100, warmth: 0, vignette: 12 });
+                    setColorAdjust(DEFAULT_COLOR_GRADE_ADJUSTMENTS);
                     setPlaybackSpeed(1);
                     setVolume(85);
                   }}
@@ -3190,16 +3520,19 @@ export const VideoEditorStudio: React.FC<VideoEditorStudioProps> = ({
             </div>
             <div className="flex-1 overflow-y-auto p-2.5 space-y-2.5 text-[10px]">
               {[
-                { label: 'Brightness', val: colorAdjust.brightness, min: 40, max: 180, key: 'brightness' as const },
-                { label: 'Contrast', val: colorAdjust.contrast, min: 40, max: 200, key: 'contrast' as const },
-                { label: 'Saturation', val: colorAdjust.saturation, min: 0, max: 200, key: 'saturation' as const },
-                { label: 'Warmth', val: colorAdjust.warmth, min: 0, max: 80, key: 'warmth' as const },
-                { label: 'Vignette', val: colorAdjust.vignette, min: 0, max: 90, key: 'vignette' as const },
+                { label: 'Exposure', val: colorAdjust.exposure, min: -50, max: 50, key: 'exposure' as const, suffix: '' },
+                { label: 'Brightness', val: colorAdjust.brightness, min: 40, max: 180, key: 'brightness' as const, suffix: '%' },
+                { label: 'Contrast', val: colorAdjust.contrast, min: 40, max: 200, key: 'contrast' as const, suffix: '%' },
+                { label: 'Saturation', val: colorAdjust.saturation, min: 0, max: 200, key: 'saturation' as const, suffix: '%' },
+                { label: 'Temp (Cool/Warm)', val: colorAdjust.warmth, min: -50, max: 80, key: 'warmth' as const, suffix: '' },
+                { label: 'Tint (Green/Mag)', val: colorAdjust.tint, min: -45, max: 45, key: 'tint' as const, suffix: '' },
+                { label: 'LUT / Filter Mix', val: colorAdjust.lutIntensity, min: 0, max: 100, key: 'lutIntensity' as const, suffix: '%' },
+                { label: 'Vignette', val: colorAdjust.vignette, min: 0, max: 90, key: 'vignette' as const, suffix: '%' },
               ].map((s) => (
                 <div key={s.key} className="space-y-0.5">
                   <div className="flex justify-between text-zinc-300">
                     <span>{s.label}</span>
-                    <span className="font-mono tabular-nums text-teal-300">{s.val}%</span>
+                    <span className="font-mono tabular-nums text-teal-300">{s.val}{s.suffix}</span>
                   </div>
                   <input
                     type="range"

@@ -10,7 +10,9 @@ export type ActionVfxType =
   | 'sparks_shower'
   | 'fog_atmosphere'
   | 'glass_shatter'
-  | 'lightning_arc';
+  | 'lightning_arc'
+  | 'building_fire'
+  | 'building_collapse';
 
 export interface ActionVfxPreset {
   id: string;
@@ -158,9 +160,29 @@ export const ACTION_VFX_CATEGORIES: ActionVfxCategoryDef[] = [
     prefixes: ['Thunder Strike', 'Arc Bolt', 'Storm Flash', 'Plasma Crack', 'Power Surge', 'Tesla Spark', 'Sky Bolt', 'Energy Whip', 'Taser Shock', 'Portal Arc', 'Blade Charge', 'Fuse Blow', 'Aura Strike', 'Coil Zap'],
     modifiers: ['Electric Cyan', 'Violet Surge', 'High Voltage', 'Multi Branch', 'Sudden Flash', 'Cinema White', 'Gold Lightning', 'Red Plasma', 'Short Flicker', 'Sustained Arc', 'Forked Bolt', 'EMP Pulse', 'Bright Halo', 'Storm Crack', 'Diagonal Strike', 'Vertical Bolt', 'Chain Arc', 'Cyber Neon', 'Twin Bolt', 'Omega Flash'],
   },
+  {
+    id: 'building_fire',
+    label: 'Building Fire & Inferno',
+    vfxType: 'building_fire',
+    defaultBlend: 'screen',
+    swatch: 'from-yellow-400 via-orange-600 to-zinc-950',
+    count: 1500,
+    prefixes: ['Skyscraper Fire', 'Warehouse Inferno', 'Apartment Blaze', 'Rooftop Fireball', 'Window Flames', 'Tower Firestorm', 'Factory Meltdown', 'Garage Explosion Fire', 'Hospital Wing Blaze', 'Mall Fire Plume', 'Bridge Fireball', 'Hotel Floor Fire', 'Subway Blast Fire', 'Hangar Inferno'],
+    modifiers: ['Black Smoke Plume', 'Raging Roof', 'Window Blowout', 'Night Inferno', 'Dense Embers', 'Structural Glow', 'Thermal Heat', 'Heavy Billow', 'Action Climax', 'Wide Building', 'Twin Tower Fire', 'Oil Burn', 'Gas Ignition', 'IMAX Disaster', 'Slow Burn', 'Sudden Flashover', 'Crimson Sky', 'Charcoal Smoke', 'Rising Ash', 'Rescue Scene'],
+  },
+  {
+    id: 'building_collapse',
+    label: 'Building Collapse & Debris',
+    vfxType: 'building_collapse',
+    defaultBlend: 'source-over',
+    swatch: 'from-stone-300 via-zinc-600 to-slate-950',
+    count: 1500,
+    prefixes: ['Tower Collapse', 'Wall Demolition', 'Glass Facade Fall', 'Concrete Slab Drop', 'Pillar Crumble', 'Roof Cave-In', 'Bridge Span Fall', 'Skyscraper Implosion', 'Warehouse Crush', 'Balcony Shear', 'Curtain Wall Shatter', 'Factory Stack Fall', 'Tunnel Cave-In', 'Dam Wall Break'],
+    modifiers: ['Massive Dust Cloud', 'Falling Glass Rain', 'Heavy Concrete', 'Shockwave Base', 'Slow Motion Crash', 'Multi Floor Drop', 'Steel Rebar Snap', 'Smoke & Rubble', 'Ground Impact', 'Action Disaster', 'Wide Debris', 'Shaking Earth', 'Noir Dust', 'Close Structural', 'Cinematic Implosion', 'Side Tilt Fall', 'Cascade Shards', 'Urban Rubble', 'IMAX Collapse', 'Final Impact'],
+  },
 ];
 
-export const TOTAL_PRO_VFX_COUNT = ACTION_VFX_CATEGORIES.reduce((s, c) => s + c.count, 0); // 18,000
+export const TOTAL_PRO_VFX_COUNT = ACTION_VFX_CATEGORIES.reduce((s, c) => s + c.count, 0); // 21,000+
 export const TOTAL_PRO_FILTERS_COUNT = 15000;
 export const TOTAL_PRO_LUTS_COUNT = 15000;
 export const TOTAL_PRO_SFX_COUNT = 15000;
@@ -713,6 +735,81 @@ export function renderActionVfxProp(
         ctx.lineTo(lx, ly);
       }
       ctx.stroke();
+    }
+  } else if (vfxType === 'building_fire') {
+    // Rising thick black/amber smoke column + window blowout flames + floating embers
+    const smokeLayers = Math.max(8, Math.round(particleCount * 0.65));
+    for (let i = 0; i < smokeLayers; i++) {
+      const r1 = rand();
+      const r2 = rand();
+      const life = (loopT + r1) % 1;
+      const sx = (r2 - 0.5) * baseSize * (0.65 + life * 0.5);
+      const sy = baseSize * 0.35 - life * baseSize * 1.45;
+      const rad = baseSize * (0.22 + life * 0.42);
+      const alpha = (1 - life) * 0.55;
+      const sg = ctx.createRadialGradient(sx, sy, 2, sx, sy, rad);
+      sg.addColorStop(0, `rgba(45, 32, 26, ${alpha})`);
+      sg.addColorStop(0.55, `rgba(24, 24, 28, ${alpha * 0.7})`);
+      sg.addColorStop(1, 'rgba(0, 0, 0, 0)');
+      ctx.fillStyle = sg;
+      ctx.beginPath();
+      ctx.arc(sx, sy, rad, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    const flames = Math.round(particleCount * 1.25);
+    for (let i = 0; i < flames; i++) {
+      const r1 = rand();
+      const r2 = rand();
+      const life = (loopT * 1.4 + r1) % 1;
+      const fx = (r2 - 0.5) * baseSize * 0.85;
+      const fy = baseSize * 0.35 - life * baseSize * 0.95;
+      const fr = baseSize * (0.14 + (1 - life) * 0.22);
+      const fa = Math.sin(life * Math.PI) * 0.92;
+      const fg = ctx.createRadialGradient(fx, fy, 1, fx, fy, fr);
+      fg.addColorStop(0, `rgba(255, 250, 195, ${fa})`);
+      fg.addColorStop(0.45, `rgba(255, 115, 10, ${fa * 0.88})`);
+      fg.addColorStop(1, 'rgba(180, 20, 0, 0)');
+      ctx.fillStyle = fg;
+      ctx.beginPath();
+      ctx.arc(fx, fy, fr, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  } else if (vfxType === 'building_collapse') {
+    // Falling structural slabs, shattering glass shards & billowing concrete dust plume
+    const drop = loopT;
+    const blocks = Math.max(8, Math.round(particleCount * 0.65));
+    for (let i = 0; i < blocks; i++) {
+      const rx = (rand() - 0.5) * baseSize * 1.15;
+      const startY = -baseSize * 0.65 + (rand() - 0.5) * baseSize * 0.35;
+      const bx = rx + (rand() - 0.5) * drop * baseSize * 0.45;
+      const by = startY + drop * drop * baseSize * 1.35;
+      const bw = baseSize * (0.09 + rand() * 0.14);
+      const bh = baseSize * (0.06 + rand() * 0.11);
+      ctx.save();
+      ctx.translate(bx, by);
+      ctx.rotate((rand() - 0.5) * drop * 4.5);
+      ctx.fillStyle = i % 3 === 0 ? 'rgba(186, 230, 253, 0.78)' : 'rgba(82, 82, 91, 0.9)';
+      ctx.strokeStyle = 'rgba(228, 228, 231, 0.45)';
+      ctx.lineWidth = 1;
+      ctx.fillRect(-bw / 2, -bh / 2, bw, bh);
+      ctx.strokeRect(-bw / 2, -bh / 2, bw, bh);
+      ctx.restore();
+    }
+    // Expanding ground-level concrete dust cloud
+    const dustCount = Math.max(6, Math.round(particleCount * 0.5));
+    for (let i = 0; i < dustCount; i++) {
+      const spread = (rand() - 0.5) * (0.4 + drop * 1.5) * baseSize;
+      const dy = baseSize * (0.38 - rand() * 0.25 * drop);
+      const dr = baseSize * (0.18 + drop * 0.35);
+      const da = Math.sin(drop * Math.PI) * 0.58;
+      const dg = ctx.createRadialGradient(spread, dy, 2, spread, dy, dr);
+      dg.addColorStop(0, `rgba(212, 212, 216, ${da})`);
+      dg.addColorStop(0.6, `rgba(113, 113, 122, ${da * 0.7})`);
+      dg.addColorStop(1, 'rgba(63, 63, 70, 0)');
+      ctx.fillStyle = dg;
+      ctx.beginPath();
+      ctx.arc(spread, dy, dr, 0, Math.PI * 2);
+      ctx.fill();
     }
   }
 

@@ -33,6 +33,8 @@ import {
   LogIn,
   Trash2,
   Calendar,
+  Flame,
+  Palette,
 } from 'lucide-react';
 import {
   getRedirectResult,
@@ -160,9 +162,9 @@ export default function App() {
   const [lang, setLang] = useState<AppLang>('en');
   const t = UI_TRANSLATIONS[lang];
 
-  // Navigation Step: 'input' | 'options' | 'prompts' | 'editor' | 'history' | 'login'
+  // Navigation Step: 'input' | 'options' | 'prompts' | 'editor' | 'vfx' | 'color' | 'history' | 'login'
   const [activeStep, setActiveStep] = useState<
-    'input' | 'options' | 'prompts' | 'editor' | 'history' | 'login'
+    'input' | 'options' | 'prompts' | 'editor' | 'vfx' | 'color' | 'history' | 'login'
   >('input');
   const [lastStoryStep, setLastStoryStep] = useState<'input' | 'options' | 'prompts'>('input');
   const [premise, setPremise] = useState<string>('');
@@ -1182,13 +1184,24 @@ export default function App() {
     );
   }
 
-  // Full-screen dedicated 4K Video Editor mode
-  if (!showAdminPanel && activeStep === 'editor') {
+  // Full-screen dedicated 16:9 4K Studio (Editing / VFX Editing / Color Grading)
+  if (
+    !showAdminPanel &&
+    (activeStep === 'editor' || activeStep === 'vfx' || activeStep === 'color')
+  ) {
+    const resolvedStudioMode: 'editing' | 'vfx' | 'color' =
+      activeStep === 'vfx' ? 'vfx' : activeStep === 'color' ? 'color' : 'editing';
     return (
       <>
         <VideoEditorStudio
           lang={lang}
           currentUser={currentUser}
+          studioMode={resolvedStudioMode}
+          onChangeStudioMode={(mode) => {
+            void tryLockLandscapeOrientation();
+            trackStepChange('editor');
+            setActiveStep(mode === 'vfx' ? 'vfx' : mode === 'color' ? 'color' : 'editor');
+          }}
           onBackToStoryboard={() => {
             unlockScreenOrientation();
             trackStepChange('input');
@@ -1267,10 +1280,10 @@ export default function App() {
                   (lang === 'ml'
                     ? 'Google / ജിമെയിൽ ലോഗിൻ & ഓട്ടോ ക്ലൗഡ് സേവ്'
                     : 'Google / Gmail Account Login & Auto Cloud Sync')}
-                {activeStep === 'editor' &&
+                {(activeStep === 'editor' || activeStep === 'vfx' || activeStep === 'color') &&
                   (lang === 'ml'
-                    ? '4K വീഡിയോ എഡിറ്റിംഗ് സ്റ്റുഡിയോ · കട്ടിംഗ്, ഫിൽട്ടർ, മ്യൂസിക് & 4K എക്സ്പോർട്ട്'
-                    : '4K Video Editing Studio · Cut, Filter, Titles, Music & 4K Export')}
+                    ? '4K വീഡിയോ എഡിറ്റിംഗ്, VFX & കളർ ഗ്രേഡിംഗ് സ്റ്റുഡിയോ'
+                    : '4K Video Editing, VFX & Color Grading Studio')}
               </p>
             </div>
           </div>
@@ -2539,12 +2552,18 @@ ${imgPromptText}`;
         )}
 
         {/* ================================================================= */}
-        {/* PAGE 4: 4K VIDEO EDITING STUDIO (`activeStep === 'editor'`)        */}
+        {/* PAGE 4: 4K VIDEO EDITING / VFX / COLOR STUDIO FALLBACK            */}
         {/* ================================================================= */}
-        {activeStep === 'editor' && (
+        {(activeStep === 'editor' || activeStep === 'vfx' || activeStep === 'color') && (
           <VideoEditorStudio
             lang={lang}
             currentUser={currentUser}
+            studioMode={activeStep === 'vfx' ? 'vfx' : activeStep === 'color' ? 'color' : 'editing'}
+            onChangeStudioMode={(mode) => {
+              void tryLockLandscapeOrientation();
+              trackStepChange('editor');
+              setActiveStep(mode === 'vfx' ? 'vfx' : mode === 'color' ? 'color' : 'editor');
+            }}
             onBackToStoryboard={() => {
               trackStepChange('input');
               setActiveStep('input');
@@ -2990,9 +3009,12 @@ ${imgPromptText}`;
         )}
 
         {/* Compact In-Page 2-Second Skippable Video Ads Pair + Bottom Banner (never hides buttons) */}
-        {activeStep !== 'input' && activeStep !== 'editor' && (
-          <InlineVideoAdPair sectionId={`bottom-pair-${activeStep}`} />
-        )}
+        {activeStep !== 'input' &&
+          activeStep !== 'editor' &&
+          activeStep !== 'vfx' &&
+          activeStep !== 'color' && (
+            <InlineVideoAdPair sectionId={`bottom-pair-${activeStep}`} />
+          )}
 
         <BottomBannerAd />
       </main>
@@ -3002,7 +3024,12 @@ ${imgPromptText}`;
 
       {/* Brief 2-Second In-Page Video Ad Break (auto-closes after 2s, never interrupts editor) */}
       <TwoSecondVideoBreakOverlay
-        open={show2sVideoBreak && activeStep !== 'editor'}
+        open={
+          show2sVideoBreak &&
+          activeStep !== 'editor' &&
+          activeStep !== 'vfx' &&
+          activeStep !== 'color'
+        }
         onClose={() => setShow2sVideoBreak(false)}
       />
 
@@ -3016,9 +3043,9 @@ ${imgPromptText}`;
         onCloseReview={() => setShowTermsReviewModal(false)}
       />
 
-      {/* Unified 4-Tab Bottom App Navigation Bar (Mobile & Desktop with Cinematic Photo Thumbnails) */}
-      <nav className="fixed bottom-0 inset-x-0 z-40 bg-[#0d0f17]/95 backdrop-blur-lg border-t border-zinc-800 px-2.5 py-2 shadow-[0_-8px_30px_rgba(0,0,0,0.7)]">
-        <div className="max-w-4xl mx-auto grid grid-cols-4 gap-1.5 sm:gap-2">
+      {/* Unified 6-Tab Bottom App Navigation Bar (Story, Editing, VFX Editing, Color Grading, History, Login) */}
+      <nav className="fixed bottom-0 inset-x-0 z-40 bg-[#0d0f17]/95 backdrop-blur-lg border-t border-zinc-800 px-1.5 sm:px-2.5 py-1.5 sm:py-2 shadow-[0_-8px_30px_rgba(0,0,0,0.7)]">
+        <div className="max-w-5xl mx-auto grid grid-cols-6 gap-1 sm:gap-1.5">
           {/* Tab 1: Story */}
           <button
             type="button"
@@ -3032,7 +3059,7 @@ ${imgPromptText}`;
                 setActiveStep(lastStoryStep);
               }
             }}
-            className={`flex flex-col items-center justify-center gap-1 py-1.5 px-1 rounded-xl text-[11px] font-bold transition-all cursor-pointer ${
+            className={`min-h-[44px] flex flex-col items-center justify-center gap-0.5 py-1 px-0.5 rounded-xl text-[10px] sm:text-[11px] font-bold transition-all cursor-pointer ${
               !showAdminPanel && (activeStep === 'input' || activeStep === 'options' || activeStep === 'prompts')
                 ? 'bg-amber-500 text-black font-extrabold shadow-md shadow-amber-500/30'
                 : 'text-zinc-300 hover:text-white bg-zinc-900/80 hover:bg-zinc-800'
@@ -3046,7 +3073,7 @@ ${imgPromptText}`;
               />
               <div className="absolute inset-0 bg-black/20" />
             </div>
-            <span className="truncate max-w-full">
+            <span className="truncate max-w-full whitespace-nowrap">
               {lang === 'ml' ? 'സ്റ്റോറി' : 'Story'}
             </span>
           </button>
@@ -3060,7 +3087,7 @@ ${imgPromptText}`;
               trackStepChange('editor');
               setActiveStep('editor');
             }}
-            className={`flex flex-col items-center justify-center gap-1 py-1.5 px-1 rounded-xl text-[11px] font-bold transition-all cursor-pointer ${
+            className={`min-h-[44px] flex flex-col items-center justify-center gap-0.5 py-1 px-0.5 rounded-xl text-[10px] sm:text-[11px] font-bold transition-all cursor-pointer ${
               !showAdminPanel && activeStep === 'editor'
                 ? 'bg-amber-500 text-black font-extrabold shadow-md shadow-amber-500/30'
                 : 'text-zinc-300 hover:text-white bg-zinc-900/80 hover:bg-zinc-800'
@@ -3074,19 +3101,65 @@ ${imgPromptText}`;
               />
               <div className="absolute inset-0 bg-black/20" />
             </div>
-            <span className="truncate max-w-full">
+            <span className="truncate max-w-full whitespace-nowrap">
               {lang === 'ml' ? 'എഡിറ്റിംഗ്' : 'Editing'}
             </span>
           </button>
 
-          {/* Tab 3: History */}
+          {/* Tab 3: VFX Editing (16:9 Studio Model) */}
+          <button
+            type="button"
+            onClick={() => {
+              void tryLockLandscapeOrientation();
+              setShowAdminPanel(false);
+              trackStepChange('editor');
+              setActiveStep('vfx');
+            }}
+            className={`min-h-[44px] flex flex-col items-center justify-center gap-0.5 py-1 px-0.5 rounded-xl text-[10px] sm:text-[11px] font-bold transition-all cursor-pointer ${
+              !showAdminPanel && activeStep === 'vfx'
+                ? 'bg-rose-500 text-white font-extrabold shadow-md shadow-rose-500/35'
+                : 'text-zinc-300 hover:text-white bg-zinc-900/80 hover:bg-zinc-800'
+            }`}
+          >
+            <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-rose-600/90 via-orange-600/80 to-zinc-900 border border-rose-400/50 flex items-center justify-center shrink-0 shadow-inner">
+              <Flame className="w-3.5 h-3.5 text-amber-200" />
+            </div>
+            <span className="truncate max-w-full whitespace-nowrap">
+              {lang === 'ml' ? 'VFX' : 'VFX Edit'}
+            </span>
+          </button>
+
+          {/* Tab 4: Color Grading (16:9 Studio Model) */}
+          <button
+            type="button"
+            onClick={() => {
+              void tryLockLandscapeOrientation();
+              setShowAdminPanel(false);
+              trackStepChange('editor');
+              setActiveStep('color');
+            }}
+            className={`min-h-[44px] flex flex-col items-center justify-center gap-0.5 py-1 px-0.5 rounded-xl text-[10px] sm:text-[11px] font-bold transition-all cursor-pointer ${
+              !showAdminPanel && activeStep === 'color'
+                ? 'bg-cyan-400 text-black font-extrabold shadow-md shadow-cyan-500/35'
+                : 'text-zinc-300 hover:text-white bg-zinc-900/80 hover:bg-zinc-800'
+            }`}
+          >
+            <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-cyan-500/85 via-indigo-600/80 to-amber-500/75 border border-cyan-300/50 flex items-center justify-center shrink-0 shadow-inner">
+              <Palette className="w-3.5 h-3.5 text-white" />
+            </div>
+            <span className="truncate max-w-full whitespace-nowrap">
+              {lang === 'ml' ? 'കളർ' : 'Color'}
+            </span>
+          </button>
+
+          {/* Tab 5: History */}
           <button
             type="button"
             onClick={() => {
               setShowAdminPanel(false);
               setActiveStep('history');
             }}
-            className={`flex flex-col items-center justify-center gap-1 py-1.5 px-1 rounded-xl text-[11px] font-bold transition-all cursor-pointer ${
+            className={`min-h-[44px] flex flex-col items-center justify-center gap-0.5 py-1 px-0.5 rounded-xl text-[10px] sm:text-[11px] font-bold transition-all cursor-pointer ${
               !showAdminPanel && activeStep === 'history'
                 ? 'bg-amber-500 text-black font-extrabold shadow-md shadow-amber-500/30'
                 : 'text-zinc-300 hover:text-white bg-zinc-900/80 hover:bg-zinc-800'
@@ -3100,19 +3173,19 @@ ${imgPromptText}`;
               />
               <div className="absolute inset-0 bg-black/20" />
             </div>
-            <span className="truncate max-w-full">
+            <span className="truncate max-w-full whitespace-nowrap">
               {lang === 'ml' ? 'ഹിസ്റ്ററി' : 'History'}
             </span>
           </button>
 
-          {/* Tab 5: Login */}
+          {/* Tab 6: Login */}
           <button
             type="button"
             onClick={() => {
               setShowAdminPanel(false);
               setActiveStep('login');
             }}
-            className={`relative flex flex-col items-center justify-center gap-1 py-1.5 px-1 rounded-xl text-[11px] font-bold transition-all cursor-pointer ${
+            className={`min-h-[44px] relative flex flex-col items-center justify-center gap-0.5 py-1 px-0.5 rounded-xl text-[10px] sm:text-[11px] font-bold transition-all cursor-pointer ${
               !showAdminPanel && activeStep === 'login'
                 ? 'bg-amber-500 text-black font-extrabold shadow-md shadow-amber-500/30'
                 : 'text-zinc-300 hover:text-white bg-zinc-900/80 hover:bg-zinc-800'
@@ -3126,7 +3199,7 @@ ${imgPromptText}`;
               />
               <div className="absolute inset-0 bg-black/20" />
             </div>
-            <span className="truncate max-w-full">
+            <span className="truncate max-w-full whitespace-nowrap">
               {lang === 'ml' ? 'ലോഗിൻ' : 'Login'}
             </span>
           </button>

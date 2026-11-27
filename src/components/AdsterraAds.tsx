@@ -45,7 +45,7 @@ export function containsAdultAdSignals(...values: Array<string | undefined | nul
   return CLIENT_ADULT_NSFW_REGEX.test(combined);
 }
 
-interface VastAdData {
+export interface VastAdData {
   videoUrl: string;
   allVideoUrls: string[];
   clickThrough: string;
@@ -151,7 +151,7 @@ async function parseVastXmlClient(xml: string, depth = 0): Promise<VastAdData | 
   };
 }
 
-async function fetchLiveVastData(forceRetry = false): Promise<VastAdData> {
+export async function fetchLiveVastData(forceRetry = false): Promise<VastAdData> {
   if (cachedVastData && cachedVastData.allVideoUrls.length > 0) {
     return cachedVastData;
   }

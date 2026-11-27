@@ -22,6 +22,10 @@ import {
   Zap,
   Activity,
   Film,
+  Search,
+  Trash2,
+  RotateCcw,
+  Upload,
 } from 'lucide-react';
 import type { WheelCategoryItem } from './CircularToolWheel';
 import type { DynamicCategoryItem } from '../lib/dynamicCategories';
@@ -65,6 +69,23 @@ import {
   type TrailerCardAnimation,
   type TrailerCardTheme,
 } from '../lib/studioAdvancedFx';
+import {
+  ACTION_VFX_CATEGORIES,
+  PRO_FILTER_CATEGORIES,
+  PRO_LUT_CATEGORIES,
+  queryActionVfxPresets,
+  queryProFilters,
+  queryProLuts,
+  TOTAL_PRO_FILTERS_COUNT,
+  TOTAL_PRO_LUTS_COUNT,
+  TOTAL_PRO_VFX_COUNT,
+  type ActionVfxPreset,
+} from '../lib/proVfxEngine';
+import {
+  ColorWheelPad,
+  DEFAULT_COLOR_GRADE_ADJUSTMENTS,
+  type ColorGradeAdjustments,
+} from './ColorWheelPad';
 
 export interface WheelFeatureDrawerProps {
   category: WheelCategoryItem;
@@ -159,6 +180,45 @@ export interface WheelFeatureDrawerProps {
   onApplyTemplate: (tmpl: TemplateItem) => void;
   onApplyTrailerPack: (packId: string) => void;
 
+  // Studio Mode Switcher & Pro Color / VFX Extensions
+  studioMode?: 'editing' | 'vfx' | 'color';
+  onChangeStudioMode?: (mode: 'editing' | 'vfx' | 'color') => void;
+  colorAdjust?: ColorGradeAdjustments;
+  onUpdateColorAdjust?: (updater: (prev: ColorGradeAdjustments) => ColorGradeAdjustments) => void;
+  onResetColorAdjust?: () => void;
+  vfxLayers?: Array<{
+    id: string;
+    vfx: CinemaVfxItem;
+    proVfx?: ActionVfxPreset;
+    startTimeSec: number;
+    durationSec: number;
+    startXPct: number;
+    startYPct: number;
+    endXPct: number;
+    endYPct: number;
+    scale: number;
+    opacity: number;
+    speed: number;
+  }>;
+  selectedVfxLayerId?: string | null;
+  onSelectVfxLayer?: (id: string | null) => void;
+  onAddProVfx?: (preset: ActionVfxPreset) => void;
+  onUpdateVfxLayer?: (
+    id: string,
+    patch: Partial<{
+      startTimeSec: number;
+      durationSec: number;
+      startXPct: number;
+      startYPct: number;
+      endXPct: number;
+      endYPct: number;
+      scale: number;
+      opacity: number;
+      speed: number;
+    }>
+  ) => void;
+  onDeleteVfxLayer?: (id: string) => void;
+
   // Contextual preview props
   primaryClipThumbUrl?: string;
   secondaryClipThumbUrl?: string;
@@ -206,6 +266,20 @@ export const WheelFeatureDrawer: React.FC<WheelFeatureDrawerProps> = React.memo(
   const [renderLimit, setRenderLimit] = useState<number>(INITIAL_BOX_LIMIT);
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
+  // VFX 21,000+ Library Search & Category State
+  const [vfxSearch, setVfxSearch] = useState<string>('');
+  const [vfxCatFilter, setVfxCatFilter] = useState<string>('All');
+  const [vfxPageCount, setVfxPageCount] = useState<number>(1);
+
+  // Color Grading 30,000+ Library + Color Wheels State
+  const [colorSubView, setColorSubView] = useState<'presets' | 'wheels'>(() =>
+    props.studioMode === 'color' ? 'presets' : 'presets'
+  );
+  const [colorSearch, setColorSearch] = useState<string>('');
+  const [colorCatFilter, setColorCatFilter] = useState<string>('All');
+  const [colorSourceTab, setColorSourceTab] = useState<'all' | 'filters' | 'luts'>('all');
+  const [colorPageCount, setColorPageCount] = useState<number>(1);
+
   // Smooth scroll container ref + kinetic momentum inertia controller
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const momentumRafRef = useRef<number | null>(null);
@@ -242,10 +316,43 @@ export const WheelFeatureDrawer: React.FC<WheelFeatureDrawerProps> = React.memo(
   useEffect(() => {
     stopMomentum();
     setRenderLimit(INITIAL_BOX_LIMIT);
+    setVfxPageCount(1);
+    setColorPageCount(1);
     if (scrollContainerRef.current) {
       scrollContainerRef.current.scrollTop = 0;
     }
   }, [category.id]);
+
+  const vfxQueryResult = useMemo(() => {
+    if (category.id !== 'vfx') return { items: [] as ActionVfxPreset[], total: 0 };
+    return queryActionVfxPresets(vfxCatFilter, vfxSearch, 0, Math.min(240, vfxPageCount * 30));
+  }, [category.id, vfxCatFilter, vfxSearch, vfxPageCount]);
+
+  const proColorQueryResult = useMemo(() => {
+    if (category.id !== 'filters') return { items: [] as Array<{ id: string; name: string; category: string; css?: string; swatch: string; sub: string }>, total: 0 };
+    const limit = Math.min(240, colorPageCount * 30);
+    if (colorSourceTab === 'luts') {
+      const cat = PRO_LUT_CATEGORIES.includes(colorCatFilter) ? colorCatFilter : 'All';
+      return queryProLuts(cat, colorSearch, 0, limit);
+    }
+    if (colorSourceTab === 'filters') {
+      const cat = PRO_FILTER_CATEGORIES.includes(colorCatFilter) ? colorCatFilter : 'All';
+      return queryProFilters(cat, colorSearch, 0, limit);
+    }
+    // Combined: interleave filters + LUTs
+    const fCat = PRO_FILTER_CATEGORIES.includes(colorCatFilter) ? colorCatFilter : 'All';
+    const lCat = PRO_LUT_CATEGORIES.includes(colorCatFilter) ? colorCatFilter : 'All';
+    const half = Math.ceil(limit / 2);
+    const fRes = queryProFilters(fCat, colorSearch, 0, half);
+    const lRes = queryProLuts(lCat, colorSearch, 0, half);
+    const merged: typeof fRes.items = [];
+    const maxLen = Math.max(fRes.items.length, lRes.items.length);
+    for (let i = 0; i < maxLen; i++) {
+      if (fRes.items[i]) merged.push(fRes.items[i]);
+      if (lRes.items[i]) merged.push(lRes.items[i]);
+    }
+    return { items: merged, total: fRes.total + lRes.total };
+  }, [category.id, colorSourceTab, colorCatFilter, colorSearch, colorPageCount]);
 
   const dbItemsForCategory = useMemo(
     () => categoryItems.filter((item) => item.categoryId === category.id),
@@ -378,15 +485,38 @@ export const WheelFeatureDrawer: React.FC<WheelFeatureDrawerProps> = React.memo(
   return (
     <div className="w-full h-full flex flex-col bg-[#0b0f16] overflow-hidden select-none">
       {/* 1. COMPACT TOP HEADER BAR */}
-      <div className="h-8 px-2 border-b border-zinc-800/80 bg-[#0f1420] flex items-center justify-between shrink-0">
-        <div className="flex items-center gap-1.5 min-w-0">
+      <div className="h-8 px-1.5 border-b border-zinc-800/80 bg-[#0f1420] flex items-center justify-between gap-1 shrink-0">
+        <div className="flex items-center gap-1 min-w-0">
           <IconComp className="w-3.5 h-3.5 shrink-0" style={{ color: category.accentHex }} />
-          <span className="text-[11px] font-extrabold text-white truncate">{category.label}</span>
-          <span className="text-[8px] font-mono font-bold px-1 py-0.5 rounded bg-teal-400/10 text-teal-300 border border-teal-400/20 shrink-0">
-            LIVE 2x
+          <span className="text-[10.5px] font-extrabold text-white truncate max-w-[92px]">
+            {category.label}
           </span>
+          {props.onChangeStudioMode && (
+            <div className="flex items-center bg-zinc-950/90 border border-zinc-800 rounded-md p-0.5 shrink-0">
+              {(
+                [
+                  { id: 'editing', label: 'Edit' },
+                  { id: 'vfx', label: 'VFX' },
+                  { id: 'color', label: 'Color' },
+                ] as const
+              ).map((m) => (
+                <button
+                  key={m.id}
+                  type="button"
+                  onClick={() => props.onChangeStudioMode?.(m.id)}
+                  className={`px-1.5 py-0.5 rounded text-[8px] font-extrabold cursor-pointer transition-colors whitespace-nowrap ${
+                    (props.studioMode || 'editing') === m.id
+                      ? 'bg-teal-400 text-black'
+                      : 'text-zinc-400 hover:text-white'
+                  }`}
+                >
+                  {m.label}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
-        <div className="flex items-center gap-1.5 shrink-0">
+        <div className="flex items-center gap-1 shrink-0">
           <button
             type="button"
             onClick={props.onToggleMuteOrOff}
@@ -526,88 +656,323 @@ export const WheelFeatureDrawer: React.FC<WheelFeatureDrawerProps> = React.memo(
               </div>
             )}
 
-            {/* 2. FILTERS & COLOR GRADES (2 LIVE ANIMATED PREVIEWS PER LINE) */}
+            {/* 2. COLOR GRADING & FILTERS (30,000+ LOOKS + INTERACTIVE 3-WAY COLOR WHEELS & SLIDERS) */}
             {category.id === 'filters' && (
-              <div className="grid grid-cols-2 gap-1.5">
-                {FILTERS_LIST.map((f) => {
-                  const active = props.activeFilter.id === f.id && !isMutedOrOff;
-                  return (
-                    <button
-                      key={f.id}
-                      type="button"
-                      onClick={() => props.onSelectFilter(f)}
-                      className={`rounded-xl border p-1 flex flex-col gap-1 text-left cursor-pointer transition-all ${
-                        active
-                          ? 'border-cyan-400 bg-cyan-950/50 ring-1 ring-cyan-400 shadow-md'
-                          : 'border-zinc-800 bg-[#121722] hover:border-zinc-700'
-                      }`}
-                    >
-                      {/* Live Video Frame with Active Filter Applied */}
-                      <div className="relative w-full aspect-video rounded-lg overflow-hidden bg-black/60 border border-white/10">
-                        <img
-                          src={sampleThumb}
-                          alt={f.name}
-                          className="w-full h-full object-cover transition-transform duration-700 hover:scale-105"
-                          style={{ filter: f.cssFilter || 'none' }}
-                        />
-                        {/* Shimmer sweep indicating live preview */}
-                        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/15 to-transparent -translate-x-full animate-[shimmer_2s_infinite]" />
-                        
-                        {active && (
-                          <div className="absolute top-1 right-1 w-4 h-4 rounded-full bg-cyan-400 text-black flex items-center justify-center shadow">
-                            <Check className="w-2.5 h-2.5 stroke-[3]" />
+              <div className="space-y-1.5">
+                {/* Upload Video/Photo Quick Trigger + Looks vs Wheels Switch */}
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setColorSubView('presets')}
+                    className={`flex-1 py-1.5 px-2 rounded-lg text-[9.5px] font-extrabold cursor-pointer transition-colors whitespace-nowrap ${
+                      colorSubView === 'presets'
+                        ? 'bg-cyan-400 text-black'
+                        : 'bg-[#121722] text-zinc-300 border border-zinc-800'
+                    }`}
+                  >
+                    Looks ({(TOTAL_PRO_FILTERS_COUNT + TOTAL_PRO_LUTS_COUNT).toLocaleString()}+)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setColorSubView('wheels')}
+                    className={`flex-1 py-1.5 px-2 rounded-lg text-[9.5px] font-extrabold cursor-pointer transition-colors whitespace-nowrap ${
+                      colorSubView === 'wheels'
+                        ? 'bg-amber-400 text-black'
+                        : 'bg-[#121722] text-zinc-300 border border-zinc-800'
+                    }`}
+                  >
+                    Wheels & Sliders
+                  </button>
+                  <button
+                    type="button"
+                    onClick={props.onTriggerUploadMedia}
+                    className="py-1.5 px-2 rounded-lg bg-teal-400/20 hover:bg-teal-400/30 border border-teal-400/40 text-teal-300 text-[9.5px] font-extrabold inline-flex items-center gap-1 cursor-pointer shrink-0"
+                    title="Upload Video / Photo"
+                  >
+                    <Upload className="w-3 h-3" />
+                    <span>Clip</span>
+                  </button>
+                </div>
+
+                {colorSubView === 'wheels' && props.colorAdjust && props.onUpdateColorAdjust ? (
+                  <div className="space-y-2 pt-0.5">
+                    <div className="flex items-center justify-between px-0.5">
+                      <span className="text-[9.5px] font-extrabold text-amber-300">
+                        3-Way Color Wheels (Lift · Gamma · Gain)
+                      </span>
+                      {props.onResetColorAdjust && (
+                        <button
+                          type="button"
+                          onClick={props.onResetColorAdjust}
+                          className="px-1.5 py-0.5 rounded bg-zinc-800 hover:bg-zinc-700 text-[8.5px] font-bold text-zinc-200 inline-flex items-center gap-1 cursor-pointer"
+                        >
+                          <RotateCcw className="w-2.5 h-2.5" />
+                          <span>Reset</span>
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Lift / Gamma / Gain Wheels */}
+                    <div className="grid grid-cols-3 gap-1">
+                      <ColorWheelPad
+                        label="Lift"
+                        subLabel="Shadows"
+                        value={props.colorAdjust.lift}
+                        isCssRotatedLandscape={isCssRotatedLandscape}
+                        sizePx={58}
+                        onChange={(next) =>
+                          props.onUpdateColorAdjust?.((p) => ({ ...p, lift: next }))
+                        }
+                      />
+                      <ColorWheelPad
+                        label="Gamma"
+                        subLabel="Midtones"
+                        value={props.colorAdjust.gamma}
+                        isCssRotatedLandscape={isCssRotatedLandscape}
+                        sizePx={58}
+                        onChange={(next) =>
+                          props.onUpdateColorAdjust?.((p) => ({ ...p, gamma: next }))
+                        }
+                      />
+                      <ColorWheelPad
+                        label="Gain"
+                        subLabel="Highlights"
+                        value={props.colorAdjust.gain}
+                        isCssRotatedLandscape={isCssRotatedLandscape}
+                        sizePx={58}
+                        onChange={(next) =>
+                          props.onUpdateColorAdjust?.((p) => ({ ...p, gain: next }))
+                        }
+                      />
+                    </div>
+
+                    {/* Pro Grading Sliders */}
+                    <div className="p-2 rounded-xl bg-[#101520] border border-zinc-800 space-y-1.5 text-[9.5px]">
+                      {(
+                        [
+                          { key: 'exposure', label: 'Exposure', min: -50, max: 50, val: props.colorAdjust.exposure, unit: '' },
+                          { key: 'contrast', label: 'Contrast', min: 40, max: 200, val: props.colorAdjust.contrast, unit: '%' },
+                          { key: 'saturation', label: 'Saturation', min: 0, max: 200, val: props.colorAdjust.saturation, unit: '%' },
+                          { key: 'warmth', label: 'Temp (Cool / Warm)', min: -50, max: 80, val: props.colorAdjust.warmth, unit: '' },
+                          { key: 'tint', label: 'Tint (Green / Mag)', min: -45, max: 45, val: props.colorAdjust.tint, unit: '' },
+                          { key: 'lutIntensity', label: 'LUT / Filter Mix', min: 0, max: 100, val: props.colorAdjust.lutIntensity, unit: '%' },
+                          { key: 'vignette', label: 'Vignette', min: 0, max: 90, val: props.colorAdjust.vignette, unit: '%' },
+                        ] as const
+                      ).map((sl) => (
+                        <div key={sl.key} className="space-y-0.5">
+                          <div className="flex items-center justify-between text-zinc-300">
+                            <span className="font-semibold">{sl.label}</span>
+                            <span className="font-mono tabular-nums text-cyan-300">
+                              {sl.val > 0 && (sl.key === 'exposure' || sl.key === 'warmth' || sl.key === 'tint')
+                                ? `+${sl.val}`
+                                : sl.val}
+                              {sl.unit}
+                            </span>
                           </div>
-                        )}
-                        <span className="absolute bottom-0.5 left-1 px-1 rounded bg-black/70 text-[7px] font-bold text-cyan-300">
-                          {f.category}
-                        </span>
-                      </div>
-
-                      <div className="min-w-0 px-0.5">
-                        <div className="text-[9.5px] font-bold text-white truncate">{f.name}</div>
-                        <div className="text-[8px] text-zinc-400 truncate">LUT Filter</div>
-                      </div>
-                    </button>
-                  );
-                })}
-
-                {/* Color Grade Presets in the same 2-column grid */}
-                {COLOR_GRADES_LIST.map((cg) => {
-                  const active = props.activeColorGradeId === cg.id && !isMutedOrOff;
-                  return (
-                    <button
-                      key={cg.id}
-                      type="button"
-                      onClick={() => props.onSelectColorGrade(active ? null : cg)}
-                      className={`rounded-xl border p-1 flex flex-col gap-1 text-left cursor-pointer transition-all ${
-                        active
-                          ? 'border-amber-400 bg-amber-950/50 ring-1 ring-amber-400 shadow-md'
-                          : 'border-zinc-800 bg-[#121722] hover:border-zinc-700'
-                      }`}
-                    >
-                      <div
-                        className="relative w-full aspect-video rounded-lg overflow-hidden border border-white/10 flex items-center justify-center shadow-inner"
-                        style={{ background: cg.swatchGradient }}
-                      >
-                        <div className="absolute inset-0 bg-black/25 flex items-center justify-center">
-                          <span className="text-[8px] font-black tracking-wider text-white drop-shadow">
-                            {cg.category}
-                          </span>
+                          <input
+                            type="range"
+                            min={sl.min}
+                            max={sl.max}
+                            value={sl.val}
+                            onChange={(e) => {
+                              const n = Number(e.target.value);
+                              props.onUpdateColorAdjust?.((p) => ({ ...p, [sl.key]: n }));
+                            }}
+                            className="w-full accent-cyan-400 h-1.5 cursor-pointer"
+                          />
                         </div>
-                        {active && (
-                          <div className="absolute top-1 right-1 w-4 h-4 rounded-full bg-amber-400 text-black flex items-center justify-center shadow">
-                            <Check className="w-2.5 h-2.5 stroke-[3]" />
-                          </div>
-                        )}
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-1.5">
+                    {/* Search & Source Filter */}
+                    <div className="flex items-center gap-1">
+                      <div className="relative flex-1">
+                        <Search className="w-3 h-3 text-zinc-500 absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none" />
+                        <input
+                          type="text"
+                          value={colorSearch}
+                          onChange={(e) => {
+                            setColorSearch(e.target.value);
+                            setColorPageCount(1);
+                          }}
+                          placeholder="Search 30,000+ color looks..."
+                          className="w-full pl-6 pr-2 py-1 rounded-lg bg-zinc-950 border border-zinc-800 focus:border-cyan-400 text-[9.5px] text-white placeholder-zinc-500 focus:outline-none"
+                        />
                       </div>
+                      <select
+                        value={colorSourceTab}
+                        onChange={(e) => {
+                          setColorSourceTab(e.target.value as 'all' | 'filters' | 'luts');
+                          setColorCatFilter('All');
+                          setColorPageCount(1);
+                        }}
+                        className="px-1.5 py-1 rounded-lg bg-zinc-950 border border-zinc-800 text-[9px] font-bold text-cyan-300 focus:outline-none cursor-pointer"
+                      >
+                        <option value="all">All 30K+</option>
+                        <option value="filters">Filters 15K</option>
+                        <option value="luts">LUTs 15K</option>
+                      </select>
+                    </div>
 
-                      <div className="min-w-0 px-0.5">
-                        <div className="text-[9.5px] font-bold text-white truncate">{cg.name}</div>
-                        <div className="text-[8px] text-zinc-400 truncate">{cg.category} Grade</div>
+                    {/* Horizontal Category Chips */}
+                    <div className="flex items-center gap-1 overflow-x-auto pb-0.5 no-scrollbar">
+                      {(colorSourceTab === 'luts' ? PRO_LUT_CATEGORIES : PRO_FILTER_CATEGORIES).map((c) => (
+                        <button
+                          key={c}
+                          type="button"
+                          onClick={() => {
+                            setColorCatFilter(c);
+                            setColorPageCount(1);
+                          }}
+                          className={`px-2 py-0.5 rounded-md text-[8.5px] font-bold whitespace-nowrap shrink-0 cursor-pointer transition-colors ${
+                            colorCatFilter === c
+                              ? 'bg-cyan-400 text-black'
+                              : 'bg-zinc-900 text-zinc-300 border border-zinc-800 hover:border-zinc-700'
+                          }`}
+                        >
+                          {c}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Curated Featured Looks when on All + no search */}
+                    {!colorSearch.trim() && colorCatFilter === 'All' && colorSourceTab === 'all' && (
+                      <div className="grid grid-cols-2 gap-1.5">
+                        {FILTERS_LIST.slice(0, 4).map((f) => {
+                          const active = props.activeFilter.id === f.id && !isMutedOrOff;
+                          return (
+                            <button
+                              key={f.id}
+                              type="button"
+                              onClick={() => props.onSelectFilter(f)}
+                              className={`rounded-xl border p-1 flex flex-col gap-1 text-left cursor-pointer transition-all ${
+                                active
+                                  ? 'border-cyan-400 bg-cyan-950/50 ring-1 ring-cyan-400 shadow-md'
+                                  : 'border-zinc-800 bg-[#121722] hover:border-zinc-700'
+                              }`}
+                            >
+                              <div className="relative w-full aspect-video rounded-lg overflow-hidden bg-black/60 border border-white/10">
+                                <img
+                                  src={sampleThumb}
+                                  alt={f.name}
+                                  className="w-full h-full object-cover"
+                                  style={{ filter: f.cssFilter || 'none' }}
+                                />
+                                <span className="absolute bottom-0.5 left-1 px-1 rounded bg-black/75 text-[7px] font-bold text-cyan-300">
+                                  {f.category}
+                                </span>
+                              </div>
+                              <div className="text-[9px] font-bold text-white truncate px-0.5">
+                                {f.name}
+                              </div>
+                            </button>
+                          );
+                        })}
+                        {COLOR_GRADES_LIST.slice(0, 4).map((cg) => {
+                          const active = props.activeColorGradeId === cg.id && !isMutedOrOff;
+                          return (
+                            <button
+                              key={cg.id}
+                              type="button"
+                              onClick={() => props.onSelectColorGrade(active ? null : cg)}
+                              className={`rounded-xl border p-1 flex flex-col gap-1 text-left cursor-pointer transition-all ${
+                                active
+                                  ? 'border-amber-400 bg-amber-950/50 ring-1 ring-amber-400 shadow-md'
+                                  : 'border-zinc-800 bg-[#121722] hover:border-zinc-700'
+                              }`}
+                            >
+                              <div
+                                className="relative w-full aspect-video rounded-lg overflow-hidden border border-white/10 flex items-center justify-center"
+                                style={{ background: cg.swatchGradient }}
+                              >
+                                <span className="text-[8px] font-black text-white drop-shadow bg-black/35 px-1.5 py-0.5 rounded">
+                                  {cg.category}
+                                </span>
+                              </div>
+                              <div className="text-[9px] font-bold text-white truncate px-0.5">
+                                {cg.name}
+                              </div>
+                            </button>
+                          );
+                        })}
                       </div>
-                    </button>
-                  );
-                })}
+                    )}
+
+                    {/* 30,000+ Live Procedural Color Filters & LUTs Grid */}
+                    <div className="text-[8.5px] font-mono text-zinc-400 px-0.5 flex items-center justify-between">
+                      <span>{proColorQueryResult.total.toLocaleString()} matching looks</span>
+                      {props.activeFilter.id !== 'f_none' && (
+                        <button
+                          type="button"
+                          onClick={() => props.onSelectFilter(FILTERS_LIST[0])}
+                          className="text-amber-300 hover:underline cursor-pointer"
+                        >
+                          Clear Filter
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-1.5">
+                      {proColorQueryResult.items.map((item) => {
+                        const active = props.activeFilter.id === item.id && !isMutedOrOff;
+                        return (
+                          <button
+                            key={item.id}
+                            type="button"
+                            onClick={() =>
+                              props.onSelectFilter({
+                                id: item.id,
+                                name: item.name,
+                                category: item.category,
+                                cssFilter: item.css || 'none',
+                                thumbnail: sampleThumb,
+                                description: item.sub || item.category,
+                              })
+                            }
+                            className={`rounded-xl border p-1 flex flex-col gap-1 text-left cursor-pointer transition-all ${
+                              active
+                                ? 'border-cyan-400 bg-cyan-950/50 ring-1 ring-cyan-400 shadow-md'
+                                : 'border-zinc-800 bg-[#121722] hover:border-zinc-700'
+                            }`}
+                          >
+                            <div className="relative w-full aspect-video rounded-lg overflow-hidden bg-black/60 border border-white/10">
+                              <img
+                                src={sampleThumb}
+                                alt={item.name}
+                                className="w-full h-full object-cover"
+                                style={{ filter: item.css || 'none' }}
+                              />
+                              {active && (
+                                <div className="absolute top-1 right-1 w-4 h-4 rounded-full bg-cyan-400 text-black flex items-center justify-center shadow">
+                                  <Check className="w-2.5 h-2.5 stroke-[3]" />
+                                </div>
+                              )}
+                              <span className="absolute bottom-0.5 left-1 px-1 rounded bg-black/75 text-[7px] font-bold text-cyan-300 truncate max-w-[90%]">
+                                {item.category}
+                              </span>
+                            </div>
+                            <div className="min-w-0 px-0.5">
+                              <div className="text-[9px] font-bold text-white truncate">{item.name}</div>
+                              <div className="text-[7.5px] text-zinc-400 truncate">{item.sub}</div>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {proColorQueryResult.items.length < proColorQueryResult.total && (
+                      <button
+                        type="button"
+                        onClick={() => setColorPageCount((c) => c + 1)}
+                        className="w-full py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-[9.5px] font-bold text-cyan-300 cursor-pointer"
+                      >
+                        Load More Looks ({(proColorQueryResult.total - proColorQueryResult.items.length).toLocaleString()} more)
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 
@@ -771,31 +1136,293 @@ export const WheelFeatureDrawer: React.FC<WheelFeatureDrawerProps> = React.memo(
               </div>
             )}
 
-            {/* 7. ACTION VFX (2 LIVE PREVIEWS PER LINE) */}
+            {/* 7. ACTION VFX STUDIO (21,000+ CINEMATIC & SHORT-FILM EFFECTS + TIMELINE LAYER ADJUSTER) */}
             {category.id === 'vfx' && (
-              <div className="grid grid-cols-2 gap-1.5">
-                {VFX_LIST.map((v) => (
+              <div className="space-y-1.5">
+                {/* Quick Scene Upload + Active VFX Count */}
+                <div className="flex items-center gap-1">
+                  <div className="relative flex-1">
+                    <Search className="w-3 h-3 text-zinc-500 absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none" />
+                    <input
+                      type="text"
+                      value={vfxSearch}
+                      onChange={(e) => {
+                        setVfxSearch(e.target.value);
+                        setVfxPageCount(1);
+                      }}
+                      placeholder={`Search ${TOTAL_PRO_VFX_COUNT.toLocaleString()}+ VFX: fire, bullet, collapse...`}
+                      className="w-full pl-6 pr-2 py-1 rounded-lg bg-zinc-950 border border-zinc-800 focus:border-rose-400 text-[9.5px] text-white placeholder-zinc-500 focus:outline-none"
+                    />
+                  </div>
                   <button
-                    key={v.id}
                     type="button"
-                    onClick={() => props.onAddVfx(v)}
-                    className="rounded-xl border border-zinc-800 hover:border-rose-400 active:border-rose-400 bg-[#121721] p-1.5 flex flex-col gap-1 text-left cursor-pointer transition-colors"
+                    onClick={props.onTriggerUploadMedia}
+                    className="py-1 px-2 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/40 text-rose-300 text-[9px] font-extrabold inline-flex items-center gap-1 cursor-pointer shrink-0"
+                    title="Upload Scene Video / Photo"
                   >
-                    {/* Live Animated VFX Particle Simulation Viewport */}
-                    <div className="w-full aspect-video rounded-lg bg-[#06080e] border border-white/10 relative overflow-hidden flex items-center justify-center">
-                      <div className="absolute inset-0 bg-radial from-rose-500/20 via-transparent to-transparent animate-ping" style={{ animationDuration: '1.5s' }} />
-                      <span className="text-xl relative z-10 animate-pulse">{v.emoji}</span>
-                      <span className="absolute bottom-0.5 right-1 text-[7px] font-mono text-rose-300 font-bold">
-                        VFX
+                    <Upload className="w-3 h-3" />
+                    <span>Scene</span>
+                  </button>
+                </div>
+
+                {/* Placed VFX Layer Timeline Adjuster */}
+                {props.vfxLayers && props.vfxLayers.length > 0 && (
+                  <div className="p-2 rounded-xl bg-[#101520] border border-rose-500/35 space-y-1.5 text-[9px]">
+                    <div className="flex items-center justify-between gap-1">
+                      <span className="font-extrabold text-rose-300">
+                        Active VFX ({props.vfxLayers.length}) · Drag on preview or adjust:
                       </span>
                     </div>
-
-                    <div className="min-w-0 px-0.5">
-                      <div className="text-[9.5px] font-bold text-white truncate">{v.name}</div>
-                      <div className="text-[8px] text-zinc-400 truncate">{v.category}</div>
+                    <div className="flex items-center gap-1 overflow-x-auto pb-0.5">
+                      {props.vfxLayers.map((vl, idx) => {
+                        const isSel = (props.selectedVfxLayerId || props.vfxLayers![props.vfxLayers!.length - 1].id) === vl.id;
+                        return (
+                          <button
+                            key={vl.id}
+                            type="button"
+                            onClick={() => props.onSelectVfxLayer?.(vl.id)}
+                            className={`px-2 py-0.5 rounded text-[8.5px] font-bold whitespace-nowrap cursor-pointer ${
+                              isSel
+                                ? 'bg-rose-400 text-black'
+                                : 'bg-zinc-900 text-zinc-300 border border-zinc-700'
+                            }`}
+                          >
+                            #{idx + 1} {vl.vfx.name.slice(0, 14)}
+                          </button>
+                        );
+                      })}
                     </div>
+                    {(() => {
+                      const activeLayer =
+                        props.vfxLayers.find((x) => x.id === props.selectedVfxLayerId) ||
+                        props.vfxLayers[props.vfxLayers.length - 1];
+                      if (!activeLayer || !props.onUpdateVfxLayer) return null;
+                      return (
+                        <div className="grid grid-cols-2 gap-x-2 gap-y-1 pt-0.5">
+                          <label className="space-y-0.5">
+                            <div className="flex justify-between text-zinc-300">
+                              <span>Start X</span>
+                              <span className="font-mono text-rose-300">{Math.round(activeLayer.startXPct)}%</span>
+                            </div>
+                            <input
+                              type="range"
+                              min={5}
+                              max={95}
+                              value={activeLayer.startXPct}
+                              onChange={(e) =>
+                                props.onUpdateVfxLayer?.(activeLayer.id, { startXPct: Number(e.target.value) })
+                              }
+                              className="w-full accent-rose-400 h-1"
+                            />
+                          </label>
+                          <label className="space-y-0.5">
+                            <div className="flex justify-between text-zinc-300">
+                              <span>Start Y</span>
+                              <span className="font-mono text-rose-300">{Math.round(activeLayer.startYPct)}%</span>
+                            </div>
+                            <input
+                              type="range"
+                              min={5}
+                              max={95}
+                              value={activeLayer.startYPct}
+                              onChange={(e) =>
+                                props.onUpdateVfxLayer?.(activeLayer.id, { startYPct: Number(e.target.value) })
+                              }
+                              className="w-full accent-rose-400 h-1"
+                            />
+                          </label>
+                          <label className="space-y-0.5">
+                            <div className="flex justify-between text-zinc-300">
+                              <span>Scale</span>
+                              <span className="font-mono text-rose-300">{activeLayer.scale.toFixed(1)}x</span>
+                            </div>
+                            <input
+                              type="range"
+                              min={0.3}
+                              max={3.0}
+                              step={0.1}
+                              value={activeLayer.scale}
+                              onChange={(e) =>
+                                props.onUpdateVfxLayer?.(activeLayer.id, { scale: Number(e.target.value) })
+                              }
+                              className="w-full accent-rose-400 h-1"
+                            />
+                          </label>
+                          <label className="space-y-0.5">
+                            <div className="flex justify-between text-zinc-300">
+                              <span>Duration</span>
+                              <span className="font-mono text-rose-300">{activeLayer.durationSec.toFixed(1)}s</span>
+                            </div>
+                            <input
+                              type="range"
+                              min={0.5}
+                              max={15}
+                              step={0.5}
+                              value={activeLayer.durationSec}
+                              onChange={(e) =>
+                                props.onUpdateVfxLayer?.(activeLayer.id, { durationSec: Number(e.target.value) })
+                              }
+                              className="w-full accent-rose-400 h-1"
+                            />
+                          </label>
+                          <label className="space-y-0.5">
+                            <div className="flex justify-between text-zinc-300">
+                              <span>Speed</span>
+                              <span className="font-mono text-rose-300">{activeLayer.speed.toFixed(1)}x</span>
+                            </div>
+                            <input
+                              type="range"
+                              min={0.25}
+                              max={3.0}
+                              step={0.25}
+                              value={activeLayer.speed}
+                              onChange={(e) =>
+                                props.onUpdateVfxLayer?.(activeLayer.id, { speed: Number(e.target.value) })
+                              }
+                              className="w-full accent-rose-400 h-1"
+                            />
+                          </label>
+                          <div className="flex items-end justify-end">
+                            <button
+                              type="button"
+                              onClick={() => props.onDeleteVfxLayer?.(activeLayer.id)}
+                              className="w-full py-1 rounded bg-red-500/20 hover:bg-red-500/35 border border-red-500/35 text-red-300 font-bold inline-flex items-center justify-center gap-1 cursor-pointer"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                              <span>Remove</span>
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                )}
+
+                {/* Horizontal VFX Category Filter Pills */}
+                <div className="flex items-center gap-1 overflow-x-auto pb-0.5 no-scrollbar">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setVfxCatFilter('All');
+                      setVfxPageCount(1);
+                    }}
+                    className={`px-2 py-0.5 rounded-md text-[8.5px] font-bold whitespace-nowrap shrink-0 cursor-pointer ${
+                      vfxCatFilter === 'All'
+                        ? 'bg-rose-400 text-black'
+                        : 'bg-zinc-900 text-zinc-300 border border-zinc-800'
+                    }`}
+                  >
+                    All ({TOTAL_PRO_VFX_COUNT.toLocaleString()}+)
                   </button>
-                ))}
+                  {ACTION_VFX_CATEGORIES.map((c) => (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => {
+                        setVfxCatFilter(c.id);
+                        setVfxPageCount(1);
+                      }}
+                      className={`px-2 py-0.5 rounded-md text-[8.5px] font-bold whitespace-nowrap shrink-0 cursor-pointer ${
+                        vfxCatFilter === c.id
+                          ? 'bg-rose-400 text-black'
+                          : 'bg-zinc-900 text-zinc-300 border border-zinc-800'
+                      }`}
+                    >
+                      {c.label}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="text-[8.5px] font-mono text-zinc-400 px-0.5">
+                  {vfxQueryResult.total.toLocaleString()} VFX presets · Tap to add on timeline
+                </div>
+
+                {/* Paginated 2-Column VFX Presets Grid */}
+                <div className="grid grid-cols-2 gap-1.5">
+                  {vfxQueryResult.items.map((pv) => {
+                    const iconEmoji =
+                      pv.vfxType === 'building_fire' || pv.vfxType === 'fire_blast'
+                        ? '🔥'
+                        : pv.vfxType === 'building_collapse'
+                        ? '🏚️'
+                        : pv.vfxType === 'bullet_tracer'
+                        ? '🔫'
+                        : pv.vfxType === 'bullet_hit_body' || pv.vfxType === 'blood_splatter'
+                        ? '🩸'
+                        : pv.vfxType === 'explosion_boom'
+                        ? '💥'
+                        : pv.vfxType === 'glass_shatter'
+                        ? '🪟'
+                        : pv.vfxType === 'lightning_arc'
+                        ? '⚡'
+                        : pv.vfxType === 'sparks_shower' || pv.vfxType === 'muzzle_flash'
+                        ? '✨'
+                        : pv.vfxType === 'sword_slash'
+                        ? '⚔️'
+                        : '💨';
+
+                    return (
+                      <button
+                        key={pv.id}
+                        type="button"
+                        onClick={() => {
+                          if (props.onAddProVfx) {
+                            props.onAddProVfx(pv);
+                          } else {
+                            props.onAddVfx({
+                              id: pv.id,
+                              name: pv.name,
+                              category: pv.category,
+                              kind:
+                                pv.vfxType === 'bullet_tracer'
+                                  ? 'bullet_tracer'
+                                  : pv.vfxType === 'explosion_boom'
+                                    ? 'explosion'
+                                    : pv.vfxType === 'building_fire'
+                                      ? 'building_inferno'
+                                      : pv.vfxType === 'fire_blast'
+                                        ? 'fireball'
+                                        : 'shockwave',
+                              hasMotionRoute: pv.vfxType === 'bullet_tracer' || pv.vfxType === 'sword_slash',
+                              primaryColor: '#f97316',
+                              secondaryColor: '#ef4444',
+                              defaultDurationSec: 3.0,
+                              emoji: iconEmoji,
+                              description: pv.sub,
+                            });
+                          }
+                        }}
+                        className="rounded-xl border border-zinc-800 hover:border-rose-400 active:border-rose-400 bg-[#121721] p-1.5 flex flex-col gap-1 text-left cursor-pointer transition-colors group"
+                      >
+                        <div
+                          className={`w-full aspect-video rounded-lg bg-gradient-to-br ${pv.swatch} border border-white/10 relative overflow-hidden flex items-center justify-center`}
+                        >
+                          <div className="absolute inset-0 bg-black/30" />
+                          <span className="text-lg relative z-10 group-hover:scale-110 transition-transform">
+                            {iconEmoji}
+                          </span>
+                          <span className="absolute bottom-0.5 right-1 px-1 rounded bg-black/75 text-[7px] font-mono text-rose-300 font-bold">
+                            + ADD
+                          </span>
+                        </div>
+                        <div className="min-w-0 px-0.5">
+                          <div className="text-[9px] font-bold text-white truncate">{pv.name}</div>
+                          <div className="text-[7.5px] text-zinc-400 truncate">{pv.category}</div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {vfxQueryResult.items.length < vfxQueryResult.total && (
+                  <button
+                    type="button"
+                    onClick={() => setVfxPageCount((c) => c + 1)}
+                    className="w-full py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-[9.5px] font-bold text-rose-300 cursor-pointer"
+                  >
+                    Load More VFX ({(vfxQueryResult.total - vfxQueryResult.items.length).toLocaleString()} more)
+                  </button>
+                )}
               </div>
             )}
 
