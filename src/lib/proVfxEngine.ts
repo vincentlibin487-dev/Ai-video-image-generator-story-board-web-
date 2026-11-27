@@ -46,7 +46,7 @@ export const ACTION_VFX_CATEGORIES: ActionVfxCategoryDef[] = [
     vfxType: 'bullet_tracer',
     defaultBlend: 'source-over',
     swatch: 'from-amber-300 via-orange-500 to-zinc-900',
-    count: 1500,
+    count: 4000,
     prefixes: ['9mm Parabellum', '7.62mm AK Bullet', '.50 Cal Sniper', 'Magnum Slug', 'Hollow Point', 'NATO Tracer', 'Shotgun Pellet', 'Armor Piercing', 'Subsonic Round', 'Rifle FMJ', 'Desert Eagle .50', 'Gold Jacket', 'Supersonic Cone', 'Matrix Slow-Mo'],
     modifiers: ['Mach Shock Cone', 'Hot Copper Glow', 'Smoking Spiral', 'Supersonic Whip', 'Ultra Fast Streak', 'Cinema 4K', 'Long Vapor Trail', 'Sparking Jacket', 'Action Tracer', 'Sniper Spin', 'Left-to-Right', 'Tight Vortex', 'Ember Wake', 'Night Tracer', 'Dual Shockwave', 'Heat Distortion', 'Tactical White', 'Blue Plasma Tip', 'Brass Glint', 'IMAX Macro'],
   },
@@ -56,7 +56,7 @@ export const ACTION_VFX_CATEGORIES: ActionVfxCategoryDef[] = [
     vfxType: 'bullet_hit_body',
     defaultBlend: 'source-over',
     swatch: 'from-red-600 via-rose-900 to-black',
-    count: 1500,
+    count: 4000,
     prefixes: ['Chest Entry Hit', 'Shoulder Shot', 'Headshot Impact', 'Armor Rip Burst', 'Back Exit Spray', 'Stomach Impact', 'Cloth & Blood', 'Limb Shot', 'Double Tap Hit', 'Sniper Through', 'Vest Dust & Blood', 'Cinematic Wound', 'Slow-Mo Exit', 'Gore Impact'],
     modifiers: ['Exit Mist Cone', 'Fabric Puff', 'High Velocity', 'Arterial Burst', 'Heavy Splatter', 'Dark Noir Red', 'Close Action', 'Fine Vapor', 'Wide Spray', 'Shock Ripple', 'Deep Crimson', 'Directional Jet', 'Sharp Droplets', 'Dramatic Arc', 'Rain Blood Mix', 'Twin Burst', 'Tactical Dust', 'Cinema Gore', 'Backlit Red', 'John Wick Style'],
   },
@@ -66,7 +66,7 @@ export const ACTION_VFX_CATEGORIES: ActionVfxCategoryDef[] = [
     vfxType: 'gun_smoke',
     defaultBlend: 'screen',
     swatch: 'from-zinc-400 via-amber-500 to-zinc-900',
-    count: 1500,
+    count: 4000,
     prefixes: ['AK-47', 'Pistol 9mm', 'Sniper .50', 'Shotgun Blast', 'Revolver', 'SMG Rapid', 'Rifle Smoke', 'Barrel Drift', 'Glock 19', 'Desert Eagle', 'M4 Carbine', 'Uzi Spray', 'Magnum .44', 'Silenced Barrel'],
     modifiers: ['Dense Plume', 'Fast Curl', 'Tactical Grey', 'Hot Ember', 'Side Wind', 'Slow Wisps', 'Heavy Burst', 'Cinema 35mm', 'Night Smoke', 'Noir Cloud', 'Long Trail', 'Double Puff', 'Crosswind', 'Recoil Haze', 'Dark Charcoal', 'White Cordite', 'Warm Ignition', 'Low Drift', 'Subsonic Mist', 'IMAX Sharp'],
   },
@@ -76,7 +76,7 @@ export const ACTION_VFX_CATEGORIES: ActionVfxCategoryDef[] = [
     vfxType: 'blood_splatter',
     defaultBlend: 'source-over',
     swatch: 'from-red-700 via-rose-800 to-black',
-    count: 1500,
+    count: 4000,
     prefixes: ['Arterial Spray', 'Blade Blood', 'Heavy Splatter', 'Dark Crimson', 'Hit Splash', 'Spray Mist', 'Action Impact', 'Thick Drop', 'Neck Slash', 'Bullet Exit', 'Cross Cut', 'Stab Burst', 'Fist Impact', 'Whip Blood'],
     modifiers: ['Close Burst', 'Directional Jet', 'Wide Scatter', 'Noir Deep Red', 'High Velocity', 'Fine Mist', 'Dramatic Arc', 'Cinema Gore', 'Sharp Splash', 'Micro Droplet', 'Slow Mo Drop', 'Heavy Spray', 'Chest Hit', 'Shoulder Arc', 'Rain Blood', 'Fresh Crimson', 'Deep Clot', 'Dual Jet', 'Wide Fan', 'Tarantino Spray'],
   },
@@ -86,7 +86,7 @@ export const ACTION_VFX_CATEGORIES: ActionVfxCategoryDef[] = [
     vfxType: 'sword_slash',
     defaultBlend: 'source-over',
     swatch: 'from-rose-500 via-white to-red-900',
-    count: 1500,
+    count: 4000,
     prefixes: ['Katana Arc', 'Machete Cut', 'Knife Strike', 'Double Slash', 'Cross X-Cut', 'Steel Flash', 'Crescent Slice', 'Lethal Swipe', 'Samurai Draw', 'Dagger Rip', 'Longsword Arc', 'Curved Scimitar', 'Ninja Slice', 'Axe Cleave'],
     modifiers: ['With Blood', 'Sparks & Red', 'White Steel', 'Crimson Trail', 'Ultra Fast', 'Wide Sweep', 'Heavy Impact', 'Neon Edge', 'Gold Streak', 'Silver Razor', 'Double Arc', 'Diagonal Cut', 'Overhead Chop', 'Spinning Slash', 'Blood Mist', 'Shockwave Cut', 'Ember Blade', 'Noir Slice', 'Clean Flash', 'Action Fury'],
   },
@@ -96,7 +96,7 @@ export const ACTION_VFX_CATEGORIES: ActionVfxCategoryDef[] = [
     vfxType: 'muzzle_flash',
     defaultBlend: 'screen',
     swatch: 'from-yellow-300 via-orange-500 to-red-800',
-    count: 1500,
+    count: 4000,
     prefixes: ['Tactical Flash', 'Star Burst', 'Side Port Flash', 'Heavy Cannon', '9mm Pop', 'Assault Cone', 'Suppressor Spark', 'Sniper Flare', 'Shotgun Cone', 'Minigun Strobe', 'Revolver Flame', 'Carbine Flash', 'Dual Barrel', 'Rifle Kick'],
     modifiers: ['Bright Core', 'Amber Heat', 'With Smoke', 'Rapid Strobe', 'Golden Ring', 'Hot White', 'Wide Cone', 'Sharp Spike', 'Cross Star', 'Blue Flame', 'Deep Orange', 'Short Pop', 'Long Jet', 'Night Glare', 'Side Vents', 'Ember Tail', 'High Caliber', 'Tactical Yellow', 'Blast Crown', 'Cinema 4K'],
   },
@@ -106,7 +106,7 @@ export const ACTION_VFX_CATEGORIES: ActionVfxCategoryDef[] = [
     vfxType: 'explosion_boom',
     defaultBlend: 'screen',
     swatch: 'from-amber-400 via-red-600 to-stone-950',
-    count: 1500,
+    count: 4000,
     prefixes: ['C4 Blast', 'Car Explosion', 'Grenade Pop', 'Fuel Fireball', 'Ground Mine', 'Shockwave Ring', 'Debris Boom', 'Thermal Core', 'Missile Strike', 'Gas Tanker', 'Door Breach', 'Mortar Hit', 'Oil Drum', 'Flashbang Ring'],
     modifiers: ['Massive Plume', 'Black Smoke', 'Fast Shock', 'Rolling Fire', 'Spark Debris', 'Action Bay', 'Night Blast', 'Slow Motion', 'Dust Cloud', 'Wide Halo', 'Ground Shake', 'White Flash', 'Ember Rain', 'Vertical Pillar', 'Lateral Wave', 'Clean Core', 'Heavy Force', 'Double Boom', 'Heat Wave', 'IMAX Blast'],
   },
@@ -116,7 +116,7 @@ export const ACTION_VFX_CATEGORIES: ActionVfxCategoryDef[] = [
     vfxType: 'fire_blast',
     defaultBlend: 'screen',
     swatch: 'from-yellow-400 via-orange-600 to-rose-900',
-    count: 1500,
+    count: 4000,
     prefixes: ['Inferno Flame', 'Torch Fire', 'Floating Embers', 'Ground Blaze', 'Wall of Fire', 'Dragon Breath', 'Campfire Glow', 'Burning Sparks', 'Window Fire', 'Car Hood Flame', 'Moltov Blaze', 'Oil Fire', 'Wildfire Edge', 'Forge Jet'],
     modifiers: ['High Heat', 'Wild Flicker', 'Cinema Amber', 'Dense Sparks', 'Soft Glow', 'Turbulent', 'Wind Blown', 'Blue Core', 'Crimson Lick', 'Golden Flame', 'Slow Swirl', 'Rising Ash', 'Heat Shimmer', 'Deep Orange', 'Fast Roar', 'Gentle Flame', 'Hero Rim Light', 'Hellfire', 'Hot Core', 'Wide Lick'],
   },
@@ -126,7 +126,7 @@ export const ACTION_VFX_CATEGORIES: ActionVfxCategoryDef[] = [
     vfxType: 'sparks_shower',
     defaultBlend: 'screen',
     swatch: 'from-amber-200 via-yellow-500 to-orange-900',
-    count: 1500,
+    count: 4000,
     prefixes: ['Metal Ricochet', 'Bullet Spark', 'Grinder Shower', 'Armor Hit', 'Concrete Chip', 'Weld Burst', 'Gold Embers', 'Hot Shrapnel', 'Car Scrape', 'Sword Clash', 'Door Lock Shot', 'Steel Ping', 'Chain Sparks', 'Track Grind'],
     modifiers: ['High Bounce', 'Fast Streak', 'Left Spray', 'Right Spray', 'Dense Shower', 'Crisp Gold', 'Steel Blue', 'Chaotic', 'Gravity Fall', 'Twin Jet', 'Wide Arc', 'Hot White', 'Short Zip', 'Long Trail', 'Fountain Burst', 'Low Angle', 'Floor Bounce', 'Impact Flash', 'Sharp Needle', 'Rain of Gold'],
   },
@@ -136,7 +136,7 @@ export const ACTION_VFX_CATEGORIES: ActionVfxCategoryDef[] = [
     vfxType: 'fog_atmosphere',
     defaultBlend: 'screen',
     swatch: 'from-slate-300 via-zinc-500 to-slate-900',
-    count: 1500,
+    count: 4000,
     prefixes: ['Tactical Smoke', 'Kochi Fog', 'Battlefield Haze', 'Low Ground Mist', 'Noir Steam', 'Dust Storm', 'Tear Gas Drift', 'Volumetric Air', 'Stage Smoke', 'Street Steam', 'Forest Mist', 'Harbor Fog', 'Sewer Vapor', 'Dry Ice'],
     modifiers: ['Slow Drift', 'Dense Layer', 'Cool Blue', 'Warm Dust', 'Soft Curl', 'Thick Cloud', 'Ambient Haze', 'Wind Sweep', 'Moonlit Mist', 'Neon Fog', 'Thick Blanket', 'Rising Wisps', 'Golden Dust', 'Subtle Depth', 'Floor Hugger', 'Heavy Roll', 'Ghostly Air', 'Rain Steam', 'Soft Veil', 'Anamorphic Haze'],
   },
@@ -146,7 +146,7 @@ export const ACTION_VFX_CATEGORIES: ActionVfxCategoryDef[] = [
     vfxType: 'glass_shatter',
     defaultBlend: 'source-over',
     swatch: 'from-cyan-200 via-sky-500 to-slate-900',
-    count: 1500,
+    count: 4000,
     prefixes: ['Window Crash', 'Bullet Hole Glass', 'Mirror Break', 'Crystal Burst', 'Windshield Crack', 'Shards Rain', 'Bottle Smash', 'Ice Shatter', 'Scope Break', 'Screen Crack', 'Chandelier Drop', 'Door Smash', 'Tile Burst', 'Stone Debris'],
     modifiers: ['Heavy Shards', 'Micro Splinters', 'Slow Mo Fly', 'Sharp Glint', 'Radial Break', 'Impact Burst', 'Tinted Glass', 'Blue Crystal', 'Falling Rain', 'Spin Shards', 'Dust & Chips', 'Wide Scatter', 'Bullet Exit', 'High Speed', 'Clear Edge', 'Silver Glint', 'Hard Impact', 'Shock Break', 'Edge Spray', '3D Scatter'],
   },
@@ -156,7 +156,7 @@ export const ACTION_VFX_CATEGORIES: ActionVfxCategoryDef[] = [
     vfxType: 'lightning_arc',
     defaultBlend: 'screen',
     swatch: 'from-cyan-300 via-blue-500 to-indigo-950',
-    count: 1500,
+    count: 4000,
     prefixes: ['Thunder Strike', 'Arc Bolt', 'Storm Flash', 'Plasma Crack', 'Power Surge', 'Tesla Spark', 'Sky Bolt', 'Energy Whip', 'Taser Shock', 'Portal Arc', 'Blade Charge', 'Fuse Blow', 'Aura Strike', 'Coil Zap'],
     modifiers: ['Electric Cyan', 'Violet Surge', 'High Voltage', 'Multi Branch', 'Sudden Flash', 'Cinema White', 'Gold Lightning', 'Red Plasma', 'Short Flicker', 'Sustained Arc', 'Forked Bolt', 'EMP Pulse', 'Bright Halo', 'Storm Crack', 'Diagonal Strike', 'Vertical Bolt', 'Chain Arc', 'Cyber Neon', 'Twin Bolt', 'Omega Flash'],
   },
@@ -166,7 +166,7 @@ export const ACTION_VFX_CATEGORIES: ActionVfxCategoryDef[] = [
     vfxType: 'building_fire',
     defaultBlend: 'screen',
     swatch: 'from-yellow-400 via-orange-600 to-zinc-950',
-    count: 1500,
+    count: 4000,
     prefixes: ['Skyscraper Fire', 'Warehouse Inferno', 'Apartment Blaze', 'Rooftop Fireball', 'Window Flames', 'Tower Firestorm', 'Factory Meltdown', 'Garage Explosion Fire', 'Hospital Wing Blaze', 'Mall Fire Plume', 'Bridge Fireball', 'Hotel Floor Fire', 'Subway Blast Fire', 'Hangar Inferno'],
     modifiers: ['Black Smoke Plume', 'Raging Roof', 'Window Blowout', 'Night Inferno', 'Dense Embers', 'Structural Glow', 'Thermal Heat', 'Heavy Billow', 'Action Climax', 'Wide Building', 'Twin Tower Fire', 'Oil Burn', 'Gas Ignition', 'IMAX Disaster', 'Slow Burn', 'Sudden Flashover', 'Crimson Sky', 'Charcoal Smoke', 'Rising Ash', 'Rescue Scene'],
   },
@@ -176,23 +176,30 @@ export const ACTION_VFX_CATEGORIES: ActionVfxCategoryDef[] = [
     vfxType: 'building_collapse',
     defaultBlend: 'source-over',
     swatch: 'from-stone-300 via-zinc-600 to-slate-950',
-    count: 1500,
+    count: 4000,
     prefixes: ['Tower Collapse', 'Wall Demolition', 'Glass Facade Fall', 'Concrete Slab Drop', 'Pillar Crumble', 'Roof Cave-In', 'Bridge Span Fall', 'Skyscraper Implosion', 'Warehouse Crush', 'Balcony Shear', 'Curtain Wall Shatter', 'Factory Stack Fall', 'Tunnel Cave-In', 'Dam Wall Break'],
     modifiers: ['Massive Dust Cloud', 'Falling Glass Rain', 'Heavy Concrete', 'Shockwave Base', 'Slow Motion Crash', 'Multi Floor Drop', 'Steel Rebar Snap', 'Smoke & Rubble', 'Ground Impact', 'Action Disaster', 'Wide Debris', 'Shaking Earth', 'Noir Dust', 'Close Structural', 'Cinematic Implosion', 'Side Tilt Fall', 'Cascade Shards', 'Urban Rubble', 'IMAX Collapse', 'Final Impact'],
   },
 ];
 
-export const TOTAL_PRO_VFX_COUNT = ACTION_VFX_CATEGORIES.reduce((s, c) => s + c.count, 0); // 21,000+
-export const TOTAL_PRO_FILTERS_COUNT = 15000;
-export const TOTAL_PRO_LUTS_COUNT = 15000;
-export const TOTAL_PRO_SFX_COUNT = 15000;
-export const TOTAL_PRO_TRANSITIONS_COUNT = 15000;
-export const TOTAL_PRO_TITLES_COUNT = 15000;
-export const TOTAL_PRO_MOTIONS_COUNT = 15000;
-export const TOTAL_PRO_MUSIC_COUNT = 15000;
-export const TOTAL_PRO_MASKS_COUNT = 15000;
-export const TOTAL_PRO_GRAPHS_COUNT = 15000;
-export const TOTAL_PRO_CHARACTERS_COUNT = 15000;
+export const TOTAL_PRO_VFX_COUNT = ACTION_VFX_CATEGORIES.reduce((s, c) => s + c.count, 0); // 56,000+
+export const TOTAL_PRO_FILTERS_COUNT = 55000;
+export const TOTAL_PRO_LUTS_COUNT = 55000;
+export const TOTAL_PRO_SFX_COUNT = 52000;
+export const TOTAL_PRO_TRANSITIONS_COUNT = 56000;
+export const TOTAL_PRO_TITLES_COUNT = 56000;
+export const TOTAL_PRO_MOTIONS_COUNT = 54000;
+export const TOTAL_PRO_MUSIC_COUNT = 54000;
+export const TOTAL_PRO_DIALOGUES_COUNT = 52000;
+export const TOTAL_PRO_STICKERS_COUNT = 52000;
+export const TOTAL_PRO_CARDS_COUNT = 52000;
+export const TOTAL_PRO_CHROMA_COUNT = 52000;
+export const TOTAL_PRO_SPLIT_COUNT = 52000;
+export const TOTAL_PRO_EFFECTS_COUNT = 52000;
+export const TOTAL_PRO_TEMPLATES_COUNT = 52000;
+export const TOTAL_PRO_MASKS_COUNT = 52000;
+export const TOTAL_PRO_GRAPHS_COUNT = 52000;
+export const TOTAL_PRO_CHARACTERS_COUNT = 52000;
 export const TOTAL_STUDIO_FEATURES_COUNT =
   TOTAL_PRO_VFX_COUNT +
   TOTAL_PRO_FILTERS_COUNT +
@@ -202,9 +209,16 @@ export const TOTAL_STUDIO_FEATURES_COUNT =
   TOTAL_PRO_TITLES_COUNT +
   TOTAL_PRO_MOTIONS_COUNT +
   TOTAL_PRO_MUSIC_COUNT +
+  TOTAL_PRO_DIALOGUES_COUNT +
+  TOTAL_PRO_STICKERS_COUNT +
+  TOTAL_PRO_CARDS_COUNT +
+  TOTAL_PRO_CHROMA_COUNT +
+  TOTAL_PRO_SPLIT_COUNT +
+  TOTAL_PRO_EFFECTS_COUNT +
+  TOTAL_PRO_TEMPLATES_COUNT +
   TOTAL_PRO_MASKS_COUNT +
   TOTAL_PRO_GRAPHS_COUNT +
-  TOTAL_PRO_CHARACTERS_COUNT; // 168,000+ presets across 121 Pro Studio Tools
+  TOTAL_PRO_CHARACTERS_COUNT; // 954,000+ presets across all 14 Categories & Studio Tools
 
 function makePresetFromCategory(cat: ActionVfxCategoryDef, localIdx: number): ActionVfxPreset {
   const p = cat.prefixes[localIdx % cat.prefixes.length];
@@ -1218,19 +1232,19 @@ const SFX_ENGINE_RECIPES = [
 ] as const;
 
 const SFX_SUB_RECIPES: Array<readonly string[]> = [
-  ['pop', 'chime', 'whoosh'],
-  ['rain_thunder', 'thunder', 'rain_thunder'],
-  ['gunshot', 'gunshot', 'boom'],
-  ['door_knock', 'door_open', 'door_knock'],
-  ['key_unlock', 'door_open', 'key_unlock'],
-  ['car_start', 'car_start', 'boom'],
-  ['footstep', 'footstep', 'whoosh'],
-  ['glass_break', 'glass_break', 'boom'],
-  ['sword_slash', 'sword_slash', 'boom'],
-  ['phone_ring', 'clock_tick', 'chime'],
-  ['whoosh', 'whoosh', 'pop'],
-  ['boom', 'siren', 'heartbeat'],
-  ['riser', 'laser', 'glitch'],
+  ['cartoon_boing', 'clown_horn', 'trombone_fail'],
+  ['thunder_crack', 'rain_downpour', 'wind_howl'],
+  ['sfx_gunshot', 'sfx_punch_impact', 'meme_boom'],
+  ['pop_cork', 'cartoon_bonk', 'sfx_punch_impact'],
+  ['pop_cork', 'bird_chirp', 'cartoon_slip'],
+  ['sfx_whoosh', 'wind_howl', 'meme_boom'],
+  ['cartoon_bonk', 'cartoon_slip', 'sfx_whoosh'],
+  ['sfx_glass_break', 'thunder_crack', 'meme_boom'],
+  ['sfx_punch_impact', 'sfx_whoosh', 'sfx_gunshot'],
+  ['bird_cuckoo', 'pop_cork', 'bird_chirp'],
+  ['sfx_whoosh', 'wind_howl', 'pop_cork'],
+  ['meme_boom', 'trailer', 'thunder_crack'],
+  ['sfx_fire_burn', 'wind_howl', 'sad_violin'],
 ];
 
 const SFX_SEARCH_ALIASES: Record<number, string> = {
@@ -1318,29 +1332,43 @@ export function queryProSfx(category: string, search: string, page = 0, pageSize
   return { items, total: matchCount };
 }
 
-// 12,000+ Music Tracks & Cinema Scores
+// 54,000+ Music Tracks & Cinema Scores
 export const PRO_MUSIC_CATEGORIES = [
   'All', 'Action & Trailer', 'Cinema & Drama', 'Thriller & Crime',
   'Reels & Upbeat', 'Ambient & Calm', 'Hip-Hop & Trap Beat',
+  'Comedy & Fun', 'Lo-Fi & Chill',
 ];
+
+const MUSIC_SYNTH_ENGINES = [
+  'trailer',
+  'cinematic',
+  'sad_violin',
+  'upbeat',
+  'lofi',
+  'electronic',
+  'comedy_ukulele',
+  'lofi',
+] as const;
 
 export function queryProMusic(category: string, search: string, page = 0, pageSize = 36): { items: ProCatalogItem[]; total: number } {
   const realCats = PRO_MUSIC_CATEGORIES.slice(1);
   const q = search.trim().toLowerCase();
-  const perCat = Math.floor(TOTAL_PRO_MUSIC_COUNT / realCats.length); // 2,000 * 6 = 12,000
+  const perCat = Math.floor(TOTAL_PRO_MUSIC_COUNT / realCats.length);
   const cats = category === 'All' || !realCats.includes(category) ? realCats : [category];
 
   const buildMus = (cIdx: number, localIdx: number): ProCatalogItem => {
     const bpm = 75 + (localIdx % 12) * 8;
     const freq = 110 + (localIdx % 9) * 18;
+    const engineId = MUSIC_SYNTH_ENGINES[cIdx % MUSIC_SYNTH_ENGINES.length];
     return {
       id: `pmus__${cIdx}__${localIdx}`,
+      engineId,
       name: `${realCats[cIdx]} Score #${localIdx + 1}`,
       category: realCats[cIdx],
       bpm,
       freq,
       swatch: 'from-fuchsia-500 via-purple-700 to-zinc-950',
-      sub: `${bpm} BPM · Royalty Free`,
+      sub: `${bpm} BPM · 0:${15 + (localIdx % 45)}s · Royalty Free`,
     };
   };
 
@@ -1361,11 +1389,427 @@ export function queryProMusic(category: string, search: string, page = 0, pageSi
   let matchCount = 0;
   for (const cName of cats) {
     const cIdx = realCats.indexOf(cName);
-    if (cName.toLowerCase().includes(q) || 'music'.includes(q) || 'score'.includes(q)) {
+    if (cName.toLowerCase().includes(q) || 'music'.includes(q) || 'score'.includes(q) || 'bgm'.includes(q) || 'track'.includes(q)) {
       if (matchCount + perCat > start && items.length < pageSize) {
         const ls = Math.max(0, start - matchCount);
         const le = Math.min(perCat, end - matchCount);
         for (let i = ls; i < le; i++) items.push(buildMus(cIdx, i));
+      }
+      matchCount += perCat;
+    }
+  }
+  return { items, total: matchCount };
+}
+
+// 52,000+ Dialogues / REC Presets
+export const PRO_DIALOGUE_CATEGORIES = [
+  'All', 'Action Confrontation', 'Mass Hero Punch', 'Thriller Interrogation',
+  'Romance & Drama', 'Horror Whisper', 'Sci-Fi Mission Control', 'Comedy Sarcasm', 'Trailer Voiceover',
+];
+const DLG_SPEAKERS = ['Hero', 'Villain', 'Detective', 'Narrator', 'Commander', 'Agent X', 'Boss', 'Rival'];
+const DLG_LINES = [
+  'This city remembers every step we took in the dark.',
+  'Lock the perimeter. Nobody leaves until sunrise.',
+  'You thought the story ended—chapter two starts now.',
+  'Stay on the line, backup is three minutes out.',
+  'One shot, one truth, zero second chances.',
+  'The storm is already inside the walls.',
+  'Check the footage again—someone cut ten seconds.',
+  'Let them hear thunder before they see the lightning.',
+];
+
+export function queryProDialogues(category: string, search: string, page = 0, pageSize = 36): { items: ProCatalogItem[]; total: number } {
+  const realCats = PRO_DIALOGUE_CATEGORIES.slice(1);
+  const q = search.trim().toLowerCase();
+  const perCat = Math.floor(TOTAL_PRO_DIALOGUES_COUNT / realCats.length);
+  const cats = category === 'All' || !realCats.includes(category) ? realCats : [category];
+
+  const buildDlg = (cIdx: number, localIdx: number): ProCatalogItem => {
+    const sp = DLG_SPEAKERS[(cIdx + localIdx) % DLG_SPEAKERS.length];
+    const line = DLG_LINES[(cIdx * 3 + localIdx) % DLG_LINES.length];
+    const dur = 3 + (localIdx % 6);
+    return {
+      id: `pdlg__${cIdx}__${localIdx}`,
+      engineId: sp,
+      name: `${sp}: ${realCats[cIdx]} #${localIdx + 1}`,
+      category: realCats[cIdx],
+      bpm: dur,
+      swatch: 'from-amber-500 via-orange-700 to-zinc-950',
+      sub: line,
+    };
+  };
+
+  if (!q) {
+    const total = cats.length * perCat;
+    const start = page * pageSize;
+    const end = Math.min(total, start + pageSize);
+    const items: ProCatalogItem[] = [];
+    for (let g = start; g < end; g++) {
+      items.push(buildDlg(realCats.indexOf(cats[Math.floor(g / perCat)]), g % perCat));
+    }
+    return { items, total };
+  }
+
+  const start = page * pageSize;
+  const end = start + pageSize;
+  const items: ProCatalogItem[] = [];
+  let matchCount = 0;
+  const spMatch = DLG_SPEAKERS.map((s) => s.toLowerCase().includes(q));
+  const lnMatch = DLG_LINES.map((l) => l.toLowerCase().includes(q));
+  for (const cName of cats) {
+    const cIdx = realCats.indexOf(cName);
+    if (cName.toLowerCase().includes(q) || 'dialogue'.includes(q) || 'rec'.includes(q)) {
+      if (matchCount + perCat > start && items.length < pageSize) {
+        const ls = Math.max(0, start - matchCount);
+        const le = Math.min(perCat, end - matchCount);
+        for (let i = ls; i < le; i++) items.push(buildDlg(cIdx, i));
+      }
+      matchCount += perCat;
+      continue;
+    }
+    for (let i = 0; i < perCat; i++) {
+      if (spMatch[(cIdx + i) % DLG_SPEAKERS.length] || lnMatch[(cIdx * 3 + i) % DLG_LINES.length]) {
+        if (matchCount >= start && matchCount < end) items.push(buildDlg(cIdx, i));
+        matchCount++;
+      }
+    }
+  }
+  return { items, total: matchCount };
+}
+
+// 52,000+ Emoji & Stickers Presets
+export const PRO_STICKER_CATEGORIES = [
+  'All', 'Cinema Badges', 'Action & Combat', 'Fire & Sparks',
+  'Reactions & Comedy', 'HUD & Targets', 'Awards & Gold', 'Weather & Mood',
+];
+const STICKER_EMOJIS = ['🎬', '🔥', '💥', '⚡', '🎯', '🏆', '💣', '🚨', '🎥', '⭐', '💎', '🕶️', '🚀', '⚔️', '🎭', '👑'];
+const STICKER_ADJS = ['Ultra', 'IMAX', 'Neon', 'Gold', 'Action', 'Viral', 'Cinema', 'Pro', 'Turbo', 'Epic'];
+
+export function queryProStickers(category: string, search: string, page = 0, pageSize = 36): { items: ProCatalogItem[]; total: number } {
+  const realCats = PRO_STICKER_CATEGORIES.slice(1);
+  const q = search.trim().toLowerCase();
+  const perCat = Math.floor(TOTAL_PRO_STICKERS_COUNT / realCats.length);
+  const cats = category === 'All' || !realCats.includes(category) ? realCats : [category];
+
+  const buildSt = (cIdx: number, localIdx: number): ProCatalogItem => {
+    const emoji = STICKER_EMOJIS[(cIdx * 2 + localIdx) % STICKER_EMOJIS.length];
+    const adj = STICKER_ADJS[localIdx % STICKER_ADJS.length];
+    return {
+      id: `pstk__${cIdx}__${localIdx}`,
+      engineId: emoji,
+      name: `${adj} ${realCats[cIdx]} #${localIdx + 1}`,
+      category: realCats[cIdx],
+      swatch: 'from-sky-500 via-indigo-700 to-zinc-950',
+      sub: `${emoji} Badge · ${adj}`,
+    };
+  };
+
+  if (!q) {
+    const total = cats.length * perCat;
+    const start = page * pageSize;
+    const end = Math.min(total, start + pageSize);
+    const items: ProCatalogItem[] = [];
+    for (let g = start; g < end; g++) {
+      items.push(buildSt(realCats.indexOf(cats[Math.floor(g / perCat)]), g % perCat));
+    }
+    return { items, total };
+  }
+
+  const start = page * pageSize;
+  const end = start + pageSize;
+  const items: ProCatalogItem[] = [];
+  let matchCount = 0;
+  for (const cName of cats) {
+    const cIdx = realCats.indexOf(cName);
+    if (cName.toLowerCase().includes(q) || 'sticker'.includes(q) || 'emoji'.includes(q)) {
+      if (matchCount + perCat > start && items.length < pageSize) {
+        const ls = Math.max(0, start - matchCount);
+        const le = Math.min(perCat, end - matchCount);
+        for (let i = ls; i < le; i++) items.push(buildSt(cIdx, i));
+      }
+      matchCount += perCat;
+    }
+  }
+  return { items, total: matchCount };
+}
+
+// 52,000+ Trailer Cards Presets
+export const PRO_CARD_CATEGORIES = [
+  'All', 'Blockbuster Gold', 'Action Flame', 'Sci-Fi Holo',
+  'Noir Mystery', 'Hero Comic', 'Royal Premiere',
+];
+const CARD_THEMES = ['blockbuster_gold', 'action_flame', 'scifi_holo', 'noir_mystery', 'hero_comic', 'royal_premiere'] as const;
+const CARD_ANIMS = ['tilt_float', 'slam_shake', 'flip_reveal', 'zoom_ken_burns', 'slide_spotlight'] as const;
+const CARD_TITLES = ['THE LAST STAND', 'NIGHT PROTOCOL', 'FIRE & STEEL', 'FINAL VERDICT', 'CRIMSON DAWN', 'ZERO HOUR'];
+
+export function queryProTrailerCards(category: string, search: string, page = 0, pageSize = 36): { items: ProCatalogItem[]; total: number } {
+  const realCats = PRO_CARD_CATEGORIES.slice(1);
+  const q = search.trim().toLowerCase();
+  const perCat = Math.floor(TOTAL_PRO_CARDS_COUNT / realCats.length);
+  const cats = category === 'All' || !realCats.includes(category) ? realCats : [category];
+
+  const buildCd = (cIdx: number, localIdx: number): ProCatalogItem => {
+    const theme = CARD_THEMES[cIdx % CARD_THEMES.length];
+    const anim = CARD_ANIMS[localIdx % CARD_ANIMS.length];
+    const title = CARD_TITLES[(cIdx + localIdx) % CARD_TITLES.length];
+    return {
+      id: `pcrd__${cIdx}__${localIdx}`,
+      engineId: `${theme}__${anim}`,
+      name: `${title} #${localIdx + 1}`,
+      category: realCats[cIdx],
+      swatch: 'from-amber-500 via-yellow-700 to-black',
+      sub: `${realCats[cIdx]} · ${anim.replace(/_/g, ' ')}`,
+    };
+  };
+
+  if (!q) {
+    const total = cats.length * perCat;
+    const start = page * pageSize;
+    const end = Math.min(total, start + pageSize);
+    const items: ProCatalogItem[] = [];
+    for (let g = start; g < end; g++) {
+      items.push(buildCd(realCats.indexOf(cats[Math.floor(g / perCat)]), g % perCat));
+    }
+    return { items, total };
+  }
+
+  const start = page * pageSize;
+  const end = start + pageSize;
+  const items: ProCatalogItem[] = [];
+  let matchCount = 0;
+  for (const cName of cats) {
+    const cIdx = realCats.indexOf(cName);
+    if (cName.toLowerCase().includes(q) || 'card'.includes(q) || 'trailer'.includes(q)) {
+      if (matchCount + perCat > start && items.length < pageSize) {
+        const ls = Math.max(0, start - matchCount);
+        const le = Math.min(perCat, end - matchCount);
+        for (let i = ls; i < le; i++) items.push(buildCd(cIdx, i));
+      }
+      matchCount += perCat;
+    }
+  }
+  return { items, total: matchCount };
+}
+
+// 52,000+ Chroma Key & Studio Backdrops
+export const PRO_CHROMA_CATEGORIES = [
+  'All', 'Green Screen Studio', 'Neon Green Key', 'Blue Screen Spill',
+  'Cyan Screen Matte', 'Action Crimson BG', 'Cyber Grid BG', 'Sunset Gold BG',
+];
+const CHROMA_COLORS = ['green', 'neon_green', 'blue', 'cyan', 'green', 'blue', 'green'] as const;
+const CHROMA_BGS = ['studio_teal', 'black', 'cyber_grid', 'action_crimson', 'sunset_gold', 'blur_bg', 'studio_teal'] as const;
+
+export function queryProChroma(category: string, search: string, page = 0, pageSize = 36): { items: ProCatalogItem[]; total: number } {
+  const realCats = PRO_CHROMA_CATEGORIES.slice(1);
+  const q = search.trim().toLowerCase();
+  const perCat = Math.floor(TOTAL_PRO_CHROMA_COUNT / realCats.length);
+  const cats = category === 'All' || !realCats.includes(category) ? realCats : [category];
+
+  const buildCh = (cIdx: number, localIdx: number): ProCatalogItem => {
+    const cp = CHROMA_COLORS[cIdx % CHROMA_COLORS.length];
+    const bg = CHROMA_BGS[(cIdx + localIdx) % CHROMA_BGS.length];
+    const sim = 34 + (localIdx % 25);
+    const sm = 12 + (localIdx % 18);
+    return {
+      id: `pchrk__${cIdx}__${localIdx}`,
+      engineId: `${cp}__${bg}__${sim}__${sm}`,
+      name: `${realCats[cIdx]} Key #${localIdx + 1}`,
+      category: realCats[cIdx],
+      swatch: cIdx === 2 || cIdx === 3 ? 'from-blue-500 via-cyan-600 to-slate-900' : 'from-emerald-500 via-green-600 to-zinc-900',
+      sub: `Sim ${sim}% · Smooth ${sm}%`,
+    };
+  };
+
+  if (!q) {
+    const total = cats.length * perCat;
+    const start = page * pageSize;
+    const end = Math.min(total, start + pageSize);
+    const items: ProCatalogItem[] = [];
+    for (let g = start; g < end; g++) {
+      items.push(buildCh(realCats.indexOf(cats[Math.floor(g / perCat)]), g % perCat));
+    }
+    return { items, total };
+  }
+
+  const start = page * pageSize;
+  const end = start + pageSize;
+  const items: ProCatalogItem[] = [];
+  let matchCount = 0;
+  for (const cName of cats) {
+    const cIdx = realCats.indexOf(cName);
+    if (cName.toLowerCase().includes(q) || 'chroma'.includes(q) || 'green'.includes(q) || 'blue'.includes(q)) {
+      if (matchCount + perCat > start && items.length < pageSize) {
+        const ls = Math.max(0, start - matchCount);
+        const le = Math.min(perCat, end - matchCount);
+        for (let i = ls; i < le; i++) items.push(buildCh(cIdx, i));
+      }
+      matchCount += perCat;
+    }
+  }
+  return { items, total: matchCount };
+}
+
+// 52,000+ Split Screen Layouts
+export const PRO_SPLIT_CATEGORIES = [
+  'All', 'Side by Side (50/50)', 'Top & Bottom Stack', 'Diagonal Slash Cut',
+  'PiP Corner Frame', 'Dual Action Cards', 'Mirror Twin Symmetry', 'Triple Trio Feed',
+];
+const SPLIT_LAYOUTS = ['left_right', 'top_bottom', 'diagonal', 'pip_bottom_right', 'dual_cards', 'mirror_twin', 'triple_trio'] as const;
+
+export function queryProSplitLayouts(category: string, search: string, page = 0, pageSize = 36): { items: ProCatalogItem[]; total: number } {
+  const realCats = PRO_SPLIT_CATEGORIES.slice(1);
+  const q = search.trim().toLowerCase();
+  const perCat = Math.floor(TOTAL_PRO_SPLIT_COUNT / realCats.length);
+  const cats = category === 'All' || !realCats.includes(category) ? realCats : [category];
+
+  const buildSp = (cIdx: number, localIdx: number): ProCatalogItem => {
+    const layout = SPLIT_LAYOUTS[cIdx % SPLIT_LAYOUTS.length];
+    const ratio = 35 + (localIdx % 7) * 5;
+    return {
+      id: `pspl__${cIdx}__${localIdx}`,
+      engineId: `${layout}__${ratio}`,
+      name: `${realCats[cIdx]} #${localIdx + 1}`,
+      category: realCats[cIdx],
+      swatch: 'from-cyan-500 via-teal-600 to-amber-500',
+      sub: `Ratio ${ratio}/${100 - ratio} · Seamless`,
+    };
+  };
+
+  if (!q) {
+    const total = cats.length * perCat;
+    const start = page * pageSize;
+    const end = Math.min(total, start + pageSize);
+    const items: ProCatalogItem[] = [];
+    for (let g = start; g < end; g++) {
+      items.push(buildSp(realCats.indexOf(cats[Math.floor(g / perCat)]), g % perCat));
+    }
+    return { items, total };
+  }
+
+  const start = page * pageSize;
+  const end = start + pageSize;
+  const items: ProCatalogItem[] = [];
+  let matchCount = 0;
+  for (const cName of cats) {
+    const cIdx = realCats.indexOf(cName);
+    if (cName.toLowerCase().includes(q) || 'split'.includes(q) || 'dual'.includes(q)) {
+      if (matchCount + perCat > start && items.length < pageSize) {
+        const ls = Math.max(0, start - matchCount);
+        const le = Math.min(perCat, end - matchCount);
+        for (let i = ls; i < le; i++) items.push(buildSp(cIdx, i));
+      }
+      matchCount += perCat;
+    }
+  }
+  return { items, total: matchCount };
+}
+
+// 52,000+ Visual Effects (Overlays, Neon, Particles, Grain, Light Leaks)
+export const PRO_EFFECT_CATEGORIES = [
+  'All', 'Anamorphic Light Leak', 'Golden Particle Dust', '35mm Film Grain',
+  'Neon Border Frame', 'Cyber Glitch Overlay', 'Cinema Mist Haze', 'Prism Rainbow Flare', 'Halftone Comic Print',
+];
+const EFFECT_TYPES = ['light_leak', 'particles', 'grain', 'neon', 'glitch', 'mist', 'prism', 'halftone'] as const;
+const EFFECT_COLORS = ['#fbbf24', '#fde68a', '#e4e4e7', '#22d3ee', '#f43f5e', '#94a3b8', '#a855f7', '#38bdf8'];
+
+export function queryProEffects(category: string, search: string, page = 0, pageSize = 36): { items: ProCatalogItem[]; total: number } {
+  const realCats = PRO_EFFECT_CATEGORIES.slice(1);
+  const q = search.trim().toLowerCase();
+  const perCat = Math.floor(TOTAL_PRO_EFFECTS_COUNT / realCats.length);
+  const cats = category === 'All' || !realCats.includes(category) ? realCats : [category];
+
+  const buildFx = (cIdx: number, localIdx: number): ProCatalogItem => {
+    const et = EFFECT_TYPES[cIdx % EFFECT_TYPES.length];
+    const col = EFFECT_COLORS[(cIdx + localIdx) % EFFECT_COLORS.length];
+    return {
+      id: `pfx__${cIdx}__${localIdx}`,
+      engineId: et,
+      colorHex: col,
+      name: `${realCats[cIdx]} #${localIdx + 1}`,
+      category: realCats[cIdx],
+      swatch: 'from-purple-500 via-fuchsia-700 to-zinc-950',
+      sub: `FX Engine: ${et.replace(/_/g, ' ')}`,
+    };
+  };
+
+  if (!q) {
+    const total = cats.length * perCat;
+    const start = page * pageSize;
+    const end = Math.min(total, start + pageSize);
+    const items: ProCatalogItem[] = [];
+    for (let g = start; g < end; g++) {
+      items.push(buildFx(realCats.indexOf(cats[Math.floor(g / perCat)]), g % perCat));
+    }
+    return { items, total };
+  }
+
+  const start = page * pageSize;
+  const end = start + pageSize;
+  const items: ProCatalogItem[] = [];
+  let matchCount = 0;
+  for (const cName of cats) {
+    const cIdx = realCats.indexOf(cName);
+    if (cName.toLowerCase().includes(q) || 'effect'.includes(q) || 'fx'.includes(q)) {
+      if (matchCount + perCat > start && items.length < pageSize) {
+        const ls = Math.max(0, start - matchCount);
+        const le = Math.min(perCat, end - matchCount);
+        for (let i = ls; i < le; i++) items.push(buildFx(cIdx, i));
+      }
+      matchCount += perCat;
+    }
+  }
+  return { items, total: matchCount };
+}
+
+// 52,000+ Cinema Trailer & Reel Templates
+export const PRO_TEMPLATE_CATEGORIES = [
+  'All', 'IMAX Action Trailer', 'Thriller Teaser Cut', 'Mollywood Mass Promo',
+  'Sci-Fi Cyber Intro', 'Romance Montage', 'Documentary Reel', 'Vlog Fast Cut',
+];
+const TEMPLATE_DIRECTORS = ['Studio Master', 'Unit 24fps', 'Anamorphic Lab', 'IMAX Cut', 'Cinema DI'];
+
+export function queryProTemplates(category: string, search: string, page = 0, pageSize = 36): { items: ProCatalogItem[]; total: number } {
+  const realCats = PRO_TEMPLATE_CATEGORIES.slice(1);
+  const q = search.trim().toLowerCase();
+  const perCat = Math.floor(TOTAL_PRO_TEMPLATES_COUNT / realCats.length);
+  const cats = category === 'All' || !realCats.includes(category) ? realCats : [category];
+
+  const buildTm = (cIdx: number, localIdx: number): ProCatalogItem => {
+    const dir = TEMPLATE_DIRECTORS[localIdx % TEMPLATE_DIRECTORS.length];
+    const dur = 12 + (localIdx % 25);
+    return {
+      id: `ptmp__${cIdx}__${localIdx}`,
+      engineId: dir,
+      bpm: dur,
+      name: `${realCats[cIdx]} Cut #${localIdx + 1}`,
+      category: realCats[cIdx],
+      swatch: 'from-teal-500 via-emerald-700 to-zinc-950',
+      sub: `0:${dur}s · ${dir}`,
+    };
+  };
+
+  if (!q) {
+    const total = cats.length * perCat;
+    const start = page * pageSize;
+    const end = Math.min(total, start + pageSize);
+    const items: ProCatalogItem[] = [];
+    for (let g = start; g < end; g++) {
+      items.push(buildTm(realCats.indexOf(cats[Math.floor(g / perCat)]), g % perCat));
+    }
+    return { items, total };
+  }
+
+  const start = page * pageSize;
+  const end = start + pageSize;
+  const items: ProCatalogItem[] = [];
+  let matchCount = 0;
+  for (const cName of cats) {
+    const cIdx = realCats.indexOf(cName);
+    if (cName.toLowerCase().includes(q) || 'template'.includes(q) || 'trailer'.includes(q)) {
+      if (matchCount + perCat > start && items.length < pageSize) {
+        const ls = Math.max(0, start - matchCount);
+        const le = Math.min(perCat, end - matchCount);
+        for (let i = ls; i < le; i++) items.push(buildTm(cIdx, i));
       }
       matchCount += perCat;
     }
@@ -1892,7 +2336,7 @@ const TOOL_GROUPS_SPEC: Array<{ group: string; target: ProStudioFeatureTool['tar
     ],
   },
   {
-    group: 'Action VFX · Bullets & Blood · 18,000+ (16 Tools)',
+    group: 'Action VFX · Bullets & Blood · 56,000+ (16 Tools)',
     target: 'vfx',
     names: [
       'Flying Bullet & Shockwave', 'Bullet Entry & Hit Blood', 'Gun Barrel Smoke Plume', 'Gun Muzzle Flash Cone',
@@ -1902,7 +2346,7 @@ const TOOL_GROUPS_SPEC: Array<{ group: string; target: ProStudioFeatureTool['tar
     ],
   },
   {
-    group: 'Dual Dialogue, Masking & Character · 30,000+ (15 Tools)',
+    group: 'Dual Dialogue, Masking & Character · 52,000+ (15 Tools)',
     target: 'masking',
     names: [
       'Dual Face-to-Face Dialogue Studio', 'Isolate Character Mask', 'Erase / Mask Out Object', 'Nested Double Mask (Mask in Mask)',
@@ -1912,7 +2356,7 @@ const TOOL_GROUPS_SPEC: Array<{ group: string; target: ProStudioFeatureTool['tar
     ],
   },
   {
-    group: 'Essential Graphics & Titles · 15,000+ (14 Tools)',
+    group: 'Essential Graphics & Titles · 56,000+ (14 Tools)',
     target: 'text',
     names: [
       'Type Tool (T) Direct Add', 'Drag Title Anywhere on Screen', 'Premiere Lower Third', 'IMAX Hero Movie Title',
@@ -1932,7 +2376,7 @@ const TOOL_GROUPS_SPEC: Array<{ group: string; target: ProStudioFeatureTool['tar
     ],
   },
   {
-    group: 'Filters, LUTs & Chroma Key · 30,000+ (16 Tools)',
+    group: 'Filters, LUTs & Chroma Key · 110,000+ (16 Tools)',
     target: 'filters',
     names: [
       'Arri LogC Film Look', 'RED IPP2 Blockbuster', 'Sony S-Log3 Cinema', 'DaVinci 2383 Print LUT',
@@ -1942,7 +2386,7 @@ const TOOL_GROUPS_SPEC: Array<{ group: string; target: ProStudioFeatureTool['tar
     ],
   },
   {
-    group: 'Transitions · 15,000+ (14 Tools)',
+    group: 'Transitions · 56,000+ (14 Tools)',
     target: 'transitions',
     names: [
       'Zoom Continuity Flow', 'Zoom Match Out', 'Whip Pan Left Blur', 'Whip Pan Right Blur',
@@ -1952,12 +2396,12 @@ const TOOL_GROUPS_SPEC: Array<{ group: string; target: ProStudioFeatureTool['tar
     ],
   },
   {
-    group: 'Pro Audio, Foley SFX & 4K Export · 30,000+ (14 Tools)',
+    group: 'Pro Audio, Foley SFX & Music · 54,000+ (14 Tools)',
     target: 'audio',
     names: [
       'SFX Joint Chain Stitcher', 'Door Knock, Open & Key Lock SFX', 'Car Start & Vehicle Foley SFX', 'Thunder, Lightning & Rain SFX',
       'Gunshot & Reload Foley', 'Footsteps, Glass Break & Phone SFX', 'Cinema Whoosh Swipes', 'Sub Bass Booms & Sirens',
-      '15,000+ Music & Scores', 'Import Phone/PC Audio', 'Live Mic Voiceover REC', 'Audio Track Fade & Mix',
+      '54,000+ Music & Scores', 'Import Phone/PC Audio', 'Live Mic Voiceover REC', 'Audio Track Fade & Mix',
       'Interactive Screen Doodles', '4K UHD 60fps MP4 Export & History',
     ],
   },

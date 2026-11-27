@@ -71,19 +71,56 @@ import {
 } from '../lib/studioAdvancedFx';
 import {
   ACTION_VFX_CATEGORIES,
+  PRO_CARD_CATEGORIES,
+  PRO_CHROMA_CATEGORIES,
+  PRO_DIALOGUE_CATEGORIES,
+  PRO_EFFECT_CATEGORIES,
   PRO_FILTER_CATEGORIES,
   PRO_LUT_CATEGORIES,
+  PRO_MOTION_CATEGORIES,
+  PRO_MUSIC_CATEGORIES,
+  PRO_SFX_CATEGORIES,
+  PRO_SPLIT_CATEGORIES,
+  PRO_STICKER_CATEGORIES,
+  PRO_TEMPLATE_CATEGORIES,
+  PRO_TITLE_CATEGORIES,
+  PRO_TRANSITION_CATEGORIES,
   queryActionVfxPresets,
+  queryProChroma,
+  queryProDialogues,
+  queryProEffects,
   queryProFilters,
   queryProLuts,
+  queryProMotions,
+  queryProMusic,
+  queryProSfx,
+  queryProSplitLayouts,
+  queryProStickers,
+  queryProTemplates,
+  queryProTitles,
+  queryProTrailerCards,
+  queryProTransitions,
+  TOTAL_PRO_CARDS_COUNT,
+  TOTAL_PRO_CHROMA_COUNT,
+  TOTAL_PRO_DIALOGUES_COUNT,
+  TOTAL_PRO_EFFECTS_COUNT,
   TOTAL_PRO_FILTERS_COUNT,
   TOTAL_PRO_LUTS_COUNT,
+  TOTAL_PRO_MOTIONS_COUNT,
+  TOTAL_PRO_MUSIC_COUNT,
+  TOTAL_PRO_SFX_COUNT,
+  TOTAL_PRO_SPLIT_COUNT,
+  TOTAL_PRO_STICKERS_COUNT,
+  TOTAL_PRO_TEMPLATES_COUNT,
+  TOTAL_PRO_TITLES_COUNT,
+  TOTAL_PRO_TRANSITIONS_COUNT,
   TOTAL_PRO_VFX_COUNT,
   type ActionVfxPreset,
+  type ProCatalogItem,
 } from '../lib/proVfxEngine';
+import type { AudioSynthKind } from '../lib/comedyAudioSynth';
 import {
   ColorWheelPad,
-  DEFAULT_COLOR_GRADE_ADJUSTMENTS,
   type ColorGradeAdjustments,
 } from './ColorWheelPad';
 
@@ -266,19 +303,23 @@ export const WheelFeatureDrawer: React.FC<WheelFeatureDrawerProps> = React.memo(
   const [renderLimit, setRenderLimit] = useState<number>(INITIAL_BOX_LIMIT);
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
-  // VFX 21,000+ Library Search & Category State
+  // VFX 56,000+ Library Search & Category State
   const [vfxSearch, setVfxSearch] = useState<string>('');
   const [vfxCatFilter, setVfxCatFilter] = useState<string>('All');
   const [vfxPageCount, setVfxPageCount] = useState<number>(1);
 
-  // Color Grading 30,000+ Library + Color Wheels State
-  const [colorSubView, setColorSubView] = useState<'presets' | 'wheels'>(() =>
-    props.studioMode === 'color' ? 'presets' : 'presets'
-  );
+  // Color Grading 110,000+ Library + Color Wheels State
+  const [colorSubView, setColorSubView] = useState<'presets' | 'wheels'>('presets');
   const [colorSearch, setColorSearch] = useState<string>('');
   const [colorCatFilter, setColorCatFilter] = useState<string>('All');
   const [colorSourceTab, setColorSourceTab] = useState<'all' | 'filters' | 'luts'>('all');
   const [colorPageCount, setColorPageCount] = useState<number>(1);
+
+  // Unified Search, Category & Pagination for All Other 12 Categories (52,000–56,000+ Each!)
+  const [catSearch, setCatSearch] = useState<string>('');
+  const [catFilter, setCatFilter] = useState<string>('All');
+  const [catPageCount, setCatPageCount] = useState<number>(1);
+  const [musicSubView, setMusicSubView] = useState<'tracks' | 'lyrics'>('tracks');
 
   // Smooth scroll container ref + kinetic momentum inertia controller
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
@@ -318,6 +359,9 @@ export const WheelFeatureDrawer: React.FC<WheelFeatureDrawerProps> = React.memo(
     setRenderLimit(INITIAL_BOX_LIMIT);
     setVfxPageCount(1);
     setColorPageCount(1);
+    setCatSearch('');
+    setCatFilter('All');
+    setCatPageCount(1);
     if (scrollContainerRef.current) {
       scrollContainerRef.current.scrollTop = 0;
     }
@@ -353,6 +397,42 @@ export const WheelFeatureDrawer: React.FC<WheelFeatureDrawerProps> = React.memo(
     }
     return { items: merged, total: fRes.total + lRes.total };
   }, [category.id, colorSourceTab, colorCatFilter, colorSearch, colorPageCount]);
+
+  const genericProMeta = useMemo((): {
+    categories: string[];
+    totalCount: number;
+    result: { items: ProCatalogItem[]; total: number };
+  } => {
+    const limit = Math.min(240, catPageCount * 30);
+    switch (category.id) {
+      case 'video':
+        return { categories: PRO_MOTION_CATEGORIES, totalCount: TOTAL_PRO_MOTIONS_COUNT, result: queryProMotions(catFilter, catSearch, 0, limit) };
+      case 'audio':
+        return { categories: PRO_SFX_CATEGORIES, totalCount: TOTAL_PRO_SFX_COUNT, result: queryProSfx(catFilter, catSearch, 0, limit) };
+      case 'music':
+        return { categories: PRO_MUSIC_CATEGORIES, totalCount: TOTAL_PRO_MUSIC_COUNT, result: queryProMusic(catFilter, catSearch, 0, limit) };
+      case 'dialogues':
+        return { categories: PRO_DIALOGUE_CATEGORIES, totalCount: TOTAL_PRO_DIALOGUES_COUNT, result: queryProDialogues(catFilter, catSearch, 0, limit) };
+      case 'titles':
+        return { categories: PRO_TITLE_CATEGORIES, totalCount: TOTAL_PRO_TITLES_COUNT, result: queryProTitles(catFilter, catSearch, 0, limit) };
+      case 'stickers':
+        return { categories: PRO_STICKER_CATEGORIES, totalCount: TOTAL_PRO_STICKERS_COUNT, result: queryProStickers(catFilter, catSearch, 0, limit) };
+      case 'card':
+        return { categories: PRO_CARD_CATEGORIES, totalCount: TOTAL_PRO_CARDS_COUNT, result: queryProTrailerCards(catFilter, catSearch, 0, limit) };
+      case 'chroma':
+        return { categories: PRO_CHROMA_CATEGORIES, totalCount: TOTAL_PRO_CHROMA_COUNT, result: queryProChroma(catFilter, catSearch, 0, limit) };
+      case 'split':
+        return { categories: PRO_SPLIT_CATEGORIES, totalCount: TOTAL_PRO_SPLIT_COUNT, result: queryProSplitLayouts(catFilter, catSearch, 0, limit) };
+      case 'transitions':
+        return { categories: PRO_TRANSITION_CATEGORIES, totalCount: TOTAL_PRO_TRANSITIONS_COUNT, result: queryProTransitions(catFilter, catSearch, 0, limit) };
+      case 'effects':
+        return { categories: PRO_EFFECT_CATEGORIES, totalCount: TOTAL_PRO_EFFECTS_COUNT, result: queryProEffects(catFilter, catSearch, 0, limit) };
+      case 'templates':
+        return { categories: PRO_TEMPLATE_CATEGORIES, totalCount: TOTAL_PRO_TEMPLATES_COUNT, result: queryProTemplates(catFilter, catSearch, 0, limit) };
+      default:
+        return { categories: [], totalCount: 0, result: { items: [], total: 0 } };
+    }
+  }, [category.id, catFilter, catSearch, catPageCount]);
 
   const dbItemsForCategory = useMemo(
     () => categoryItems.filter((item) => item.categoryId === category.id),
@@ -478,9 +558,64 @@ export const WheelFeatureDrawer: React.FC<WheelFeatureDrawerProps> = React.memo(
   const IconComp = category.icon;
 
   const isPureLyricsBoxesMode =
-    category.id === 'music' ||
-    Boolean(category.hasLyricsBoxes) ||
+    (category.id !== 'music' && Boolean(category.hasLyricsBoxes)) ||
     category.isBuiltIn === false;
+
+  const renderProCategoryToolbar = (accentActiveClass: string, searchPlaceholder: string) => {
+    if (genericProMeta.categories.length === 0) return null;
+    return (
+      <div className="space-y-1">
+        <div className="relative">
+          <Search className="w-3 h-3 text-zinc-500 absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none" />
+          <input
+            type="text"
+            value={catSearch}
+            onChange={(e) => {
+              setCatSearch(e.target.value);
+              setCatPageCount(1);
+            }}
+            placeholder={searchPlaceholder}
+            className="w-full pl-6 pr-2 py-1 rounded-lg bg-zinc-950 border border-zinc-800 focus:border-teal-400 text-[9.5px] text-white placeholder-zinc-500 focus:outline-none"
+          />
+        </div>
+        <div className="flex items-center gap-1 overflow-x-auto pb-0.5 no-scrollbar">
+          {genericProMeta.categories.map((c) => (
+            <button
+              key={c}
+              type="button"
+              onClick={() => {
+                setCatFilter(c);
+                setCatPageCount(1);
+              }}
+              className={`px-2 py-0.5 rounded-md text-[8.5px] font-bold whitespace-nowrap shrink-0 cursor-pointer transition-colors ${
+                catFilter === c
+                  ? accentActiveClass
+                  : 'bg-zinc-900 text-zinc-300 border border-zinc-800 hover:border-zinc-700'
+              }`}
+            >
+              {c === 'All' ? `All (${genericProMeta.totalCount.toLocaleString()}+)` : c}
+            </button>
+          ))}
+        </div>
+        <div className="text-[8.5px] font-mono text-zinc-400 px-0.5">
+          {genericProMeta.result.total.toLocaleString()} presets ready · Tap to apply
+        </div>
+      </div>
+    );
+  };
+
+  const renderProLoadMore = (accentTextClass: string) => {
+    if (genericProMeta.result.items.length >= genericProMeta.result.total) return null;
+    return (
+      <button
+        type="button"
+        onClick={() => setCatPageCount((c) => c + 1)}
+        className={`w-full py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-[9.5px] font-bold cursor-pointer ${accentTextClass}`}
+      >
+        Load More ({(genericProMeta.result.total - genericProMeta.result.items.length).toLocaleString()} more)
+      </button>
+    );
+  };
 
   return (
     <div className="w-full h-full flex flex-col bg-[#0b0f16] overflow-hidden select-none">
@@ -554,105 +689,225 @@ export const WheelFeatureDrawer: React.FC<WheelFeatureDrawerProps> = React.memo(
         }}
         className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-1.5 space-y-2 overscroll-contain"
       >
-        {/* PURE SONG LYRICS / TEXT BOXES MODE (2 items per line with 1-click copy) */}
-        {isPureLyricsBoxesMode ? (
-          <div className="grid grid-cols-2 gap-1.5">
-            {dbItemsForCategory.length === 0 ? (
-              <div className="col-span-2 py-8 px-2 rounded-xl border border-zinc-800 bg-[#121722] text-center text-[10px] text-zinc-400">
-                No songs/items added yet. Add from the Admin Panel.
+        {/* PURE SONG LYRICS / CUSTOM CATEGORY BOXES MODE */}
+        {isPureLyricsBoxesMode || (category.id === 'music' && musicSubView === 'lyrics') ? (
+          <div className="space-y-1.5">
+            {category.id === 'music' && (
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => setMusicSubView('tracks')}
+                  className="flex-1 py-1.5 px-2 rounded-lg bg-[#121722] border border-zinc-800 text-zinc-300 text-[9.5px] font-extrabold cursor-pointer whitespace-nowrap"
+                >
+                  Tracks ({TOTAL_PRO_MUSIC_COUNT.toLocaleString()}+)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMusicSubView('lyrics')}
+                  className="flex-1 py-1.5 px-2 rounded-lg bg-teal-400 text-black text-[9.5px] font-extrabold cursor-pointer whitespace-nowrap"
+                >
+                  Song Lyrics ({dbItemsForCategory.length})
+                </button>
               </div>
-            ) : (
-              dbItemsForCategory.slice(0, renderLimit).map((item) => {
-                const isCopied = copiedId === item.itemId;
-                return (
-                  <div
-                    key={item.itemId}
-                    className="rounded-xl border border-zinc-800/90 bg-[#121722] hover:border-teal-400/50 p-1.5 flex flex-col justify-between gap-1 text-left transition-colors"
-                  >
-                    {/* Live Equalizer Animation */}
-                    <div className="w-full h-8 rounded-lg bg-black/50 border border-white/5 flex items-center justify-center gap-0.5 px-1 relative overflow-hidden">
-                      <div className="w-1 bg-teal-400 rounded-full animate-pulse h-4" />
-                      <div className="w-1 bg-emerald-400 rounded-full animate-bounce h-6" style={{ animationDuration: '0.6s' }} />
-                      <div className="w-1 bg-cyan-400 rounded-full animate-pulse h-3" style={{ animationDuration: '0.4s' }} />
-                      <div className="w-1 bg-teal-300 rounded-full animate-bounce h-5" style={{ animationDuration: '0.8s' }} />
-                      <div className="w-1 bg-amber-400 rounded-full animate-pulse h-4" style={{ animationDuration: '0.5s' }} />
-                      <div className="absolute top-1 left-1.5 text-[8px] font-bold text-teal-300">♪ PLAY</div>
-                    </div>
-
-                    <div className="min-w-0">
-                      <div className="text-[10px] font-bold text-white truncate">{item.title}</div>
-                      <div className="text-[8px] text-zinc-300 whitespace-pre-wrap leading-tight line-clamp-2 mt-0.5 font-mono">
-                        {item.lyrics || item.subtitle || item.title}
-                      </div>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={(e) => void handleCopyItem(e, item)}
-                      className={`w-full py-1 rounded text-[8.5px] font-extrabold inline-flex items-center justify-center gap-1 cursor-pointer transition-colors ${
-                        isCopied
-                          ? 'bg-emerald-400 text-black'
-                          : 'bg-teal-400/15 hover:bg-teal-400/30 border border-teal-400/40 text-teal-300'
-                      }`}
-                    >
-                      {isCopied ? <Check className="w-2.5 h-2.5" /> : <Copy className="w-2.5 h-2.5" />}
-                      <span>{isCopied ? 'Copied' : 'Copy Lyrics'}</span>
-                    </button>
-                  </div>
-                );
-              })
             )}
+            <div className="grid grid-cols-2 gap-1.5">
+              {dbItemsForCategory.length === 0 ? (
+                <div className="col-span-2 py-8 px-2 rounded-xl border border-zinc-800 bg-[#121722] text-center text-[10px] text-zinc-400">
+                  No songs/items added yet. Add from the Admin Panel.
+                </div>
+              ) : (
+                dbItemsForCategory.slice(0, renderLimit).map((item) => {
+                  const isCopied = copiedId === item.itemId;
+                  return (
+                    <div
+                      key={item.itemId}
+                      className="rounded-xl border border-zinc-800/90 bg-[#121722] hover:border-teal-400/50 p-1.5 flex flex-col justify-between gap-1 text-left transition-colors"
+                    >
+                      <div className="w-full h-8 rounded-lg bg-black/50 border border-white/5 flex items-center justify-center gap-0.5 px-1 relative overflow-hidden">
+                        <div className="w-1 bg-teal-400 rounded-full animate-pulse h-4" />
+                        <div className="w-1 bg-emerald-400 rounded-full animate-bounce h-6" style={{ animationDuration: '0.6s' }} />
+                        <div className="w-1 bg-cyan-400 rounded-full animate-pulse h-3" style={{ animationDuration: '0.4s' }} />
+                        <div className="w-1 bg-teal-300 rounded-full animate-bounce h-5" style={{ animationDuration: '0.8s' }} />
+                        <div className="w-1 bg-amber-400 rounded-full animate-pulse h-4" style={{ animationDuration: '0.5s' }} />
+                        <div className="absolute top-1 left-1.5 text-[8px] font-bold text-teal-300">♪ PLAY</div>
+                      </div>
+
+                      <div className="min-w-0">
+                        <div className="text-[10px] font-bold text-white truncate">{item.title}</div>
+                        <div className="text-[8px] text-zinc-300 whitespace-pre-wrap leading-tight line-clamp-2 mt-0.5 font-mono">
+                          {item.lyrics || item.subtitle || item.title}
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={(e) => void handleCopyItem(e, item)}
+                        className={`w-full py-1 rounded text-[8.5px] font-extrabold inline-flex items-center justify-center gap-1 cursor-pointer transition-colors ${
+                          isCopied
+                            ? 'bg-emerald-400 text-black'
+                            : 'bg-teal-400/15 hover:bg-teal-400/30 border border-teal-400/40 text-teal-300'
+                        }`}
+                      >
+                        {isCopied ? <Check className="w-2.5 h-2.5" /> : <Copy className="w-2.5 h-2.5" />}
+                        <span>{isCopied ? 'Copied' : 'Copy Lyrics'}</span>
+                      </button>
+                    </div>
+                  );
+                })
+              )}
+            </div>
           </div>
         ) : (
           <>
-            {/* 1. TITLES & TEXT (2 LIVE ANIMATED PREVIEWS PER LINE) */}
-            {category.id === 'titles' && (
-              <div className="grid grid-cols-2 gap-1.5">
-                {TITLES_LIST.map((ti) => (
+            {/* 0. MUSIC TRACKS (54,000+ PLAYABLE SCORES & SONGS) */}
+            {category.id === 'music' && (
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-1">
                   <button
-                    key={ti.id}
                     type="button"
-                    onClick={() => props.onApplyTitlePreset(ti)}
-                    className="rounded-xl border border-zinc-800 hover:border-amber-400/80 active:border-amber-400 bg-[#121722] p-1.5 flex flex-col gap-1 text-left cursor-pointer transition-colors group"
+                    onClick={() => setMusicSubView('tracks')}
+                    className="flex-1 py-1.5 px-2 rounded-lg bg-teal-400 text-black text-[9.5px] font-extrabold cursor-pointer whitespace-nowrap"
                   >
-                    {/* Live Animated Title Viewport */}
-                    <div className="w-full aspect-video rounded-lg bg-[#090b12] border border-white/10 relative overflow-hidden flex items-center justify-center p-1 shadow-inner">
-                      {/* Ambient Moving Spotlight Background */}
-                      <div className="absolute inset-0 bg-gradient-to-tr from-amber-500/10 via-transparent to-cyan-500/10 animate-pulse" />
-                      
-                      {/* Live Animating Title */}
-                      <div className="relative text-center z-10 scale-90 group-hover:scale-95 transition-transform">
-                        <span
-                          className={`text-[9.5px] sm:text-[10px] font-black uppercase tracking-wider block drop-shadow-md ${
-                            ti.id.includes('gold') || ti.id.includes('blockbuster')
-                              ? 'text-amber-300 animate-pulse'
-                              : ti.id.includes('neon') || ti.id.includes('cyber')
-                              ? 'text-cyan-300 animate-bounce'
-                              : 'text-white'
-                          }`}
-                          style={{
-                            textShadow: ti.id.includes('neon') ? '0 0 8px #22d3ee' : '0 2px 4px rgba(0,0,0,0.8)',
-                          }}
-                        >
-                          {ti.titleText.slice(0, 10)}
-                        </span>
-                        <span className="text-[7px] text-zinc-400 block tracking-widest mt-0.5">
-                          {ti.subtitleText.slice(0, 12)}
-                        </span>
-                      </div>
-
-                      <div className="absolute bottom-1 right-1 px-1 rounded bg-black/70 text-[7px] font-bold text-amber-300 flex items-center gap-0.5">
-                        <Activity className="w-2 h-2 animate-spin" />
-                        <span>LIVE</span>
-                      </div>
-                    </div>
-
-                    <div className="min-w-0 px-0.5">
-                      <div className="text-[9.5px] font-bold text-white truncate">{ti.titleText}</div>
-                      <div className="text-[8px] text-zinc-400 truncate">{ti.category}</div>
-                    </div>
+                    Tracks ({TOTAL_PRO_MUSIC_COUNT.toLocaleString()}+)
                   </button>
-                ))}
+                  <button
+                    type="button"
+                    onClick={() => setMusicSubView('lyrics')}
+                    className="flex-1 py-1.5 px-2 rounded-lg bg-[#121722] border border-zinc-800 text-zinc-300 text-[9.5px] font-extrabold cursor-pointer whitespace-nowrap"
+                  >
+                    Song Lyrics ({dbItemsForCategory.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={props.onTriggerUploadAudio}
+                    className="py-1.5 px-2 rounded-lg bg-teal-400/20 border border-teal-400/40 text-teal-300 text-[9.5px] font-extrabold inline-flex items-center gap-1 cursor-pointer shrink-0"
+                    title="Upload Music"
+                  >
+                    <Upload className="w-3 h-3" />
+                  </button>
+                </div>
+
+                {renderProCategoryToolbar('bg-teal-400 text-black', `Search ${TOTAL_PRO_MUSIC_COUNT.toLocaleString()}+ music tracks...`)}
+
+                <div className="grid grid-cols-2 gap-1.5">
+                  {genericProMeta.result.items.map((pm) => {
+                    const auItem: AudioItem = {
+                      id: pm.id,
+                      title: pm.name,
+                      category: pm.category,
+                      duration: `0:${18 + (pm.bpm || 80) % 40}`,
+                      durationSec: 22,
+                      bpm: pm.bpm || 110,
+                      mood: pm.category,
+                      description: pm.sub,
+                      synthPreset: (pm.engineId as AudioSynthKind) || 'cinematic',
+                    };
+                    const active = props.activeAudio.id === auItem.id && !isMutedOrOff;
+                    const isPrev = props.previewingAudioId === auItem.id;
+                    return (
+                      <div
+                        key={pm.id}
+                        onClick={() => props.onSelectAudio(auItem)}
+                        className={`rounded-xl border p-1.5 flex flex-col justify-between gap-1 text-left cursor-pointer transition-all ${
+                          active
+                            ? 'border-teal-400 bg-teal-950/40 text-white ring-1 ring-teal-400 shadow-md'
+                            : 'border-zinc-800 bg-[#121721] text-zinc-200 hover:border-zinc-700'
+                        }`}
+                      >
+                        <div className="w-full h-7 rounded-lg bg-black/60 border border-white/10 flex items-center justify-between px-1.5">
+                          <div className="flex items-end gap-0.5 h-4">
+                            <span className="w-1 bg-teal-400 rounded-full animate-pulse h-3" />
+                            <span className="w-1 bg-cyan-300 rounded-full animate-bounce h-4" style={{ animationDuration: '0.55s' }} />
+                            <span className="w-1 bg-emerald-300 rounded-full animate-pulse h-2.5" />
+                          </div>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              props.onToggleAudioPreview(auItem);
+                            }}
+                            className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 cursor-pointer ${
+                              isPrev ? 'bg-amber-400 text-black' : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-200'
+                            }`}
+                          >
+                            {isPrev ? <Square className="w-2.5 h-2.5 fill-current" /> : <Play className="w-2.5 h-2.5 fill-current ml-0.5" />}
+                          </button>
+                        </div>
+                        <div className="min-w-0">
+                          <div className="text-[9px] font-bold truncate text-white">{pm.name}</div>
+                          <div className="text-[7.5px] text-zinc-400 truncate">{pm.sub}</div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                {renderProLoadMore('text-teal-300')}
+              </div>
+            )}
+
+            {/* 1. TITLES & TEXT (56,000+ LIVE ANIMATED PREVIEWS) */}
+            {category.id === 'titles' && (
+              <div className="space-y-1.5">
+                {renderProCategoryToolbar('bg-amber-400 text-black', `Search ${TOTAL_PRO_TITLES_COUNT.toLocaleString()}+ title presets...`)}
+                <div className="grid grid-cols-2 gap-1.5">
+                  {!catSearch.trim() && catFilter === 'All' && TITLES_LIST.slice(0, 4).map((ti) => (
+                    <button
+                      key={ti.id}
+                      type="button"
+                      onClick={() => props.onApplyTitlePreset(ti)}
+                      className="rounded-xl border border-zinc-800 hover:border-amber-400/80 active:border-amber-400 bg-[#121722] p-1.5 flex flex-col gap-1 text-left cursor-pointer transition-colors group"
+                    >
+                      <div className="w-full aspect-video rounded-lg bg-[#090b12] border border-white/10 relative overflow-hidden flex items-center justify-center p-1 shadow-inner">
+                        <div className="absolute inset-0 bg-gradient-to-tr from-amber-500/10 via-transparent to-cyan-500/10 animate-pulse" />
+                        <div className="relative text-center z-10 scale-90">
+                          <span className="text-[9.5px] font-black uppercase tracking-wider block text-amber-300">
+                            {ti.titleText.slice(0, 10)}
+                          </span>
+                          <span className="text-[7px] text-zinc-400 block tracking-widest mt-0.5">
+                            {ti.subtitleText.slice(0, 12)}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="min-w-0 px-0.5">
+                        <div className="text-[9px] font-bold text-white truncate">{ti.titleText}</div>
+                        <div className="text-[7.5px] text-zinc-400 truncate">{ti.category}</div>
+                      </div>
+                    </button>
+                  ))}
+                  {genericProMeta.result.items.map((pt) => (
+                    <button
+                      key={pt.id}
+                      type="button"
+                      onClick={() =>
+                        props.onApplyTitlePreset({
+                          id: pt.id,
+                          name: pt.name,
+                          category: pt.category,
+                          titleText: pt.name.split(' Style')[0].toUpperCase(),
+                          subtitleText: pt.category.toUpperCase(),
+                          styleClass: 'text-amber-300',
+                          description: pt.sub,
+                        })
+                      }
+                      className="rounded-xl border border-zinc-800 hover:border-amber-400/80 active:border-amber-400 bg-[#121722] p-1.5 flex flex-col gap-1 text-left cursor-pointer transition-colors group"
+                    >
+                      <div className="w-full aspect-video rounded-lg bg-[#090b12] border border-white/10 relative overflow-hidden flex items-center justify-center p-1 shadow-inner">
+                        <div className={`absolute inset-0 bg-gradient-to-tr ${pt.swatch} opacity-20`} />
+                        <span
+                          className="text-[9px] font-black uppercase tracking-wider relative z-10 text-center line-clamp-1 px-1"
+                          style={{ color: pt.colorHex || '#fbbf24' }}
+                        >
+                          {pt.category}
+                        </span>
+                      </div>
+                      <div className="min-w-0 px-0.5">
+                        <div className="text-[9px] font-bold text-white truncate">{pt.name}</div>
+                        <div className="text-[7.5px] text-zinc-400 truncate">{pt.sub}</div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+                {renderProLoadMore('text-amber-300')}
               </div>
             )}
 
@@ -797,7 +1052,7 @@ export const WheelFeatureDrawer: React.FC<WheelFeatureDrawerProps> = React.memo(
                             setColorSearch(e.target.value);
                             setColorPageCount(1);
                           }}
-                          placeholder="Search 30,000+ color looks..."
+                          placeholder={`Search ${(TOTAL_PRO_FILTERS_COUNT + TOTAL_PRO_LUTS_COUNT).toLocaleString()}+ color looks...`}
                           className="w-full pl-6 pr-2 py-1 rounded-lg bg-zinc-950 border border-zinc-800 focus:border-cyan-400 text-[9.5px] text-white placeholder-zinc-500 focus:outline-none"
                         />
                       </div>
@@ -810,9 +1065,9 @@ export const WheelFeatureDrawer: React.FC<WheelFeatureDrawerProps> = React.memo(
                         }}
                         className="px-1.5 py-1 rounded-lg bg-zinc-950 border border-zinc-800 text-[9px] font-bold text-cyan-300 focus:outline-none cursor-pointer"
                       >
-                        <option value="all">All 30K+</option>
-                        <option value="filters">Filters 15K</option>
-                        <option value="luts">LUTs 15K</option>
+                        <option value="all">All 110K+</option>
+                        <option value="filters">Filters 55K</option>
+                        <option value="luts">LUTs 55K</option>
                       </select>
                     </div>
 
@@ -976,7 +1231,7 @@ export const WheelFeatureDrawer: React.FC<WheelFeatureDrawerProps> = React.memo(
               </div>
             )}
 
-            {/* 3. MEDIA & MOTION PRESETS (2 LIVE PREVIEWS PER LINE) */}
+            {/* 3. MEDIA & MOTION PRESETS (54,000+ MOTION CURVES) */}
             {category.id === 'video' && (
               <div className="space-y-1.5">
                 <button
@@ -988,8 +1243,10 @@ export const WheelFeatureDrawer: React.FC<WheelFeatureDrawerProps> = React.memo(
                   <span>Add Phone Video / Photo</span>
                 </button>
 
-                <div className="grid grid-cols-2 gap-1.5 pt-1">
-                  {MEDIA_MOTION_LIST.map((mm) => {
+                {renderProCategoryToolbar('bg-teal-400 text-black', `Search ${TOTAL_PRO_MOTIONS_COUNT.toLocaleString()}+ motion curves...`)}
+
+                <div className="grid grid-cols-2 gap-1.5 pt-0.5">
+                  {!catSearch.trim() && catFilter === 'All' && MEDIA_MOTION_LIST.slice(0, 4).map((mm) => {
                     const active = props.activeMotionPresetId === mm.id;
                     return (
                       <button
@@ -1002,7 +1259,6 @@ export const WheelFeatureDrawer: React.FC<WheelFeatureDrawerProps> = React.memo(
                             : 'border-zinc-800 bg-[#121721] text-zinc-200 hover:border-zinc-700'
                         }`}
                       >
-                        {/* Live Motion Speed Indicator */}
                         <div className="w-full aspect-video rounded-lg bg-black/60 border border-white/10 flex items-center justify-center relative overflow-hidden">
                           <div className="flex items-center gap-1 text-teal-300 font-mono font-black text-xs">
                             <Zap className="w-3.5 h-3.5 animate-pulse" />
@@ -1012,19 +1268,60 @@ export const WheelFeatureDrawer: React.FC<WheelFeatureDrawerProps> = React.memo(
                             {mm.aspectRatio || 'Native'}
                           </div>
                         </div>
-
                         <div className="min-w-0 px-0.5">
-                          <div className="text-[9.5px] font-bold truncate text-white">{mm.name}</div>
-                          <div className="text-[8px] text-zinc-400 truncate">Motion Speed</div>
+                          <div className="text-[9px] font-bold truncate text-white">{mm.name}</div>
+                          <div className="text-[7.5px] text-zinc-400 truncate">Motion Speed</div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                  {genericProMeta.result.items.map((pm, idx) => {
+                    const active = props.activeMotionPresetId === pm.id;
+                    const speed = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0][idx % 6];
+                    return (
+                      <button
+                        key={pm.id}
+                        type="button"
+                        onClick={() =>
+                          props.onApplyMediaMotionPreset(
+                            active
+                              ? null
+                              : {
+                                  id: pm.id,
+                                  name: pm.name,
+                                  category: pm.category,
+                                  speed,
+                                  zoomScale: [1.0, 1.08, 1.15, 1.22][idx % 4],
+                                  panX: [0, -2, 2, 0][idx % 4],
+                                  panY: [0, 1, -1, 0][idx % 4],
+                                  aspectRatio: '16:9',
+                                  description: pm.sub,
+                                }
+                          )
+                        }
+                        className={`rounded-xl border p-1.5 flex flex-col gap-1 text-left cursor-pointer transition-all ${
+                          active
+                            ? 'border-teal-400 bg-teal-950/40 text-white ring-1 ring-teal-400 shadow-md'
+                            : 'border-zinc-800 bg-[#121721] text-zinc-200 hover:border-zinc-700'
+                        }`}
+                      >
+                        <div className={`w-full aspect-video rounded-lg bg-gradient-to-br ${pm.swatch} border border-white/10 flex items-center justify-center relative overflow-hidden`}>
+                          <div className="absolute inset-0 bg-black/45" />
+                          <span className="relative z-10 text-teal-200 font-mono font-black text-[11px]">{speed}x</span>
+                        </div>
+                        <div className="min-w-0 px-0.5">
+                          <div className="text-[9px] font-bold truncate text-white">{pm.name}</div>
+                          <div className="text-[7.5px] text-zinc-400 truncate">{pm.sub}</div>
                         </div>
                       </button>
                     );
                   })}
                 </div>
+                {renderProLoadMore('text-teal-300')}
               </div>
             )}
 
-            {/* 4. AUDIO & SOUND FX (2 LIVE PREVIEWS PER LINE) */}
+            {/* 4. AUDIO & SOUND FX (52,000+ FOLEY SFX & DEVICE AUDIO) */}
             {category.id === 'audio' && (
               <div className="space-y-1.5">
                 <button
@@ -1036,8 +1333,10 @@ export const WheelFeatureDrawer: React.FC<WheelFeatureDrawerProps> = React.memo(
                   <span>Upload Audio File</span>
                 </button>
 
-                <div className="grid grid-cols-2 gap-1.5 pt-1">
-                  {[...props.userAudioLibrary, ...SFX_FOLEY_LIST].map((au) => {
+                {renderProCategoryToolbar('bg-emerald-400 text-black', `Search ${TOTAL_PRO_SFX_COUNT.toLocaleString()}+ SFX: thunder, gun, car, comedy...`)}
+
+                <div className="grid grid-cols-2 gap-1.5 pt-0.5">
+                  {!catSearch.trim() && catFilter === 'All' && [...props.userAudioLibrary, ...SFX_FOLEY_LIST.slice(0, 6)].map((au) => {
                     const active = props.activeAudio.id === au.id && !isMutedOrOff;
                     const isPrev = props.previewingAudioId === au.id;
                     return (
@@ -1050,12 +1349,10 @@ export const WheelFeatureDrawer: React.FC<WheelFeatureDrawerProps> = React.memo(
                             : 'border-zinc-800 bg-[#121721] text-zinc-200 hover:border-zinc-700'
                         }`}
                       >
-                        {/* Live Audio Visualizer Bars */}
-                        <div className="w-full h-8 rounded-lg bg-black/60 border border-white/10 flex items-center justify-between px-1.5">
-                          <div className="flex items-end gap-0.5 h-5">
+                        <div className="w-full h-7 rounded-lg bg-black/60 border border-white/10 flex items-center justify-between px-1.5">
+                          <div className="flex items-end gap-0.5 h-4">
                             <span className="w-1 bg-emerald-400 rounded-full animate-pulse h-3" />
-                            <span className="w-1 bg-teal-300 rounded-full animate-bounce h-5" style={{ animationDuration: '0.5s' }} />
-                            <span className="w-1 bg-emerald-300 rounded-full animate-pulse h-4" />
+                            <span className="w-1 bg-teal-300 rounded-full animate-bounce h-4" style={{ animationDuration: '0.5s' }} />
                             <span className="w-1 bg-cyan-400 rounded-full animate-bounce h-2" style={{ animationDuration: '0.7s' }} />
                           </div>
                           <button
@@ -1064,75 +1361,195 @@ export const WheelFeatureDrawer: React.FC<WheelFeatureDrawerProps> = React.memo(
                               e.stopPropagation();
                               props.onToggleAudioPreview(au);
                             }}
-                            className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 cursor-pointer ${
+                            className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 cursor-pointer ${
                               isPrev ? 'bg-amber-400 text-black' : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-200'
                             }`}
                           >
                             {isPrev ? <Square className="w-2.5 h-2.5 fill-current" /> : <Play className="w-2.5 h-2.5 fill-current ml-0.5" />}
                           </button>
                         </div>
-
                         <div className="min-w-0">
-                          <div className="text-[9.5px] font-bold truncate text-white">{au.title}</div>
-                          <div className="text-[8px] text-zinc-400 truncate">{au.duration}</div>
+                          <div className="text-[9px] font-bold truncate text-white">{au.title}</div>
+                          <div className="text-[7.5px] text-zinc-400 truncate">{au.duration}</div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {genericProMeta.result.items.map((ps) => {
+                    const auItem: AudioItem = {
+                      id: ps.id,
+                      title: ps.name,
+                      category: ps.category,
+                      duration: '0:03',
+                      durationSec: 3,
+                      bpm: 120,
+                      mood: ps.category,
+                      description: ps.sub,
+                      synthPreset: (ps.engineId as AudioSynthKind) || 'sfx_whoosh',
+                    };
+                    const active = props.activeAudio.id === auItem.id && !isMutedOrOff;
+                    const isPrev = props.previewingAudioId === auItem.id;
+                    return (
+                      <div
+                        key={ps.id}
+                        onClick={() => props.onSelectAudio(auItem)}
+                        className={`rounded-xl border p-1.5 flex flex-col justify-between gap-1 text-left cursor-pointer transition-all ${
+                          active
+                            ? 'border-emerald-400 bg-emerald-950/40 text-white ring-1 ring-emerald-400 shadow-md'
+                            : 'border-zinc-800 bg-[#121721] text-zinc-200 hover:border-zinc-700'
+                        }`}
+                      >
+                        <div className="w-full h-7 rounded-lg bg-black/60 border border-white/10 flex items-center justify-between px-1.5">
+                          <div className="flex items-end gap-0.5 h-4">
+                            <span className="w-1 bg-emerald-400 rounded-full animate-pulse h-3" />
+                            <span className="w-1 bg-amber-300 rounded-full animate-bounce h-4" style={{ animationDuration: '0.6s' }} />
+                          </div>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              props.onToggleAudioPreview(auItem);
+                            }}
+                            className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 cursor-pointer ${
+                              isPrev ? 'bg-amber-400 text-black' : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-200'
+                            }`}
+                          >
+                            {isPrev ? <Square className="w-2.5 h-2.5 fill-current" /> : <Play className="w-2.5 h-2.5 fill-current ml-0.5" />}
+                          </button>
+                        </div>
+                        <div className="min-w-0">
+                          <div className="text-[9px] font-bold truncate text-white">{ps.name}</div>
+                          <div className="text-[7.5px] text-zinc-400 truncate">{ps.sub}</div>
                         </div>
                       </div>
                     );
                   })}
                 </div>
+                {renderProLoadMore('text-emerald-300')}
               </div>
             )}
 
-            {/* 5. DIALOGUES / REC (2 LIVE PREVIEWS PER LINE) */}
+            {/* 5. DIALOGUES / REC (52,000+ CINEMA LINES) */}
             {category.id === 'dialogues' && (
-              <div className="grid grid-cols-2 gap-1.5">
-                {DIALOGUE_PRESETS_LIST.map((dl) => {
-                  const active = props.activeDialoguePresetId === dl.id;
-                  return (
-                    <button
-                      key={dl.id}
-                      type="button"
-                      onClick={() => props.onApplyDialoguePreset(dl)}
-                      className={`rounded-xl border p-1.5 flex flex-col justify-between gap-1 text-left cursor-pointer transition-all ${
-                        active
-                          ? 'border-amber-400 bg-amber-950/40 text-white ring-1 ring-amber-400 shadow-md'
-                          : 'border-zinc-800 bg-[#121721] text-zinc-200 hover:border-zinc-700'
-                      }`}
-                    >
-                      <div className="w-full h-7 rounded-lg bg-black/60 border border-white/10 flex items-center justify-between px-1.5 text-amber-300">
-                        <div className="flex items-center gap-1 text-[8.5px] font-bold">
-                          <Mic className="w-3 h-3 animate-pulse" />
-                          <span>{dl.speaker}</span>
+              <div className="space-y-1.5">
+                {renderProCategoryToolbar('bg-amber-400 text-black', `Search ${TOTAL_PRO_DIALOGUES_COUNT.toLocaleString()}+ dialogues...`)}
+                <div className="grid grid-cols-2 gap-1.5">
+                  {!catSearch.trim() && catFilter === 'All' && DIALOGUE_PRESETS_LIST.slice(0, 4).map((dl) => {
+                    const active = props.activeDialoguePresetId === dl.id;
+                    return (
+                      <button
+                        key={dl.id}
+                        type="button"
+                        onClick={() => props.onApplyDialoguePreset(dl)}
+                        className={`rounded-xl border p-1.5 flex flex-col justify-between gap-1 text-left cursor-pointer transition-all ${
+                          active
+                            ? 'border-amber-400 bg-amber-950/40 text-white ring-1 ring-amber-400 shadow-md'
+                            : 'border-zinc-800 bg-[#121721] text-zinc-200 hover:border-zinc-700'
+                        }`}
+                      >
+                        <div className="w-full h-6 rounded-lg bg-black/60 border border-white/10 flex items-center justify-between px-1.5 text-amber-300">
+                          <div className="flex items-center gap-1 text-[8px] font-bold">
+                            <Mic className="w-2.5 h-2.5" />
+                            <span>{dl.speaker}</span>
+                          </div>
+                          <span className="text-[7.5px] font-mono text-zinc-400">{dl.durationSec}s</span>
                         </div>
-                        <span className="text-[8px] font-mono text-zinc-400">{dl.durationSec}s</span>
+                        <div className="text-[8px] text-zinc-200 line-clamp-2 leading-tight">
+                          "{dl.line}"
+                        </div>
+                      </button>
+                    );
+                  })}
+                  {genericProMeta.result.items.map((pd) => {
+                    const active = props.activeDialoguePresetId === pd.id;
+                    return (
+                      <button
+                        key={pd.id}
+                        type="button"
+                        onClick={() =>
+                          props.onApplyDialoguePreset({
+                            id: pd.id,
+                            name: pd.name,
+                            speaker: pd.engineId || 'Hero',
+                            line: pd.sub,
+                            category: pd.category,
+                            durationSec: pd.bpm || 4,
+                            description: pd.sub,
+                          })
+                        }
+                        className={`rounded-xl border p-1.5 flex flex-col justify-between gap-1 text-left cursor-pointer transition-all ${
+                          active
+                            ? 'border-amber-400 bg-amber-950/40 text-white ring-1 ring-amber-400 shadow-md'
+                            : 'border-zinc-800 bg-[#121721] text-zinc-200 hover:border-zinc-700'
+                        }`}
+                      >
+                        <div className="w-full h-6 rounded-lg bg-black/60 border border-white/10 flex items-center justify-between px-1.5 text-amber-300">
+                          <span className="text-[8px] font-bold truncate">{pd.engineId || 'Speaker'}</span>
+                          <span className="text-[7.5px] font-mono text-zinc-400">{pd.bpm || 4}s</span>
+                        </div>
+                        <div className="min-w-0">
+                          <div className="text-[8.5px] font-bold text-white truncate">{pd.name}</div>
+                          <div className="text-[7.5px] text-zinc-300 line-clamp-1">"{pd.sub}"</div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+                {renderProLoadMore('text-amber-300')}
+              </div>
+            )}
+
+            {/* 6. EMOJI & STICKERS (52,000+ STICKERS & BADGES) */}
+            {category.id === 'stickers' && (
+              <div className="space-y-1.5">
+                {renderProCategoryToolbar('bg-sky-400 text-black', `Search ${TOTAL_PRO_STICKERS_COUNT.toLocaleString()}+ stickers...`)}
+                <div className="grid grid-cols-2 gap-1.5">
+                  {!catSearch.trim() && catFilter === 'All' && STICKERS_LIST.slice(0, 4).map((st) => (
+                    <button
+                      key={st.id}
+                      type="button"
+                      onClick={() => props.onAddSticker(st)}
+                      className="rounded-xl border border-zinc-800 hover:border-sky-400 active:border-sky-400 bg-[#121721] p-1.5 flex flex-col items-center justify-center gap-1 text-center cursor-pointer transition-colors group"
+                    >
+                      <div className="w-full aspect-video rounded-lg bg-black/50 border border-white/5 flex items-center justify-center">
+                        <span className="text-xl group-hover:scale-125 transition-transform">
+                          {st.emoji}
+                        </span>
                       </div>
-                      <div className="text-[8.5px] text-zinc-200 line-clamp-2 leading-tight">
-                        "{dl.line}"
+                      <span className="text-[9px] font-bold text-zinc-200 truncate w-full">{st.name}</span>
+                    </button>
+                  ))}
+                  {genericProMeta.result.items.map((ps) => (
+                    <button
+                      key={ps.id}
+                      type="button"
+                      onClick={() =>
+                        props.onAddSticker({
+                          id: ps.id,
+                          name: ps.name,
+                          category: ps.category,
+                          badgeText: ps.category.toUpperCase(),
+                          emoji: ps.engineId || '🎬',
+                          colorClass: 'bg-sky-500/20 text-sky-300',
+                          description: ps.sub,
+                        })
+                      }
+                      className="rounded-xl border border-zinc-800 hover:border-sky-400 active:border-sky-400 bg-[#121721] p-1.5 flex flex-col items-center justify-center gap-1 text-center cursor-pointer transition-colors group"
+                    >
+                      <div className={`w-full aspect-video rounded-lg bg-gradient-to-br ${ps.swatch} border border-white/10 relative overflow-hidden flex items-center justify-center`}>
+                        <div className="absolute inset-0 bg-black/35" />
+                        <span className="text-xl relative z-10 group-hover:scale-125 transition-transform">
+                          {ps.engineId || '🎬'}
+                        </span>
+                      </div>
+                      <div className="min-w-0 w-full">
+                        <div className="text-[9px] font-bold text-white truncate">{ps.name}</div>
+                        <div className="text-[7.5px] text-zinc-400 truncate">{ps.category}</div>
                       </div>
                     </button>
-                  );
-                })}
-              </div>
-            )}
-
-            {/* 6. EMOJI & STICKERS (2 LIVE PREVIEWS PER LINE) */}
-            {category.id === 'stickers' && (
-              <div className="grid grid-cols-2 gap-1.5">
-                {STICKERS_LIST.map((st) => (
-                  <button
-                    key={st.id}
-                    type="button"
-                    onClick={() => props.onAddSticker(st)}
-                    className="rounded-xl border border-zinc-800 hover:border-sky-400 active:border-sky-400 bg-[#121721] p-2 flex flex-col items-center justify-center gap-1 text-center cursor-pointer transition-colors group"
-                  >
-                    <div className="w-full aspect-video rounded-lg bg-black/50 border border-white/5 flex items-center justify-center">
-                      <span className="text-2xl group-hover:scale-125 transition-transform animate-bounce" style={{ animationDuration: '1.2s' }}>
-                        {st.emoji}
-                      </span>
-                    </div>
-                    <span className="text-[9.5px] font-bold text-zinc-200 truncate w-full">{st.name}</span>
-                  </button>
-                ))}
+                  ))}
+                </div>
+                {renderProLoadMore('text-sky-300')}
               </div>
             )}
 
@@ -1426,187 +1843,470 @@ export const WheelFeatureDrawer: React.FC<WheelFeatureDrawerProps> = React.memo(
               </div>
             )}
 
-            {/* 8. TRAILER CARDS (2 LIVE PREVIEWS PER LINE) */}
+            {/* 8. TRAILER CARDS (52,000+ POSTER SLATES) */}
             {category.id === 'card' && (
-              <div className="grid grid-cols-2 gap-1.5">
-                {TRAILER_CARDS_LIST.map((cd) => {
-                  const active = props.activeCardPresetId === cd.id;
-                  return (
-                    <button
-                      key={cd.id}
-                      type="button"
-                      onClick={() => props.onApplyTrailerCardPreset(cd)}
-                      className={`rounded-xl border p-1.5 flex flex-col gap-1 text-left cursor-pointer transition-all ${
-                        active
-                          ? 'border-amber-400 bg-amber-950/40 text-white ring-1 ring-amber-400 shadow-md'
-                          : 'border-zinc-800 bg-[#121721] text-zinc-200 hover:border-zinc-700'
-                      }`}
-                    >
-                      <div className="w-full aspect-video rounded-lg bg-black border border-white/10 flex flex-col items-center justify-center p-1 relative overflow-hidden">
-                        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-amber-400/10 to-transparent animate-pulse" />
-                        <span className="text-[8.5px] font-black uppercase text-amber-300 tracking-wider truncate max-w-full drop-shadow">
-                          {cd.title}
-                        </span>
-                        <span className="text-[7px] text-zinc-400 tracking-widest truncate max-w-full">
-                          {cd.subtitle}
-                        </span>
-                      </div>
-                      <div className="text-[9px] font-bold text-white truncate px-0.5">{cd.title}</div>
-                    </button>
-                  );
-                })}
+              <div className="space-y-1.5">
+                {renderProCategoryToolbar('bg-amber-400 text-black', `Search ${TOTAL_PRO_CARDS_COUNT.toLocaleString()}+ trailer cards...`)}
+                <div className="grid grid-cols-2 gap-1.5">
+                  {!catSearch.trim() && catFilter === 'All' && TRAILER_CARDS_LIST.slice(0, 4).map((cd) => {
+                    const active = props.activeCardPresetId === cd.id;
+                    return (
+                      <button
+                        key={cd.id}
+                        type="button"
+                        onClick={() => props.onApplyTrailerCardPreset(cd)}
+                        className={`rounded-xl border p-1.5 flex flex-col gap-1 text-left cursor-pointer transition-all ${
+                          active
+                            ? 'border-amber-400 bg-amber-950/40 text-white ring-1 ring-amber-400 shadow-md'
+                            : 'border-zinc-800 bg-[#121721] text-zinc-200 hover:border-zinc-700'
+                        }`}
+                      >
+                        <div className="w-full aspect-video rounded-lg bg-black border border-white/10 flex flex-col items-center justify-center p-1 relative overflow-hidden">
+                          <span className="text-[8.5px] font-black uppercase text-amber-300 tracking-wider truncate max-w-full">
+                            {cd.title}
+                          </span>
+                          <span className="text-[7px] text-zinc-400 tracking-widest truncate max-w-full">
+                            {cd.subtitle}
+                          </span>
+                        </div>
+                        <div className="text-[9px] font-bold text-white truncate px-0.5">{cd.title}</div>
+                      </button>
+                    );
+                  })}
+                  {genericProMeta.result.items.map((pc) => {
+                    const active = props.activeCardPresetId === pc.id;
+                    const [th = 'blockbuster_gold', an = 'tilt_float'] = (pc.engineId || '').split('__');
+                    return (
+                      <button
+                        key={pc.id}
+                        type="button"
+                        onClick={() =>
+                          props.onApplyTrailerCardPreset({
+                            id: pc.id,
+                            name: pc.name,
+                            title: pc.name.toUpperCase(),
+                            subtitle: pc.category.toUpperCase(),
+                            badgeText: 'TRAILER',
+                            category: pc.category,
+                            theme: th as TrailerCardTheme,
+                            animation: an as TrailerCardAnimation,
+                            durationSec: 4,
+                            description: pc.sub,
+                          })
+                        }
+                        className={`rounded-xl border p-1.5 flex flex-col gap-1 text-left cursor-pointer transition-all ${
+                          active
+                            ? 'border-amber-400 bg-amber-950/40 text-white ring-1 ring-amber-400 shadow-md'
+                            : 'border-zinc-800 bg-[#121721] text-zinc-200 hover:border-zinc-700'
+                        }`}
+                      >
+                        <div className={`w-full aspect-video rounded-lg bg-gradient-to-br ${pc.swatch} border border-white/10 flex flex-col items-center justify-center p-1 relative overflow-hidden`}>
+                          <div className="absolute inset-0 bg-black/45" />
+                          <span className="text-[8px] font-black uppercase text-amber-200 tracking-wider truncate max-w-full relative z-10">
+                            {pc.category}
+                          </span>
+                        </div>
+                        <div className="min-w-0 px-0.5">
+                          <div className="text-[9px] font-bold text-white truncate">{pc.name}</div>
+                          <div className="text-[7.5px] text-zinc-400 truncate">{pc.sub}</div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+                {renderProLoadMore('text-amber-300')}
               </div>
             )}
 
-            {/* 9. CHROMA KEY (2 LIVE PREVIEWS PER LINE) */}
+            {/* 9. CHROMA KEY (52,000+ STUDIO KEYS & BACKDROPS) */}
             {category.id === 'chroma' && (
-              <div className="grid grid-cols-2 gap-1.5">
-                {CHROMA_BACKGROUNDS_LIST.map((ch) => {
-                  const active = props.activeChromaPresetId === ch.id && props.chromaConfig.enabled;
-                  return (
-                    <button
-                      key={ch.id}
-                      type="button"
-                      onClick={() => props.onApplyChromaPreset(ch)}
-                      className={`rounded-xl border p-1.5 flex flex-col gap-1 text-left cursor-pointer transition-all ${
-                        active
-                          ? 'border-emerald-400 bg-emerald-950/40 text-white ring-1 ring-emerald-400 shadow-md'
-                          : 'border-zinc-800 bg-[#121721] text-zinc-200 hover:border-zinc-700'
-                      }`}
-                    >
-                      <div className={`w-full aspect-video rounded-lg border border-white/10 flex items-center justify-center ${ch.swatchClass} relative overflow-hidden`}>
-                        <div className="absolute inset-0 bg-black/20 flex items-center justify-center">
-                          <Wand2 className="w-3.5 h-3.5 text-white animate-pulse" />
+              <div className="space-y-1.5">
+                <button
+                  type="button"
+                  onClick={props.onPickChromaBg}
+                  className="w-full py-1.5 px-2 rounded-xl bg-emerald-400/20 hover:bg-emerald-400/30 border border-emerald-400/40 text-emerald-300 text-[10px] font-extrabold flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <Upload className="w-3.5 h-3.5" />
+                  <span>Upload Custom Chroma Background</span>
+                </button>
+                {renderProCategoryToolbar('bg-emerald-400 text-black', `Search ${TOTAL_PRO_CHROMA_COUNT.toLocaleString()}+ chroma keys...`)}
+                <div className="grid grid-cols-2 gap-1.5">
+                  {!catSearch.trim() && catFilter === 'All' && CHROMA_BACKGROUNDS_LIST.slice(0, 4).map((ch) => {
+                    const active = props.activeChromaPresetId === ch.id && props.chromaConfig.enabled;
+                    return (
+                      <button
+                        key={ch.id}
+                        type="button"
+                        onClick={() => props.onApplyChromaPreset(ch)}
+                        className={`rounded-xl border p-1.5 flex flex-col gap-1 text-left cursor-pointer transition-all ${
+                          active
+                            ? 'border-emerald-400 bg-emerald-950/40 text-white ring-1 ring-emerald-400 shadow-md'
+                            : 'border-zinc-800 bg-[#121721] text-zinc-200 hover:border-zinc-700'
+                        }`}
+                      >
+                        <div className={`w-full aspect-video rounded-lg border border-white/10 flex items-center justify-center ${ch.swatchClass} relative overflow-hidden`}>
+                          <Wand2 className="w-3.5 h-3.5 text-white" />
                         </div>
-                      </div>
-                      <div className="text-[9.5px] font-bold text-white truncate px-0.5">{ch.name}</div>
-                    </button>
-                  );
-                })}
+                        <div className="text-[9px] font-bold text-white truncate px-0.5">{ch.name}</div>
+                      </button>
+                    );
+                  })}
+                  {genericProMeta.result.items.map((pk) => {
+                    const active = props.activeChromaPresetId === pk.id && props.chromaConfig.enabled;
+                    const [cp = 'green', bg = 'studio_teal', simS = '40', smS = '16'] = (pk.engineId || '').split('__');
+                    return (
+                      <button
+                        key={pk.id}
+                        type="button"
+                        onClick={() =>
+                          props.onApplyChromaPreset({
+                            id: pk.id,
+                            name: pk.name,
+                            category: pk.category,
+                            colorPreset: cp as ChromaKeyConfig['colorPreset'],
+                            bgMode: bg as ChromaKeyConfig['bgMode'],
+                            similarity: Number(simS) || 40,
+                            smoothness: Number(smS) || 16,
+                            swatchClass: `bg-gradient-to-br ${pk.swatch}`,
+                            description: pk.sub,
+                          })
+                        }
+                        className={`rounded-xl border p-1.5 flex flex-col gap-1 text-left cursor-pointer transition-all ${
+                          active
+                            ? 'border-emerald-400 bg-emerald-950/40 text-white ring-1 ring-emerald-400 shadow-md'
+                            : 'border-zinc-800 bg-[#121721] text-zinc-200 hover:border-zinc-700'
+                        }`}
+                      >
+                        <div className={`w-full aspect-video rounded-lg bg-gradient-to-br ${pk.swatch} border border-white/10 flex items-center justify-center relative overflow-hidden`}>
+                          <Wand2 className="w-3.5 h-3.5 text-white drop-shadow" />
+                        </div>
+                        <div className="min-w-0 px-0.5">
+                          <div className="text-[9px] font-bold text-white truncate">{pk.name}</div>
+                          <div className="text-[7.5px] text-zinc-400 truncate">{pk.sub}</div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+                {renderProLoadMore('text-emerald-300')}
               </div>
             )}
 
-            {/* 10. SPLIT SCREEN (2 LIVE PREVIEWS PER LINE) */}
+            {/* 10. SPLIT SCREEN (52,000+ SPLIT LAYOUTS) */}
             {category.id === 'split' && (
-              <div className="grid grid-cols-2 gap-1.5">
-                {SPLIT_PRESETS_LIST.map((sp) => {
-                  const active = props.activeSplitPresetId === sp.id && props.splitScreenConfig.enabled;
-                  return (
-                    <button
-                      key={sp.id}
-                      type="button"
-                      onClick={() => props.onApplySplitPreset(sp)}
-                      className={`rounded-xl border p-1.5 flex flex-col gap-1 text-left cursor-pointer transition-all ${
-                        active
-                          ? 'border-cyan-400 bg-cyan-950/40 text-white ring-1 ring-cyan-400 shadow-md'
-                          : 'border-zinc-800 bg-[#121721] text-zinc-200 hover:border-zinc-700'
-                      }`}
-                    >
-                      <div className="w-full aspect-video rounded-lg bg-black border border-white/10 flex relative overflow-hidden">
-                        <div className="w-1/2 h-full bg-cyan-500/20 border-r border-cyan-400 flex items-center justify-center text-[7.5px] font-bold text-cyan-300">
-                          A
+              <div className="space-y-1.5">
+                <button
+                  type="button"
+                  onClick={props.onAutoJoinSplitClips}
+                  className="w-full py-1.5 px-2 rounded-xl bg-cyan-400/20 hover:bg-cyan-400/30 border border-cyan-400/40 text-cyan-300 text-[10px] font-extrabold flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <Split className="w-3.5 h-3.5" />
+                  <span>Auto Join 2 Timeline Clips</span>
+                </button>
+                {renderProCategoryToolbar('bg-cyan-400 text-black', `Search ${TOTAL_PRO_SPLIT_COUNT.toLocaleString()}+ split layouts...`)}
+                <div className="grid grid-cols-2 gap-1.5">
+                  {!catSearch.trim() && catFilter === 'All' && SPLIT_PRESETS_LIST.slice(0, 4).map((sp) => {
+                    const active = props.activeSplitPresetId === sp.id && props.splitScreenConfig.enabled;
+                    return (
+                      <button
+                        key={sp.id}
+                        type="button"
+                        onClick={() => props.onApplySplitPreset(sp)}
+                        className={`rounded-xl border p-1.5 flex flex-col gap-1 text-left cursor-pointer transition-all ${
+                          active
+                            ? 'border-cyan-400 bg-cyan-950/40 text-white ring-1 ring-cyan-400 shadow-md'
+                            : 'border-zinc-800 bg-[#121721] text-zinc-200 hover:border-zinc-700'
+                        }`}
+                      >
+                        <div className="w-full aspect-video rounded-lg bg-black border border-white/10 flex relative overflow-hidden">
+                          <div className="w-1/2 h-full bg-cyan-500/20 border-r border-cyan-400 flex items-center justify-center text-[7.5px] font-bold text-cyan-300">
+                            A
+                          </div>
+                          <div className="w-1/2 h-full bg-amber-500/20 flex items-center justify-center text-[7.5px] font-bold text-amber-300">
+                            B
+                          </div>
                         </div>
-                        <div className="w-1/2 h-full bg-amber-500/20 flex items-center justify-center text-[7.5px] font-bold text-amber-300">
-                          B
+                        <div className="text-[9px] font-bold text-white truncate px-0.5">{sp.name}</div>
+                      </button>
+                    );
+                  })}
+                  {genericProMeta.result.items.map((ps) => {
+                    const active = props.activeSplitPresetId === ps.id && props.splitScreenConfig.enabled;
+                    const [lay = 'left_right', rat = '50'] = (ps.engineId || '').split('__');
+                    return (
+                      <button
+                        key={ps.id}
+                        type="button"
+                        onClick={() =>
+                          props.onApplySplitPreset({
+                            id: ps.id,
+                            name: ps.name,
+                            category: ps.category,
+                            layout: lay as SplitScreenConfig['layout'],
+                            splitRatio: Number(rat) || 50,
+                            gapPx: 4,
+                            description: ps.sub,
+                          })
+                        }
+                        className={`rounded-xl border p-1.5 flex flex-col gap-1 text-left cursor-pointer transition-all ${
+                          active
+                            ? 'border-cyan-400 bg-cyan-950/40 text-white ring-1 ring-cyan-400 shadow-md'
+                            : 'border-zinc-800 bg-[#121721] text-zinc-200 hover:border-zinc-700'
+                        }`}
+                      >
+                        <div className="w-full aspect-video rounded-lg bg-black border border-white/10 flex relative overflow-hidden">
+                          <div className="w-1/2 h-full bg-cyan-500/25 border-r border-cyan-400 flex items-center justify-center text-[7.5px] font-bold text-cyan-200">
+                            A
+                          </div>
+                          <div className="w-1/2 h-full bg-amber-500/25 flex items-center justify-center text-[7.5px] font-bold text-amber-200">
+                            B
+                          </div>
                         </div>
-                      </div>
-                      <div className="text-[9.5px] font-bold text-white truncate px-0.5">{sp.name}</div>
-                    </button>
-                  );
-                })}
+                        <div className="min-w-0 px-0.5">
+                          <div className="text-[9px] font-bold text-white truncate">{ps.name}</div>
+                          <div className="text-[7.5px] text-zinc-400 truncate">{ps.sub}</div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+                {renderProLoadMore('text-cyan-300')}
               </div>
             )}
 
-            {/* 11. TRANSITIONS (2 LIVE ANIMATED PREVIEWS PER LINE) */}
+            {/* 11. TRANSITIONS (56,000+ GPU SEAM TRANSITIONS) */}
             {category.id === 'transitions' && (
-              <div className="grid grid-cols-2 gap-1.5">
-                {TRANSITIONS_LIST.map((tr) => {
-                  const active = props.selectedTransitionId === tr.id && !isMutedOrOff;
-                  return (
-                    <button
-                      key={tr.id}
-                      type="button"
-                      onClick={() => props.onSelectTransition(active ? null : tr)}
-                      className={`rounded-xl border p-1.5 flex flex-col gap-1 text-left cursor-pointer transition-all ${
-                        active
-                          ? 'border-amber-400 bg-amber-950/40 text-white ring-1 ring-amber-400 shadow-md'
-                          : 'border-zinc-800 bg-[#121721] text-zinc-200 hover:border-zinc-700'
-                      }`}
-                    >
-                      {/* Live Alternating Seam Wipe Animation */}
-                      <div className="w-full aspect-video rounded-lg bg-black border border-white/10 relative overflow-hidden flex items-center justify-center">
-                        <img src={sampleThumb} alt="A" className="w-full h-full object-cover" />
-                        {/* Animated Transition Overlay */}
-                        <div className="absolute inset-0 bg-white/40 animate-ping opacity-60" style={{ animationDuration: '1.8s' }} />
-                        <span className="absolute bottom-0.5 right-1 px-1 rounded bg-black/70 text-[7px] font-mono text-amber-300">
-                          {tr.durationSec}s
-                        </span>
-                      </div>
-                      <div className="min-w-0 px-0.5">
-                        <div className="text-[9.5px] font-bold text-white truncate">{tr.name}</div>
-                        <div className="text-[8px] text-zinc-400 truncate">{tr.category}</div>
-                      </div>
-                    </button>
-                  );
-                })}
+              <div className="space-y-1.5">
+                {renderProCategoryToolbar('bg-amber-400 text-black', `Search ${TOTAL_PRO_TRANSITIONS_COUNT.toLocaleString()}+ transitions...`)}
+                <div className="grid grid-cols-2 gap-1.5">
+                  {!catSearch.trim() && catFilter === 'All' && TRANSITIONS_LIST.slice(0, 4).map((tr) => {
+                    const active = props.selectedTransitionId === tr.id && !isMutedOrOff;
+                    return (
+                      <button
+                        key={tr.id}
+                        type="button"
+                        onClick={() => props.onSelectTransition(active ? null : tr)}
+                        className={`rounded-xl border p-1.5 flex flex-col gap-1 text-left cursor-pointer transition-all ${
+                          active
+                            ? 'border-amber-400 bg-amber-950/40 text-white ring-1 ring-amber-400 shadow-md'
+                            : 'border-zinc-800 bg-[#121721] text-zinc-200 hover:border-zinc-700'
+                        }`}
+                      >
+                        <div className="w-full aspect-video rounded-lg bg-black border border-white/10 relative overflow-hidden flex items-center justify-center">
+                          <img src={sampleThumb} alt={tr.name} className="w-full h-full object-cover" />
+                          <span className="absolute bottom-0.5 right-1 px-1 rounded bg-black/70 text-[7px] font-mono text-amber-300">
+                            {tr.durationSec}s
+                          </span>
+                        </div>
+                        <div className="min-w-0 px-0.5">
+                          <div className="text-[9px] font-bold text-white truncate">{tr.name}</div>
+                          <div className="text-[7.5px] text-zinc-400 truncate">{tr.category}</div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                  {genericProMeta.result.items.map((pt) => {
+                    const active = props.selectedTransitionId === pt.id && !isMutedOrOff;
+                    const effMap: Record<string, TransitionItem['effectType']> = {
+                      zoom_flow: 'zoom',
+                      whip_pan_left: 'whip',
+                      light_leak: 'flash',
+                      zoom_match_out: 'zoom',
+                      glitch_flash: 'glitch',
+                      circle_open: 'cube3d',
+                      fade: 'dissolve',
+                      focus_pull: 'wipe',
+                    };
+                    const effType = effMap[pt.engineId || 'fade'] || 'dissolve';
+                    return (
+                      <button
+                        key={pt.id}
+                        type="button"
+                        onClick={() =>
+                          props.onSelectTransition(
+                            active
+                              ? null
+                              : {
+                                  id: pt.id,
+                                  name: pt.name,
+                                  category: pt.category,
+                                  icon: '✦',
+                                  effectType: effType,
+                                  durationSec: 0.9,
+                                  description: pt.sub,
+                                }
+                          )
+                        }
+                        className={`rounded-xl border p-1.5 flex flex-col gap-1 text-left cursor-pointer transition-all ${
+                          active
+                            ? 'border-amber-400 bg-amber-950/40 text-white ring-1 ring-amber-400 shadow-md'
+                            : 'border-zinc-800 bg-[#121721] text-zinc-200 hover:border-zinc-700'
+                        }`}
+                      >
+                        <div className={`w-full aspect-video rounded-lg bg-gradient-to-br ${pt.swatch} border border-white/10 relative overflow-hidden flex items-center justify-center`}>
+                          <div className="absolute inset-0 bg-black/35" />
+                          <span className="relative z-10 text-[8.5px] font-black uppercase text-amber-200">
+                            {effType}
+                          </span>
+                          <span className="absolute bottom-0.5 right-1 px-1 rounded bg-black/75 text-[7px] font-mono text-amber-300">
+                            0.9s
+                          </span>
+                        </div>
+                        <div className="min-w-0 px-0.5">
+                          <div className="text-[9px] font-bold text-white truncate">{pt.name}</div>
+                          <div className="text-[7.5px] text-zinc-400 truncate">{pt.sub}</div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+                {renderProLoadMore('text-amber-300')}
               </div>
             )}
 
-            {/* 12. VISUAL EFFECTS (2 LIVE PREVIEWS PER LINE) */}
+            {/* 12. VISUAL EFFECTS (52,000+ OVERLAYS & PARTICLES) */}
             {category.id === 'effects' && (
-              <div className="grid grid-cols-2 gap-1.5">
-                {EFFECTS_LIST.map((fx) => {
-                  const active = props.activeEffect?.id === fx.id && !isMutedOrOff;
-                  return (
-                    <button
-                      key={fx.id}
-                      type="button"
-                      onClick={() => props.onSelectEffect(active ? null : fx)}
-                      className={`rounded-xl border p-1.5 flex flex-col gap-1 text-left cursor-pointer transition-all ${
-                        active
-                          ? 'border-purple-400 bg-purple-950/40 text-white ring-1 ring-purple-400 shadow-md'
-                          : 'border-zinc-800 bg-[#121721] text-zinc-200 hover:border-zinc-700'
-                      }`}
-                    >
-                      <div className="w-full aspect-video rounded-lg bg-black border border-white/10 relative overflow-hidden">
-                        <img src={sampleThumb} alt={fx.name} className="w-full h-full object-cover" />
-                        <div className="absolute inset-0 bg-gradient-to-t from-purple-500/30 to-transparent animate-pulse" />
-                        <span className="absolute bottom-0.5 right-1 px-1 rounded bg-black/70 text-[7px] font-mono text-purple-300">
-                          FX
-                        </span>
-                      </div>
-                      <div className="min-w-0 px-0.5">
-                        <div className="text-[9.5px] font-bold text-white truncate">{fx.name}</div>
-                        <div className="text-[8px] text-zinc-400 truncate">{fx.category}</div>
-                      </div>
-                    </button>
-                  );
-                })}
+              <div className="space-y-1.5">
+                {renderProCategoryToolbar('bg-purple-400 text-black', `Search ${TOTAL_PRO_EFFECTS_COUNT.toLocaleString()}+ visual effects...`)}
+                <div className="grid grid-cols-2 gap-1.5">
+                  {!catSearch.trim() && catFilter === 'All' && EFFECTS_LIST.slice(0, 4).map((fx) => {
+                    const active = props.activeEffect?.id === fx.id && !isMutedOrOff;
+                    return (
+                      <button
+                        key={fx.id}
+                        type="button"
+                        onClick={() => props.onSelectEffect(active ? null : fx)}
+                        className={`rounded-xl border p-1.5 flex flex-col gap-1 text-left cursor-pointer transition-all ${
+                          active
+                            ? 'border-purple-400 bg-purple-950/40 text-white ring-1 ring-purple-400 shadow-md'
+                            : 'border-zinc-800 bg-[#121721] text-zinc-200 hover:border-zinc-700'
+                        }`}
+                      >
+                        <div className="w-full aspect-video rounded-lg bg-black border border-white/10 relative overflow-hidden">
+                          <img src={sampleThumb} alt={fx.name} className="w-full h-full object-cover" />
+                          <span className="absolute bottom-0.5 right-1 px-1 rounded bg-black/70 text-[7px] font-mono text-purple-300">
+                            FX
+                          </span>
+                        </div>
+                        <div className="min-w-0 px-0.5">
+                          <div className="text-[9px] font-bold text-white truncate">{fx.name}</div>
+                          <div className="text-[7.5px] text-zinc-400 truncate">{fx.category}</div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                  {genericProMeta.result.items.map((pf) => {
+                    const active = props.activeEffect?.id === pf.id && !isMutedOrOff;
+                    const effType = (pf.engineId as EffectItem['effectType']) || 'light_leak';
+                    return (
+                      <button
+                        key={pf.id}
+                        type="button"
+                        onClick={() =>
+                          props.onSelectEffect(
+                            active
+                              ? null
+                              : {
+                                  id: pf.id,
+                                  name: pf.name,
+                                  category: pf.category,
+                                  overlayClass: 'opacity-40',
+                                  effectType: effType,
+                                  accentColor: pf.colorHex || '#c084fc',
+                                  description: pf.sub,
+                                }
+                          )
+                        }
+                        className={`rounded-xl border p-1.5 flex flex-col gap-1 text-left cursor-pointer transition-all ${
+                          active
+                            ? 'border-purple-400 bg-purple-950/40 text-white ring-1 ring-purple-400 shadow-md'
+                            : 'border-zinc-800 bg-[#121721] text-zinc-200 hover:border-zinc-700'
+                        }`}
+                      >
+                        <div className={`w-full aspect-video rounded-lg bg-gradient-to-br ${pf.swatch} border border-white/10 relative overflow-hidden flex items-center justify-center`}>
+                          <div className="absolute inset-0 bg-black/35" />
+                          <Sparkles className="w-4 h-4 relative z-10" style={{ color: pf.colorHex || '#e9d5ff' }} />
+                          <span className="absolute bottom-0.5 right-1 px-1 rounded bg-black/75 text-[7px] font-mono text-purple-300">
+                            FX
+                          </span>
+                        </div>
+                        <div className="min-w-0 px-0.5">
+                          <div className="text-[9px] font-bold text-white truncate">{pf.name}</div>
+                          <div className="text-[7.5px] text-zinc-400 truncate">{pf.sub}</div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+                {renderProLoadMore('text-purple-300')}
               </div>
             )}
 
-            {/* 13. TEMPLATES (2 LIVE PREVIEWS PER LINE) */}
+            {/* 13. TEMPLATES (52,000+ CINEMA TRAILER & REEL TEMPLATES) */}
             {category.id === 'templates' && (
-              <div className="grid grid-cols-2 gap-1.5">
-                {TRAILER_PRESET_PACKS.map((pk) => (
-                  <button
-                    key={pk.id}
-                    type="button"
-                    onClick={() => props.onApplyTrailerPack(pk.id)}
-                    className="rounded-xl border border-zinc-800 hover:border-teal-400 active:border-teal-400 bg-[#121721] p-1.5 flex flex-col gap-1 text-left cursor-pointer transition-colors"
-                  >
-                    <div className="w-full aspect-video rounded-lg bg-[#0a0d14] border border-white/10 flex items-center justify-center p-1 relative overflow-hidden">
-                      <div className="absolute inset-0 bg-teal-500/10 animate-pulse" />
-                      <span className="text-[9px] font-black uppercase text-teal-300 tracking-wider text-center drop-shadow">
-                        {pk.name}
-                      </span>
-                    </div>
-                    <div className="min-w-0 px-0.5">
-                      <div className="text-[9.5px] font-bold text-white truncate">{pk.name}</div>
-                      <div className="text-[8px] text-zinc-400 truncate">{pk.title}</div>
-                    </div>
-                  </button>
-                ))}
+              <div className="space-y-1.5">
+                {renderProCategoryToolbar('bg-teal-400 text-black', `Search ${TOTAL_PRO_TEMPLATES_COUNT.toLocaleString()}+ templates...`)}
+                <div className="grid grid-cols-2 gap-1.5">
+                  {!catSearch.trim() && catFilter === 'All' && TRAILER_PRESET_PACKS.slice(0, 4).map((pk) => (
+                    <button
+                      key={pk.id}
+                      type="button"
+                      onClick={() => props.onApplyTrailerPack(pk.id)}
+                      className="rounded-xl border border-zinc-800 hover:border-teal-400 active:border-teal-400 bg-[#121721] p-1.5 flex flex-col gap-1 text-left cursor-pointer transition-colors"
+                    >
+                      <div className="w-full aspect-video rounded-lg bg-[#0a0d14] border border-white/10 flex items-center justify-center p-1 relative overflow-hidden">
+                        <span className="text-[9px] font-black uppercase text-teal-300 tracking-wider text-center">
+                          {pk.name}
+                        </span>
+                      </div>
+                      <div className="min-w-0 px-0.5">
+                        <div className="text-[9px] font-bold text-white truncate">{pk.name}</div>
+                        <div className="text-[7.5px] text-zinc-400 truncate">{pk.title}</div>
+                      </div>
+                    </button>
+                  ))}
+                  {genericProMeta.result.items.map((ptm) => {
+                    const active = props.activeTemplateId === ptm.id;
+                    return (
+                      <button
+                        key={ptm.id}
+                        type="button"
+                        onClick={() =>
+                          props.onApplyTemplate({
+                            id: ptm.id,
+                            title: ptm.name,
+                            duration: `0:${ptm.bpm || 15}`,
+                            durationSec: ptm.bpm || 15,
+                            category: ptm.category,
+                            thumbnail: sampleThumb,
+                            movieTitle: ptm.name.toUpperCase(),
+                            subtitle: ptm.category.toUpperCase(),
+                            director: ptm.engineId || 'Studio Master',
+                            bgUrl: sampleThumb,
+                            description: ptm.sub,
+                          })
+                        }
+                        className={`rounded-xl border p-1.5 flex flex-col gap-1 text-left cursor-pointer transition-all ${
+                          active
+                            ? 'border-teal-400 bg-teal-950/40 text-white ring-1 ring-teal-400 shadow-md'
+                            : 'border-zinc-800 bg-[#121721] text-zinc-200 hover:border-zinc-700'
+                        }`}
+                      >
+                        <div className={`w-full aspect-video rounded-lg bg-gradient-to-br ${ptm.swatch} border border-white/10 flex items-center justify-center p-1 relative overflow-hidden`}>
+                          <div className="absolute inset-0 bg-black/35" />
+                          <span className="text-[8.5px] font-black uppercase text-teal-200 tracking-wider text-center relative z-10 line-clamp-1">
+                            {ptm.category}
+                          </span>
+                        </div>
+                        <div className="min-w-0 px-0.5">
+                          <div className="text-[9px] font-bold text-white truncate">{ptm.name}</div>
+                          <div className="text-[7.5px] text-zinc-400 truncate">{ptm.sub}</div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+                {renderProLoadMore('text-teal-300')}
               </div>
             )}
           </>
